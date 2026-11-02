@@ -151,6 +151,21 @@ $GK host-resume <host>
 # live; nothing else is written). The host stays held for
 # dispatch until it returns and the hold is cleared.
 $GK reboot --host <host> [--force] [--delay <seconds>] [--requested-by <chat-id>]
+
+# Host drain (spec 011 FR-007, Phase 2): the polite prelude to
+# restarting or shutting down one host. Signals every running
+# checkpoint-capable job on the host (spec 013 holds), sets the
+# host's drain hold — a hold distinct from the going-down hold;
+# `gk host-resume <host>` clears BOTH — then waits out each
+# lane's checkpoint window (config `drain.window_s`, default
+# 120 s, per-lane overrides in `drain.per_lane_window_s`) and
+# prints a per-job verdict. Exit 0 = DRAIN CLEAN (every job
+# checkpointed, finished, or ended), 1 = INTERRUPTING (jobs
+# named uncheckpointed, with the reason), 2 = unknown host.
+# This is NOT spec 013's `pause --drain`: that one is global
+# and passive (it waits for the pipeline to empty); this one is
+# per-host and active, and neither clears the other's state.
+$GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
 ```
 
 - Every job carries a **unique `--key`**. Submitting a key that is already
@@ -277,6 +292,26 @@ $GK reboot --host <host> [--force] [--delay <seconds>] [--requested-by <chat-id>
   the gatekeeper never cancels or re-dispatches). The hold clears
   with `gk host-resume <host>` once the host is back — the Phase-1
   stand-in for the recovery handshake.
+- **The host guard and the drain** (spec 011 Phases 2–3,
+  Amendment 2): the guard (`runner/guard/`, a windowless sibling
+  of the tray with no UI and no exit command) watches the
+  running-job registry the transport workflows maintain. While
+  checkpoint-capable jobs run it pre-registers the OS shutdown
+  block with a count-naming reason; on a shutdown/restart/logoff
+  signal it writes the going-down record FIRST (verified write;
+  the backchannel agent merges it into the heartbeat payload —
+  the fastest channel the Phase 1 ingest reads), raises the
+  running jobs' hold files locally (no gatekeeper round-trip),
+  vetoes the session end, and drains until the registry empties
+  or the checkpoint window expires, then releases the block and
+  re-issues the pending action (a restart, unless it was a
+  logoff). Delay, never prevent. The guard beats every ~10 s;
+  the beat rides the heartbeat as `guard`, and a beat older than
+  `drain.guard_stale_after_s` (default 180 s) ledgers
+  `guard_stale` and shows in `gk status` — a stopped guard is a
+  visible loss of protection, never a silent one. `gk drain
+  --host` is the operator-invoked twin of the guard's drain:
+  same signals, same harvest, a printed verdict.
 
 ## Periodic status-check duty (spec 009 FR-005)
 
@@ -580,4 +615,14 @@ Implementation follows in Phase 5 as amended. **T021
 shipped (2026-11-01)**: `gk reboot` is implemented in the
 gatekeeper (refusal / backchannel / maintenance / unreachable
 pinned by golden scenario 7); the live fire drill on the
-production host is T022, still open.
+production host is T022, still open. **Amendment 2
+(2026-11-02)** is the owner's speed directive ("block it,
+pause all jobs, wait for checkpoints — as fast as we can"):
+**Phases 2–3 built repo-side** — `gk drain --host` (T004–
+T005: host-scoped, active, per-job verdicts; distinct from
+spec 013's global passive `pause --drain`, and from the
+FR-006 hold) and the host guard + going-down writer
+(T006–T007: `runner/guard/`, the agent merge, guard-beat
+staleness). T008 (the production deploy) and T005's owner
+oracle pass remain field steps; nothing in Phases 2–3 is
+fleet-deployed by this change.

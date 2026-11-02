@@ -74,6 +74,9 @@ python3 gk.py stop [--reason TEXT]     # hard halt: sweeps no-op until start
 python3 gk.py start                    # clear stop + pause: fully running
 python3 gk.py purge [--older-than-days N] [--ledger] [--yes]  # dry-run default
 python3 gk.py outbox [--ack]           # pushes owed to registered chats
+python3 gk.py drain --host H [--window S]  # spec 011: signal + hold + wait on one host
+python3 gk.py host-resume <host>       # spec 011: clear a host's holds (both kinds)
+python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host reboot
 ```
 
 - **submit** writes a job file in state `submitted` and records the
@@ -234,6 +237,30 @@ python3 gk.py outbox [--ack]           # pushes owed to registered chats
   is the coordinator forwarding each group into the named chat;
   `outbox --ack` then advances the cursor. Programs register once
   and stop polling.
+
+- **Host drain, the guard, guard staleness (spec 011
+  Phases 2–3)** — `gk drain --host` is the host-scoped,
+  active drain: it signals the host's running
+  checkpoint-capable jobs through the same hold machinery,
+  sets the host's **drain hold** (a per-host field distinct
+  from the FR-006 going-down hold; `gk host-resume` clears
+  both), waits out each lane's window (`drain.window_s`,
+  default 120, `drain.per_lane_window_s` overrides), driving
+  the same `watch_pass` a sweep runs so the harvest is
+  identical, and prints CLEAN (exit 0) or INTERRUPTING
+  (exit 1) with every job classified. Spec 013's
+  `pause --drain` stays what it was — global and passive;
+  admission is the conjunction of both layers and neither
+  verb clears the other's state. The host guard
+  (`runner/guard/`) runs the same drain on the machine when
+  a shutdown is imminent and writes the going-down record
+  the Phase 1 ingest consumes (the backchannel agent merges
+  the guard's files into the heartbeat payload verbatim).
+  The guard's beat rides that payload as `guard`; the sweep
+  stores it on the host's liveness record and ledgers
+  `guard_stale` / `guard_recovered` on transitions
+  (`drain.guard_stale_after_s`, default 180), rendered in
+  `gk status` — a stopped guard is visible, never silent.
 
 One platform caveat, observed in the field: GitHub's run-level status
 for a run can lag or sit at `queued` while the job's log already holds

@@ -30,6 +30,10 @@ Validation (load time, all named errors):
     in 1..255, marker a valid marker token, env var a valid
     name, holds_dir a mapping of declared workflows to
     non-empty venue directories
+  - drain (spec 011 FR-005/FR-007): the host drain window a
+    positive number of seconds, per-lane overrides keyed by
+    declared lanes with positive values, and the guard
+    staleness bound a positive number of seconds
   - lane lock TTLs (spec 015 FR-011): default and maximum TTL
     integers, positive, with default <= maximum
 """
@@ -95,6 +99,21 @@ DEFAULTS = {
             "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
             "wsl.yml": "/home/tpierson/.syncyard/holds",
         },
+    },
+    # Host drain (spec 011 FR-005/FR-007): `gk drain --host`
+    # holds dispatch to one host, signals its running
+    # checkpoint-capable jobs, and waits out the window —
+    # per lane when a lane overrides — before printing its
+    # CLEAN / INTERRUPTING verdict. guard_stale_after_s bounds
+    # the guard heartbeat the backchannel agent merges into
+    # its heartbeat payload: a guard beat older than this
+    # (relative to the heartbeat carrying it) is stale and is
+    # ledgered + shown in status (spec 011 T007: a stopped
+    # guard is never a silent loss of protection).
+    "drain": {
+        "window_s": 120,
+        "per_lane_window_s": {},
+        "guard_stale_after_s": 180,
     },
     # Lane priority lock (spec 015 FR-007/FR-011): every lane
     # lock carries a TTL so a forgotten claim cannot squat a
@@ -162,6 +181,8 @@ def _scalar(tok, lineno):
     tok = tok.strip()
     if tok == "":
         return None
+    if tok == "{}":
+        return {}
     if tok.startswith("[") and tok.endswith("]"):
         inner = tok[1:-1].strip()
         if not inner:
@@ -444,6 +465,33 @@ def validate(cfg):
             raise ConfigError(f"lanes.{name}.executing.mode must be fixed|expectation")
         if lane.get("concurrency", 1) < 1:
             raise ConfigError(f"lanes.{name}.concurrency must be >= 1")
+    dr = cfg.get("drain") or {}
+    win = dr.get("window_s")
+    if (isinstance(win, bool) or not isinstance(win, (int, float))
+            or win <= 0):
+        raise ConfigError(
+            "drain.window_s must be a positive number of seconds")
+    per_lane = dr.get("per_lane_window_s")
+    if not isinstance(per_lane, dict):
+        raise ConfigError(
+            "drain.per_lane_window_s must be a mapping of lane "
+            "to window seconds")
+    for lname, lwin in per_lane.items():
+        if lname not in (cfg.get("lanes") or {}):
+            raise ConfigError(
+                f"drain.per_lane_window_s: lane {lname!r} is not "
+                f"a declared lane")
+        if (isinstance(lwin, bool)
+                or not isinstance(lwin, (int, float)) or lwin <= 0):
+            raise ConfigError(
+                f"drain.per_lane_window_s.{lname} must be a "
+                f"positive number of seconds")
+    gstale = dr.get("guard_stale_after_s")
+    if (isinstance(gstale, bool)
+            or not isinstance(gstale, (int, float)) or gstale <= 0):
+        raise ConfigError(
+            "drain.guard_stale_after_s must be a positive "
+            "number of seconds")
     dp = (cfg.get("dispatch") or {}).get("duplicate_policy")
     if dp not in ("refuse", "allow"):
         raise ConfigError("dispatch.duplicate_policy must be refuse|allow")

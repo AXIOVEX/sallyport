@@ -133,6 +133,13 @@ CHECKPOINT_EXIT_CODE = int(_CFG["checkpoint"]["exit_code"])
 CHECKPOINT_MARKER = _CFG["checkpoint"]["marker"]
 CHECKPOINT_ENV_VAR = _CFG["checkpoint"]["env_var"]
 CHECKPOINT_HOLDS_DIR = dict(_CFG["checkpoint"]["holds_dir"])
+# Host drain (spec 011 FR-005/FR-007): the checkpoint window a
+# deliberate host drain waits out (per lane when overridden),
+# and the staleness bound for the host guard's heartbeat beats.
+DRAIN_WINDOW_S = _CFG["drain"]["window_s"]
+DRAIN_PER_LANE_WINDOW_S = dict(_CFG["drain"]["per_lane_window_s"])
+DRAIN_GUARD_STALE_S = _CFG["drain"]["guard_stale_after_s"]
+DRAIN_POLL_S = 2  # drain wait-loop poll cadence (tests may lower)
 # Priority optimizer (spec 013 FR-012): auto-assigned effective
 # priorities are capped at the ceiling (a human-set priority
 # above it is unreachable by any auto job) and age +1 per step.
@@ -1683,6 +1690,24 @@ def _submit_signal_job(target, hold):
     return job["id"], None
 
 
+def _request_checkpoint_hold(job):
+    """Record a checkpoint-hold request on a job and queue its
+    venue signal (spec 013 FR-008). Returns (signal_job_id, err):
+    err is None when the signal is queued, and both are None
+    when the hold was already requested. Shared by `gk hold`
+    and `gk drain` (spec 011 FR-007) so an operator hold and a
+    drain raise the identical signal, and the harvest never
+    asks which command raised it."""
+    if job.get("hold_requested"):
+        return None, None
+    job["hold_requested"] = True
+    job["hold_requested_at"] = now_iso()
+    save_job(job)
+    ledger("hold_requested", job_id=job["id"], key=job.get("key"),
+           signal_path=hold_signal_path(job))
+    return _submit_signal_job(job, hold=True)
+
+
 def cmd_hold(args):
     """Request a cooperative checkpoint hold (spec 013 FR-009):
     record the request on the job, then deliver the signal
@@ -1711,12 +1736,7 @@ def cmd_hold(args):
               % (job["id"], job.get("key"),
                  job.get("hold_requested_at")))
         return 0
-    job["hold_requested"] = True
-    job["hold_requested_at"] = now_iso()
-    save_job(job)
-    ledger("hold_requested", job_id=job["id"], key=job.get("key"),
-           signal_path=hold_signal_path(job))
-    sid, err = _submit_signal_job(job, hold=True)
+    sid, err = _request_checkpoint_hold(job)
     if err:
         print("hold recorded on %s (key=%s), but the signal "
               "could not be queued: %s. The job will not see a "
@@ -1874,22 +1894,26 @@ def dispatch_pass(jobs, runs_by_id):
     # admission — it only adds the settle transition.
     prec = pause_record()
     gate_active = prec is not None or stop_state() is not None
-    # Host dispatch holds (spec 011 FR-006): a host that has gone
-    # down takes no new dispatches on any of its lanes — maintenance
-    # included, the host is going away — until the hold is cleared
+    # Host dispatch holds (spec 011 FR-006 + FR-007): a host that
+    # has gone down, or is under a deliberate drain hold, takes no
+    # new dispatches on any of its lanes — maintenance included,
+    # the host is going away — until the hold is cleared
     # (Phase 1: `gk host-resume`; the FR-010 recovery handshake
     # replaces it in Phase 5). Queued jobs wait; nothing reroutes.
     held_hosts = {h for h, r in load_hosts_state().items()
-                  if r.get("hold")}
-    # FR-015 route 2 exception: the gatekeeper's own reboot-signal
-    # job (a maintenance job keyed gk-reboot-*) is exempt from the
-    # host hold. The hold exists to stop NEW work starting on a
-    # host that is going down; the signal job is not new work, it
-    # IS the going-down mechanism — if the hold blocked it, the
-    # maintenance route could never deliver its own signal.
+                  if r.get("hold") or r.get("drain_hold")}
+    # FR-015 route 2 exception: the gatekeeper's own signal jobs
+    # (maintenance jobs keyed gk-reboot-*, gk-hold-* or
+    # gk-unhold-*) are exempt from the host hold. The hold exists
+    # to stop NEW work starting on a host that is going down; a
+    # signal job is not new work, it IS the going-down / drain
+    # mechanism — if the hold blocked it, the maintenance route
+    # could never deliver its own signal, and a drain could
+    # never deliver the checkpoint holds it exists to raise.
     def _hold_exempt(job):
         return bool(job.get("maintenance")) and str(
-            job.get("key") or "").startswith(REBOOT_KEY_PREFIX)
+            job.get("key") or "").startswith(
+                (REBOOT_KEY_PREFIX, "gk-hold-", "gk-unhold-"))
     lanes_live = os.path.isfile(LANES_LIVE_FILE)
     for job in waiting:
         maint = bool(job.get("maintenance"))
@@ -2445,7 +2469,9 @@ def save_hosts_state(state):
 def _host_record(state, host):
     return state.setdefault(host, {
         "last_seen": None, "last_heartbeat_ts": None, "down": False,
-        "hold": False, "hold_since": None, "going_down": None})
+        "hold": False, "hold_since": None, "going_down": None,
+        "drain_hold": False, "drain_since": None,
+        "guard": None, "guard_stale": False})
 
 
 def heartbeat_hosts():
@@ -2499,7 +2525,53 @@ def sweep_liveness(jobs):
     gd = hb.get("going_down")
     if isinstance(gd, dict) and gd:
         ingest_going_down(gd, jobs=jobs)
+    guard = hb.get("guard")
+    if isinstance(guard, dict) and guard:
+        _record_guard_beat(guard, hb.get("ts"))
     return state
+
+
+def _record_guard_beat(guard, hb_ts):
+    """Record the host guard's latest beat (spec 011 Phase 3,
+    T007). The guard beats into a host file; the backchannel
+    agent merges it into the heartbeat payload as `guard`
+    ({host, ts, active, draining}) and this pass stores it on
+    the host's liveness record. Staleness is judged against the
+    heartbeat carrying the beat — both timestamps come from the
+    host's own clock, so the comparison needs no trust in the
+    gatekeeper's clock: a beat older than
+    drain.guard_stale_after_s relative to its carrier is stale.
+    Transitions ledger exactly once (guard_stale /
+    guard_recovered), so a stopped guard is a standing,
+    visible loss of protection — never a silent one."""
+    host = guard.get("host")
+    if not host:
+        return
+    state = load_hosts_state()
+    rec = _host_record(state, host)
+    rec["guard"] = {"ts": guard.get("ts"),
+                    "active": guard.get("active"),
+                    "draining": bool(guard.get("draining")),
+                    "seen_at": now_iso()}
+    gts = parse_iso(guard.get("ts"))
+    hts = parse_iso(hb_ts)
+    stale = bool(gts is not None and hts is not None
+                 and (hts - gts).total_seconds() > DRAIN_GUARD_STALE_S)
+    was = bool(rec.get("guard_stale"))
+    rec["guard_stale"] = stale
+    try:
+        save_hosts_state(state)
+    except (IOError, OSError) as exc:
+        hlog("HOSTS_SAVE_FAILED %s" % exc)
+        return
+    if stale and not was:
+        ledger("guard_stale", host=host, guard_ts=guard.get("ts"),
+               heartbeat_ts=hb_ts)
+        hlog("GUARD STALE host=%s guard_ts=%s heartbeat_ts=%s"
+             % (host, guard.get("ts"), hb_ts))
+    elif was and not stale:
+        ledger("guard_recovered", host=host,
+               guard_ts=guard.get("ts"))
 
 
 def ingest_going_down(record, jobs=None):
@@ -2621,21 +2693,35 @@ def host_status_lines(state=None):
         if gd:
             line += " — going-down %s trigger=%s" % (
                 gd.get("ts"), gd.get("trigger"))
+        if rec.get("drain_hold"):
+            line += (" — dispatch HELD (drain since %s; "
+                     "`gk host-resume %s` clears)"
+                     % (rec.get("drain_since"), host))
+        guard = rec.get("guard")
+        if guard:
+            line += " — guard beat %s%s" % (
+                guard.get("ts"),
+                " STALE (protection not reporting)"
+                if rec.get("guard_stale") else "")
         out.append(line)
     return out
 
 
 def cmd_host_resume(args):
-    """Clear a host's going-down dispatch hold. Phase-1 stand-in
-    for the FR-010 recovery handshake (Phase 5): an operator
-    clears the hold by hand once the host is back and verified."""
+    """Clear a host's dispatch holds — the going-down hold
+    (FR-006) and the drain hold (FR-007), either or both.
+    Phase-1 stand-in for the FR-010 recovery handshake
+    (Phase 5): an operator clears the holds by hand once the
+    host is back and verified."""
     state = load_hosts_state()
     rec = state.get(args.host)
-    if rec is None or not rec.get("hold"):
+    if rec is None or not (rec.get("hold") or rec.get("drain_hold")):
         print("host %s: no dispatch hold in effect" % args.host)
         return 0
     rec["hold"] = False
     rec["hold_since"] = None
+    rec["drain_hold"] = False
+    rec["drain_since"] = None
     save_hosts_state(state)
     ledger("host_resumed", host=args.host)
     hlog("HOST_RESUMED %s at %s" % (args.host, now_iso()))
@@ -2841,6 +2927,223 @@ def cmd_reboot(args):
           "until it returns (`gk host-resume %s`)"
           % (host, delay, host))
     return 0
+
+
+# --- Host drain (spec 011 FR-007) -------------------------------------------
+#
+# `gk drain --host <host>` is the deliberate, operator-invoked
+# drain of ONE host: hold the host's dispatch, signal its
+# running checkpoint-capable jobs through the spec 013 hold
+# contract, wait out the checkpoint window (drain.window_s,
+# per-lane overrides, FR-005), then print the verdict in plain
+# language. The command never shuts anything down itself.
+#
+# Reconciliation with spec 013's operator drain (`gk pause
+# --drain` / `gk focus --drain`), stated once, here: the two
+# are different scopes of one idea and neither replaces the
+# other. The 013 drain is pipeline-scoped and passive — it
+# changes admission on the global pause/focus record and
+# settles itself in the sweep when the non-admitted set stops
+# executing; it signals nothing and holds no host. The 011
+# drain is host-scoped and active — it sets a per-host drain
+# hold in the liveness record (dispatch_pass treats it exactly
+# like the FR-006 going-down hold), raises checkpoint holds
+# on the host's running jobs, waits, and reports. They
+# compose: admission is the conjunction of both (a job must
+# pass the global gate AND its host's holds), and each clears
+# only its own state — `gk resume` clears the global record,
+# `gk host-resume <host>` clears the host's holds. The
+# gatekeeper's own signal jobs (gk-hold-*, gk-unhold-*,
+# gk-reboot-*) are exempt from host holds in dispatch_pass,
+# or a drain could never deliver the signals it exists to
+# raise.
+#
+# Exit codes: 0 = CLEAN verdict, 1 = INTERRUPTING verdict,
+# 2 = usage error (unknown host).
+
+DRAIN_TERMINAL_STATES = ("held_at_checkpoint", "completed",
+                         "cancelled")
+
+
+def drain_window_for_lane(lane):
+    """The checkpoint window for one lane (FR-005): the
+    per-lane override when configured, else the host window."""
+    return DRAIN_PER_LANE_WINDOW_S.get(lane, DRAIN_WINDOW_S)
+
+
+def _drain_tracked_jobs(host, jobs):
+    """The jobs a host drain accounts for: non-maintenance jobs
+    on the host's lanes that hold a live run. Maintenance jobs
+    are operator mechanisms (the drain's own signal jobs among
+    them) and are never signaled or counted; queued jobs are
+    not interrupted — the drain hold simply keeps them waiting,
+    and the verdict says how many are waiting."""
+    lanes = set(_host_lanes(host))
+    return [j for j in jobs if j.get("lane") in lanes
+            and not j.get("maintenance")
+            and j["state"] in RUN_HOLDING_STATES
+            and j.get("run_status") != "completed"]
+
+
+def _drain_probe(tracked):
+    """One drain wait-loop poll: ask GitHub for each tracked
+    run's status (one run-view call per still-running run) and
+    feed the results through the SAME watch_pass the sweep
+    uses, so a checkpoint harvest during a drain lands in the
+    identical state, with the identical markers and ledger
+    lines, as a sweep harvest (spec 013 FR-008)."""
+    runs = {}
+    for j in tracked:
+        if j["state"] not in ("dispatched", "watching") \
+                or not j.get("run_id"):
+            continue
+        data, err = gh_json(["run", "view", str(j["run_id"]),
+                             "-R", REPO, "--json",
+                             "status,conclusion,createdAt"])
+        if err or not data:
+            continue
+        runs[str(j["run_id"])] = {
+            "status": data.get("status"),
+            "conclusion": data.get("conclusion"),
+            "createdAt": data.get("createdAt")
+            or j.get("run_created_at") or now_iso()}
+    if runs:
+        watch_pass(tracked, runs)
+
+
+def cmd_drain(args):
+    host = args.host
+    if host not in _CFG["hosts"]:
+        print("ERROR: unknown host '%s' (config hosts: %s)"
+              % (host, ", ".join(sorted(_CFG["hosts"]))))
+        return 2
+    jobs = load_jobs()
+    tracked = _drain_tracked_jobs(host, jobs)
+    lanes = set(_host_lanes(host))
+    queued = [j for j in jobs if j.get("lane") in lanes
+              and j["state"] == "submitted"
+              and not j.get("maintenance")]
+    started = now_iso()
+    if args.window is not None:
+        windows = {j["id"]: float(args.window) for j in tracked}
+    else:
+        windows = {j["id"]: float(drain_window_for_lane(j["lane"]))
+                   for j in tracked}
+    ledger("host_drain_started", host=host,
+           requested_by=args.requested_by, tracked=len(tracked),
+           queued_waiting=len(queued))
+    hlog("HOST_DRAIN host=%s tracked=%d at %s"
+         % (host, len(tracked), started))
+    # 1. Signal first: raise the checkpoint hold on every
+    # tracked job whose workflow has a hold venue, through the
+    # shared spec 013 helper, so the signal is byte-identical
+    # to an operator `gk hold`. Jobs with no venue (grab) or a
+    # signal that could not be queued are accounted by name in
+    # the verdict — they cannot checkpoint under this drain.
+    signal_failed = []
+    for j in tracked:
+        if j.get("workflow") not in CHECKPOINT_HOLDS_DIR:
+            continue
+        _sid, err = _request_checkpoint_hold(j)
+        if err:
+            signal_failed.append(j["id"])
+            hlog("HOST_DRAIN signal failed host=%s job=%s: %s"
+                 % (host, j["id"], err))
+    # 2. The drain hold: dispatch to this host stops (the
+    # gatekeeper's own signal jobs stay exempt, above). The
+    # hold stands after the verdict until `gk host-resume`.
+    state = load_hosts_state()
+    rec = _host_record(state, host)
+    rec["drain_hold"] = True
+    rec["drain_since"] = started
+    rec["drain_by"] = args.requested_by
+    save_hosts_state(state)
+    # 3. Wait out the windows. Each tracked job is classified
+    # at its own lane's deadline (FR-005): checkpointed
+    # (held_at_checkpoint), finished (completed), ended
+    # (cancelled), or — still running at its deadline —
+    # uncheckpointed. Terminal truth comes from the records,
+    # refreshed by the same watch machinery the sweep runs.
+    outcomes = {}
+    pending = list(tracked)
+    start_mono = time.monotonic()
+    max_window = max(windows.values(), default=0.0)
+    while pending:
+        _drain_probe(pending)
+        fresh = {j["id"]: j for j in load_jobs()}
+        elapsed = time.monotonic() - start_mono
+        still = []
+        for j in pending:
+            cur = fresh.get(j["id"], j)
+            if cur["state"] in DRAIN_TERMINAL_STATES:
+                outcomes[j["id"]] = cur["state"]
+            elif elapsed >= windows[j["id"]]:
+                outcomes[j["id"]] = "uncheckpointed"
+            else:
+                still.append(cur)
+        pending = still
+        if not pending:
+            break
+        if elapsed >= max_window:
+            for j in pending:
+                outcomes[j["id"]] = "uncheckpointed"
+            break
+        time.sleep(DRAIN_POLL_S if DRAIN_POLL_S > 0 else 0.05)
+    # 4. The verdict, in plain language (FR-007).
+    by_id = {j["id"]: j for j in tracked}
+    checkpointed = [i for i, o in outcomes.items()
+                    if o == "held_at_checkpoint"]
+    finished = [i for i, o in outcomes.items() if o == "completed"]
+    ended = [i for i, o in outcomes.items() if o == "cancelled"]
+    uncp = [i for i, o in outcomes.items()
+            if o == "uncheckpointed"]
+    clean = not uncp
+    ledger("host_drain_verdict", host=host,
+           verdict="clean" if clean else "interrupting",
+           checkpointed=checkpointed, finished=finished,
+           ended=ended, uncheckpointed=uncp,
+           signal_failed=signal_failed)
+    print("DRAIN host=%s — tracked %d running job(s), %d queued "
+          "job(s) waiting under the drain hold"
+          % (host, len(tracked), len(queued)))
+    for i in checkpointed:
+        print("  CHECKPOINTED %s key=%s — stopped at its "
+              "checkpoint; the owning program resubmits to "
+              "continue" % (i, by_id[i].get("key")))
+    for i in finished:
+        print("  FINISHED %s key=%s — completed during the "
+              "window; not interrupted" % (i, by_id[i].get("key")))
+    for i in ended:
+        print("  ENDED %s key=%s — cancelled during the window"
+              % (i, by_id[i].get("key")))
+    for i in uncp:
+        j = by_id[i]
+        if j.get("workflow") not in CHECKPOINT_HOLDS_DIR:
+            why = ("it runs %s, which has no checkpoint hold "
+                   "venue" % j.get("workflow"))
+        elif i in signal_failed:
+            why = "its hold signal could not be queued"
+        else:
+            why = ("it did not honor the checkpoint hold "
+                   "inside its window (%gs)"
+                   % windows[i])
+        print("  UNCHECKPOINTED %s key=%s — %s; if the host "
+              "goes down now this job is interrupted and its "
+              "in-flight work is lost (resubmission is the "
+              "owning program's call)" % (i, j.get("key"), why))
+    print("  supervised work: none registered — the FR-008 "
+          "vehicle is Phase 4, so this verdict covers "
+          "gatekeeper jobs only")
+    if clean:
+        print("DRAIN CLEAN host=%s — nothing will be "
+              "interrupted. Dispatch to the host stays held "
+              "until `gk host-resume %s`." % (host, host))
+        return 0
+    print("DRAIN INTERRUPTING host=%s — %d job(s) named above "
+          "had not checkpointed when their window expired. "
+          "Dispatch to the host stays held until "
+          "`gk host-resume %s`." % (host, len(uncp), host))
+    return 1
 
 
 def cmd_status(args):
@@ -3131,9 +3434,11 @@ def main(argv=None):
     p.set_defaults(fn=cmd_sweep)
 
     p = sub.add_parser("host-resume",
-                       help="clear a host's going-down dispatch hold "
-                            "(spec 011 FR-006; Phase-1 stand-in for "
-                            "the FR-010 recovery handshake)")
+                       help="clear a host's dispatch holds — the "
+                            "going-down hold (spec 011 FR-006) and "
+                            "the drain hold (FR-007); Phase-1 "
+                            "stand-in for the FR-010 recovery "
+                            "handshake)")
     p.add_argument("host", help="config host name, e.g. desktop")
     p.set_defaults(fn=cmd_host_resume)
 
@@ -3156,6 +3461,27 @@ def main(argv=None):
                    help="chat id requesting the reboot (recorded "
                         "in the ledger)")
     p.set_defaults(fn=cmd_reboot)
+
+    p = sub.add_parser("drain",
+                       help="drain one host (spec 011 FR-007): "
+                            "hold its dispatch, signal its running "
+                            "jobs to checkpoint, wait out the "
+                            "window (drain.window_s / per-lane "
+                            "overrides), and print the CLEAN / "
+                            "INTERRUPTING verdict; exit 0 = CLEAN, "
+                            "1 = INTERRUPTING, 2 = usage error. "
+                            "Host-scoped: distinct from the "
+                            "pipeline drain of `gk pause --drain` "
+                            "(spec 013), which it composes with")
+    p.add_argument("--host", required=True,
+                   help="config host name, e.g. desktop")
+    p.add_argument("--window", type=float, default=None,
+                   help="checkpoint window in seconds for every "
+                        "lane (default: config drain section)")
+    p.add_argument("--requested-by", default=None,
+                   help="chat id requesting the drain (recorded "
+                        "in the ledger)")
+    p.set_defaults(fn=cmd_drain)
 
     p = sub.add_parser("status")
     p.add_argument("--repo", action="store_true",

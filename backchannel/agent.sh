@@ -41,6 +41,19 @@ DEFAULT_TIMEOUT_S="${SYNCBC_TIMEOUT_S:-600}"
 KILL_AFTER_S="${SYNCBC_KILL_AFTER_S:-10}"
 GIT_TIMEOUT_S="${SYNCBC_GIT_TIMEOUT_S:-120}"
 TAIL_BYTES="${SYNCBC_TAIL_BYTES:-8000}"
+# Spec 011 Phase 3 (the going-down writer's transport): the host
+# guard writes its going-down record and its guard heartbeat as
+# files on the Windows side; write_heartbeat merges both into
+# the heartbeat payload verbatim (as `going_down` / `guard`)
+# every cycle. This is the fastest channel the gatekeeper's
+# Phase 1 ingest contract supports — the sweep already reads
+# exactly this payload once per pass, so the record rides a
+# read the fleet already spends, over git protocol only. The
+# agent never interprets either record: the gatekeeper dedupes
+# going-down records per (host, ts) and judges guard staleness
+# itself, so a stale file is harmless here.
+GOING_DOWN_FILE="${SYNCBC_GOING_DOWN_FILE:-/mnt/c/Users/trist/Development/Syncyard/going-down.json}"
+GUARD_FILE="${SYNCBC_GUARD_FILE:-/mnt/c/Users/trist/Development/Syncyard/guard-heartbeat.json}"
 LOG_FILE="$BASE/agent.log"
 LAST_ID_FILE="$BASE/.last_executed_id"
 SELFTEST_FILE="$BASE/.self_test.json"
@@ -70,9 +83,10 @@ write_heartbeat() {
     local stopped="$1"
     local last_id=""
     [ -f "$LAST_ID_FILE" ] && last_id="$(cat "$LAST_ID_FILE" 2>/dev/null)"
-    python3 - "$REPO_DIR/$CHANNEL_REL/heartbeat.json" "$last_id" "$stopped" "$SELFTEST_FILE" <<'PY' 2>/dev/null || true
+    python3 - "$REPO_DIR/$CHANNEL_REL/heartbeat.json" "$last_id" "$stopped" "$SELFTEST_FILE" "$GOING_DOWN_FILE" "$GUARD_FILE" <<'PY' 2>/dev/null || true
 import json, os, socket, sys, datetime
 path, last_id, stopped, selftest_path = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
+going_down_path, guard_path = sys.argv[5], sys.argv[6]
 data = {
     "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "host": socket.gethostname(),
@@ -87,6 +101,20 @@ try:
         data["self_test"] = json.load(fh)
 except Exception:
     pass
+# Spec 011 Phase 3: merge the guard's records verbatim. A
+# missing, unreadable, or non-object file is skipped — the
+# heartbeat never fails because a guard file is absent or
+# mid-write (the guard writes with temp + rename, so a read
+# here sees either the old record or the new one, whole).
+for key, src in (("going_down", going_down_path),
+                 ("guard", guard_path)):
+    try:
+        with open(src, encoding="utf-8") as fh:
+            extra = json.load(fh)
+        if isinstance(extra, dict) and extra:
+            data[key] = extra
+    except Exception:
+        pass
 tmp = path + ".tmp"
 with open(tmp, "w", encoding="utf-8") as fh:
     json.dump(data, fh, indent=1, sort_keys=True)

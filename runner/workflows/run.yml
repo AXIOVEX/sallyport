@@ -45,7 +45,31 @@ jobs:
         run: |
           $script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CMD_B64))
           if ($env:SYNCYARD_HOLD_FILE) { New-Item -ItemType Directory -Force -Path (Split-Path $env:SYNCYARD_HOLD_FILE) | Out-Null }
+          # Running-job registry (spec 011 Phase 3): while this
+          # job runs, an entry file in the `running` dir beside
+          # the holds dir names it — that registry is how the
+          # host guard learns, locally and in seconds, which
+          # checkpoint-capable jobs are live on this host (and
+          # where each one's hold file lives). Best-effort: a
+          # registration failure degrades guard coverage, never
+          # the job. The entry is removed when the job ends;
+          # an entry orphaned by a host kill is stale by its
+          # `started` stamp and the guard ages it out.
+          $regFile = $null
+          if ($env:SYNCYARD_HOLD_FILE) {
+            try {
+              $jid = [IO.Path]::GetFileNameWithoutExtension($env:SYNCYARD_HOLD_FILE)
+              $regDir = Join-Path (Split-Path (Split-Path $env:SYNCYARD_HOLD_FILE)) 'running'
+              New-Item -ItemType Directory -Force -Path $regDir | Out-Null
+              $regFile = Join-Path $regDir "$jid.entry"
+              $lines = @("job_id=$jid", "run_id=${{ github.run_id }}", "workflow=run.yml", "lane=${{ inputs.lane }}", "hold_file=$env:SYNCYARD_HOLD_FILE", "hold_file_win=$env:SYNCYARD_HOLD_FILE", "started=$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))")
+              Set-Content -Path "$regFile.tmp" -Value $lines -Encoding UTF8
+              Move-Item -Force "$regFile.tmp" $regFile
+            } catch { $regFile = $null }
+          }
           $f = Join-Path $env:RUNNER_TEMP 'job.ps1'
           Set-Content -Path $f -Value $script -Encoding UTF8
           & pwsh -NoProfile -ExecutionPolicy Bypass -File $f
-          exit $LASTEXITCODE
+          $rc = $LASTEXITCODE
+          if ($regFile) { Remove-Item -Force -ErrorAction SilentlyContinue $regFile }
+          exit $rc

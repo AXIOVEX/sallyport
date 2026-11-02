@@ -24,6 +24,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   patterns. Spec 007.
 
 ### Added
+- Spec 011 Phases 2–3 (2026-11-02, Amendment 2 — the owner's
+  speed directive): the host drain and the shutdown guard.
+  `gk drain --host` signals a host's running
+  checkpoint-capable jobs through spec 013's hold machinery,
+  sets a per-host **drain hold** distinct from the FR-006
+  going-down hold (`gk host-resume` clears both), waits out
+  each lane's checkpoint window driving the sweep's own
+  harvest, and prints a per-job CLEAN / INTERRUPTING verdict
+  (exit 0/1; 2 = unknown host). New `drain` config section
+  (`window_s` 120, `per_lane_window_s`,
+  `guard_stale_after_s` 180), fail-closed validated and
+  mirrored in the example config. The guard
+  (`runner/guard/SyncyardGuard.cs` + installer + source
+  battery): a windowless tray sibling with no UI and no exit
+  command that pre-registers the OS shutdown block while
+  checkpoint-capable jobs run (discovered from the
+  running-job registry the run/wsl workflows now maintain),
+  and on a session-end signal writes the going-down record
+  first — verified write, the Phase 1 shape — raises hold
+  files locally, vetoes, drains, then releases the block and
+  re-issues the pending action (restart unless logoff). The
+  backchannel agent merges the guard's `going_down` and
+  `guard` files into the heartbeat payload (the ingest
+  contract's fastest channel; reader unchanged), the
+  runbook's message-set section documents both fields, and
+  a stale guard beat ledgers `guard_stale` and shows in
+  `gk status`. Enabling fix: the gatekeeper's own
+  `gk-hold-*`/`gk-unhold-*` signal jobs now flow under a
+  host hold, as `gk-reboot-*` already did. Batteries:
+  `gatekeeper/test_spec011.py`, `runner/guard/
+  test_guard_source.py`, `backchannel/test_agent_source.py`.
+  Repo-side only — T008 (production deploy) and T005's
+  owner oracle pass remain field steps. Spec 011.
 - Spec 015 (2026-11-02): lane priority lock. `gk lock
   --lane <lane> --program <program> [--ttl-min N]
   [--reason TEXT]` gives one program exclusive dispatch on

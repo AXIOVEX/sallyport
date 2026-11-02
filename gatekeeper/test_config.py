@@ -71,6 +71,10 @@ check("golden checkpoint contract (spec 013 FR-007)",
       and cfg["checkpoint"]["holds_dir"] == {
           "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
           "wsl.yml": "/home/tpierson/.syncyard/holds"})
+check("golden drain (spec 011 FR-005/FR-007)",
+      cfg["drain"]["window_s"] == 120
+      and cfg["drain"]["per_lane_window_s"] == {}
+      and cfg["drain"]["guard_stale_after_s"] == 180)
 check("golden lock TTLs (spec 015 FR-011)",
       cfg["lock"]["default_ttl_min"] == 240
       and cfg["lock"]["max_ttl_min"] == 1440)
@@ -108,6 +112,7 @@ check("defaults == example fleet surface",
       and dflt["liveness"] == cfg["liveness"]
       and dflt["reboot"] == cfg["reboot"]
       and dflt["dispatch"] == cfg["dispatch"]
+      and dflt["drain"] == cfg["drain"]
       and dflt["checkpoint"] == cfg["checkpoint"]
       and dflt["lock"] == cfg["lock"])
 
@@ -185,6 +190,22 @@ expect_error("reject checkpoint holds_dir for undeclared workflow",
              "checkpoint:\n  holds_dir:\n    teleport.yml: /tmp/holds\n")
 expect_error("reject empty checkpoint holds_dir value",
              "checkpoint:\n  holds_dir:\n    run.yml: ''\n")
+expect_error("reject zero drain window",
+             "drain:\n  window_s: 0\n")
+expect_error("reject negative drain window",
+             "drain:\n  window_s: -10\n")
+expect_error("reject non-numeric drain window",
+             "drain:\n  window_s: soon\n")
+expect_error("reject boolean drain window",
+             "drain:\n  window_s: true\n")
+expect_error("reject drain override for undeclared lane",
+             "drain:\n  per_lane_window_s:\n    warp: 30\n")
+expect_error("reject zero drain per-lane window",
+             "drain:\n  per_lane_window_s:\n    quick: 0\n")
+expect_error("reject non-mapping drain per-lane windows",
+             "drain:\n  per_lane_window_s: 30\n")
+expect_error("reject zero guard staleness bound",
+             "drain:\n  guard_stale_after_s: 0\n")
 expect_error("reject zero lock default TTL",
              "lock:\n  default_ttl_min: 0\n")
 expect_error("reject negative lock max TTL",
@@ -223,6 +244,16 @@ check("checkpoint override loads",
       and over["checkpoint"]["marker"] == "HELD_HERE"
       and over["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE")
 
+# 9: a valid drain override loads and lands.
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("drain:\n  window_s: 45\n  per_lane_window_s:\n    gpu: 300\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("drain override loads",
+      over["drain"]["window_s"] == 45
+      and over["drain"]["per_lane_window_s"] == {"gpu": 300}
+      and over["drain"]["guard_stale_after_s"] == 180)
 # 9: a valid lock TTL override loads and lands (spec 015 FR-011).
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
     f.write("lock:\n  default_ttl_min: 60\n  max_ttl_min: 720\n")
