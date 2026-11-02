@@ -1,7 +1,9 @@
 # Tasks: Spec 016 — Adaptive Lanes
 
 All tasks land in one repo change on `spec/016-adaptive-lanes`,
-stacked on `spec/015-lane-priority-lock`. Fleet deployment is
+built stacked on `spec/015-lane-priority-lock` (PR #43, merged
+into the spec 013 branch the same day; this PR targets
+`spec/013-live-priority-and-pause`). Fleet deployment is
 NOT part of this change except as the named, unchecked,
 owner-gated T017. The fleet's disciplines apply throughout:
 every state mutation through the verified-write path
