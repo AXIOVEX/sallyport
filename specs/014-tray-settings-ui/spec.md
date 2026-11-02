@@ -153,9 +153,9 @@ proves.
   explicit menu act — the tray itself stays windowless on
   the supervision path (spec 007 FR-001/FR-002, whose
   "no window of its own" is hereby read as *no window
-  except a settings surface the owner opens*, an
-  interpretation this spec records for the owner's
-  ratification). The dialog is created on open and
+  except a settings surface the owner opens*.
+  RATIFIED by the owner 2026-11-02: "settings window is
+  an intentional UI choice. This is allowed."). The dialog is created on open and
   disposed on close; it allocates no icon or bitmap
   resources at all.
   *Acceptance*: test — the battery pins the dialog class,
