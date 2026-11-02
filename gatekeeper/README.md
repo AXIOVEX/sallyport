@@ -66,6 +66,10 @@ python3 gk.py focus --except-key K|--except-program P|--except-chat C [--drain]
 python3 gk.py resume [--job ID]        # clear a pause/focus, or release one job's hold
 python3 gk.py priority <job-id-or-key> N   # spec 013: live priority (waiting jobs)
 python3 gk.py hold <job-id-or-key>     # spec 013: request a checkpoint hold
+python3 gk.py lock --lane LANE --program P [--ttl-min N] [--reason T]
+                               # spec 015: acquire/renew a lane lock (--suspend/--resume, --list)
+python3 gk.py unlock --lane LANE [--program P] [--force]
+                               # spec 015: release a lane lock (holder, or operator override)
 python3 gk.py stop [--reason TEXT]     # hard halt: sweeps no-op until start
 python3 gk.py start                    # clear stop + pause: fully running
 python3 gk.py purge [--older-than-days N] [--ledger] [--yes]  # dry-run default
@@ -179,6 +183,41 @@ python3 gk.py outbox [--ack]           # pushes owed to registered chats
   gatekeeper cannot pause an arbitrary running script
   mid-flight, so the hold is cooperative by design (spec 013
   states the limits in full).
+- **Lane priority locks (spec 015)** — `gk lock --lane
+  <lane> --program <program>` gives one program exclusive
+  dispatch on a lane: while the lock is ACTIVE, only the
+  holder's submitted jobs are dispatch-eligible there.
+  Non-holder jobs are not refused, cancelled, or reordered —
+  they wait (their watermarks escalate), and priority never
+  trumps the lock: a non-holder's human priority of 200
+  waits while the holder's auto priority 0 dispatches. Lock
+  state lives in `LOCKS.json` beside `PAUSED.json`, written
+  only through the FR-013 verified-write path; no file means
+  no locks and pre-015 behavior exactly. One holder per
+  lane: a second acquire is refused (exit 3) naming the
+  holder, its state, and its expiry, in both the ACTIVE and
+  SUSPENDED states; re-acquire by the holder renews the TTL
+  (state preserved). `gk unlock` releases — by the holder,
+  or by the operator with `--force` (ledgered
+  `lock_released_override`, with an outbox notice to the
+  holder's registered chat); a non-holder release without
+  `--force` is refused. `gk lock --suspend` / `--resume`
+  pause and restore enforcement without surrendering the
+  claim. Every lock carries a TTL (config
+  `lock.default_ttl_min`, default 240; `lock.max_ttl_min`,
+  default 1440; `--ttl-min` outside [1, max] refused);
+  expiry is evaluated at dispatch time and behaves exactly
+  like a release (`lock_expired` ledgered, holder notified)
+  for suspended locks too. Maintenance jobs bypass locks
+  exactly as they bypass the pause, and every such dispatch
+  under an ACTIVE foreign lock is ledgered
+  `lock_bypassed`. Fleet pause/focus never mutate lock
+  state, and host drains neither block nor clear locks;
+  admission is a conjunction of all gates. `gk status`
+  renders a LOCKS section in all modes and marks lock-held
+  waiting jobs; `gk lock --list` prints the section
+  standalone. Running runs are never touched by any lock
+  transition.
   `purge` removes terminal (completed/cancelled) job records, dry-run
   unless `--yes`; `--older-than-days N` restricts it to records
   created more than N days ago, and `--ledger` also archives

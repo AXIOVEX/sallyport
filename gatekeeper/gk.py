@@ -30,7 +30,7 @@ import sys
 import tempfile
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 QUEUE_DIR = os.path.join(BASE, "queue")
@@ -43,6 +43,7 @@ HOLDS_DIR = os.path.join(BASE, "holds")
 STOP_FILE = os.path.join(BASE, "STOPPED.json")
 OUTBOX_CURSOR = os.path.join(BASE, "outbox-cursor.json")
 HOSTS_FILE = os.path.join(BASE, "hosts.json")   # host liveness (spec 011)
+LOCKS_FILE = os.path.join(BASE, "LOCKS.json")   # lane locks (spec 015)
 LANES_LIVE_FILE = os.path.join(BASE, "LANES_LIVE")
 
 REPO = "tbitcs/desktop-runner"
@@ -137,6 +138,12 @@ CHECKPOINT_HOLDS_DIR = dict(_CFG["checkpoint"]["holds_dir"])
 # above it is unreachable by any auto job) and age +1 per step.
 OPTIMIZER_CEILING = int(_CFG["dispatch"]["optimizer_ceiling"])
 OPTIMIZER_AGING_STEP_MIN = _CFG["dispatch"]["optimizer_aging_step_min"]
+# Lane priority lock (spec 015 FR-007/FR-011): a lock taken
+# without --ttl-min gets the default TTL; no lock may exceed
+# the maximum. Expiry is what keeps a forgotten claim from
+# squatting a lane forever.
+LOCK_DEFAULT_TTL_MIN = int(_CFG["lock"]["default_ttl_min"])
+LOCK_MAX_TTL_MIN = int(_CFG["lock"]["max_ttl_min"])
 
 # Host routing (spec 010 FR-003/FR-004): a job names a lane; the
 # lane's host is the venue. A workflow the host does not serve is
@@ -536,6 +543,341 @@ def cmd_focus(args):
     return 0
 
 
+# --- Lane priority lock (spec 015) -------------------------------------------
+#
+# LOCKS.json beside PAUSED.json: a flat mapping of lane ->
+# {program, state, acquired_at, expires_at, ttl_min, reason,
+# notify_chat}. One record per lane makes "one holder per lane"
+# structural. Stored states are lowercase ("active" /
+# "suspended"); status renders them uppercase. Every mutation
+# goes through the FR-013 verified write; a failed write leaves
+# the prior file byte-identical and nothing is ledgered as done.
+#
+# Actor discipline is uniform across the lock verbs: --program
+# names the ACTOR. Actor == holder is the normal path; actor !=
+# holder is refused (exit 3, naming holder, state, expiry)
+# unless --force — the operator override — which is ledgered
+# distinctly and noticed to the holder's chat.
+
+LOCK_STATES = ("active", "suspended")
+
+
+def load_locks():
+    """The lane-lock state (spec 015 FR-001/FR-010). A missing
+    file means no locks — the pre-015 world, behaviorally
+    identical. A corrupt file also reads as no locks rather
+    than crashing every command (the load_hosts_state
+    tolerance): lock claims are re-acquirable, a wedged reader
+    helps no one. An unreadable state value normalizes to
+    "active" — fail-closed: a lock whose state cannot be read
+    still enforces."""
+    try:
+        with open(LOCKS_FILE, encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for lane, rec in raw.items():
+        if not isinstance(rec, dict) or not rec.get("program"):
+            continue
+        r = dict(rec)
+        r["state"] = r.get("state") if r.get("state") in LOCK_STATES \
+            else "active"
+        out[str(lane)] = r
+    return out
+
+
+def _write_locks_record(state):
+    """Write LOCKS.json through the same verified write as
+    every other control file; False (with the error printed)
+    when the write did not verify."""
+    try:
+        _write_text_file(LOCKS_FILE,
+                         json.dumps(state, indent=2, sort_keys=True))
+    except (OSError, subprocess.SubprocessError) as exc:
+        print("ERROR: could not write the locks file (%s). The "
+              "change is NOT in effect." % exc)
+        return False
+    return True
+
+
+def _holder_chat(program, jobs=None):
+    """The notify chat a program most recently registered on
+    one of its jobs, or None — the address lock notices
+    (expiry, override release, override suspend/resume) are
+    owed to (spec 015 FR-009)."""
+    if jobs is None:
+        jobs = load_jobs()
+    best = None
+    for j in jobs:
+        if j.get("program") == program and j.get("notify_chat"):
+            if best is None or (j.get("created_at") or "") \
+                    >= (best.get("created_at") or ""):
+                best = j
+    return best.get("notify_chat") if best else None
+
+
+def _lock_expiry_iso(minutes):
+    return (now_dt() + timedelta(minutes=float(minutes))).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+
+def _ttl_value(minutes):
+    """A TTL as stored: an int when integral (the common
+    case), else the float as given."""
+    f = float(minutes)
+    return int(f) if f == int(f) else f
+
+
+def _lock_refusal(lane, rec):
+    return ("REFUSED: lane %s is locked by %s (state=%s, "
+            "expires %s)" % (lane, rec.get("program"),
+                             str(rec.get("state") or "active").upper(),
+                             rec.get("expires_at") or "?"))
+
+
+def expire_locks(jobs=None):
+    """Remove past-due locks (spec 015 FR-007) and return the
+    effective lock map. Evaluated at the head of the dispatch
+    pass and on entry to the lock/unlock commands — never by
+    a separate timer. SUSPENDED locks expire on the same
+    clock as ACTIVE ones. The removal persists BEFORE
+    `lock_expired` ledgers; if the persist write cannot be
+    verified, the expiry does not take effect (the unexpired
+    map is returned and the lock keeps enforcing) — an
+    unlanded expiry must not silently free a lane."""
+    locks = load_locks()
+    if not locks:
+        return locks
+    now = now_dt()
+    expired = [lane for lane in sorted(locks)
+               if parse_iso(locks[lane].get("expires_at")) is not None
+               and parse_iso(locks[lane].get("expires_at")) <= now]
+    if not expired:
+        return locks
+    remaining = {k: v for k, v in locks.items() if k not in expired}
+    if not _write_locks_record(remaining):
+        hlog("LOCK_EXPIRE_WRITE_FAILED lanes=%s — the locks stand"
+             % ",".join(expired))
+        return locks
+    for lane in expired:
+        rec = locks[lane]
+        kw = {"lane": lane, "program": rec.get("program"),
+              "state": rec.get("state"),
+              "expires_at": rec.get("expires_at")}
+        chat = rec.get("notify_chat") or _holder_chat(
+            rec.get("program"), jobs)
+        if chat:
+            kw["notify_chat"] = chat
+        ledger("lock_expired", **kw)
+        hlog("LOCK EXPIRED lane=%s holder=%s"
+             % (lane, rec.get("program")))
+    return remaining
+
+
+def locks_section_lines(locks=None):
+    """The LOCKS section (spec 015 FR-009): one line per lock
+    — lane, holder, state, acquired, expires, reason — or
+    `none`. Shared by `gk status` (all modes) and
+    `gk lock --list`."""
+    if locks is None:
+        locks = load_locks()
+    lines = ["LOCKS:"]
+    if not locks:
+        lines.append("  none")
+        return lines
+    for lane in sorted(locks):
+        rec = locks[lane]
+        lines.append(
+            "  lock lane=%s holder=%s state=%s acquired=%s "
+            "expires=%s reason=%s"
+            % (lane, rec.get("program"),
+               str(rec.get("state") or "active").upper(),
+               rec.get("acquired_at") or "?",
+               rec.get("expires_at") or "?",
+               rec.get("reason") or ""))
+    return lines
+
+
+def _lock_set_state(lane, locks, existing, actor, target, force):
+    """Suspend/resume one lock (spec 015 FR-005) under the
+    uniform actor discipline."""
+    verb = "suspend" if target == "suspended" else "resume"
+    if existing is None:
+        print("lane %s: no lock in effect — nothing to %s"
+              % (lane, verb))
+        return 0
+    holder = existing.get("program")
+    override = actor != holder
+    if override and not force:
+        print(_lock_refusal(lane, existing)
+              + " — only the holder may %s it (or pass --force "
+                "as the operator override)." % verb)
+        return 3
+    if existing.get("state") == target:
+        print("lane %s: the lock held by %s is already %s"
+              % (lane, holder, target.upper()))
+        return 0
+    rec = dict(existing)
+    rec["state"] = target
+    locks[lane] = rec
+    if not _write_locks_record(locks):
+        return 1
+    kw = {"lane": lane, "program": holder, "actor": actor,
+          "override": override}
+    if override:
+        chat = existing.get("notify_chat") or _holder_chat(holder)
+        if chat:
+            kw["notify_chat"] = chat
+    ledger("lock_suspended" if target == "suspended"
+           else "lock_resumed", **kw)
+    hlog("LOCK %s lane=%s holder=%s actor=%s"
+         % (target.upper(), lane, holder, actor))
+    print("LOCK %s lane=%s holder=%s%s"
+          % (target.upper(), lane, holder,
+             " (operator override by %s)" % actor if override
+             else ""))
+    return 0
+
+
+def cmd_lock(args):
+    """Acquire, renew, suspend, resume, or list lane locks
+    (spec 015 FR-001/FR-005/FR-009)."""
+    if getattr(args, "list", False):
+        for line in locks_section_lines(expire_locks()):
+            print(line)
+        return 0
+    lane = getattr(args, "lane", None)
+    if not lane:
+        print("ERROR: --lane is required (or use --list)")
+        return 2
+    if lane not in LANES:
+        print("ERROR: unknown lane %r (lanes: %s)"
+              % (lane, ", ".join(LANES)))
+        return 2
+    suspend = bool(getattr(args, "suspend", False))
+    resume = bool(getattr(args, "resume", False))
+    if suspend and resume:
+        print("REFUSED: --suspend and --resume are "
+              "alternatives; pass one.")
+        return 2
+    locks = expire_locks()
+    existing = locks.get(lane)
+    actor = getattr(args, "program", None)
+    if suspend or resume:
+        return _lock_set_state(
+            lane, locks, existing, actor,
+            "suspended" if suspend else "active",
+            bool(getattr(args, "force", False)))
+    # Acquire / renew.
+    if not actor:
+        print("ERROR: --program is required to acquire a lock "
+              "(it names the holder)")
+        return 2
+    ttl_given = getattr(args, "ttl_min", None)
+    if ttl_given is not None and not (
+            1 <= float(ttl_given) <= LOCK_MAX_TTL_MIN):
+        print("REFUSED: --ttl-min %s is outside [1, %s] "
+              "(lock.max_ttl_min)" % (ttl_given, LOCK_MAX_TTL_MIN))
+        return 3
+    if existing is not None and existing.get("program") != actor:
+        print(_lock_refusal(lane, existing)
+              + " — a lock is held in both the ACTIVE and "
+                "SUSPENDED states; the holder's release, an "
+                "operator override, or expiry ends it.")
+        return 3
+    chat = _holder_chat(actor)
+    if existing is not None:
+        # Same-holder re-acquire = renewal (FR-001): the TTL
+        # extends from now, the state is preserved (a
+        # suspended lock stays suspended), the reason is
+        # replaced only when a new one is given.
+        ttl = ttl_given if ttl_given is not None \
+            else existing.get("ttl_min") or LOCK_DEFAULT_TTL_MIN
+        rec = dict(existing)
+        rec["ttl_min"] = _ttl_value(ttl)
+        rec["expires_at"] = _lock_expiry_iso(ttl)
+        rec["renewed_at"] = now_iso()
+        if getattr(args, "reason", ""):
+            rec["reason"] = args.reason
+        if chat:
+            rec["notify_chat"] = chat
+        locks[lane] = rec
+        if not _write_locks_record(locks):
+            return 1
+        ledger("lock_renewed", lane=lane, program=actor,
+               ttl_min=rec["ttl_min"], expires_at=rec["expires_at"],
+               state=rec.get("state"))
+        print("LOCK RENEWED lane=%s holder=%s state=%s "
+              "expires=%s" % (lane, actor,
+                              str(rec.get("state") or "active").upper(),
+                              rec["expires_at"]))
+        return 0
+    ttl = ttl_given if ttl_given is not None \
+        else LOCK_DEFAULT_TTL_MIN
+    rec = {"program": actor, "state": "active",
+           "acquired_at": now_iso(),
+           "expires_at": _lock_expiry_iso(ttl),
+           "ttl_min": _ttl_value(ttl),
+           "reason": getattr(args, "reason", "") or "",
+           "notify_chat": chat}
+    locks[lane] = rec
+    if not _write_locks_record(locks):
+        return 1
+    ledger("lock_acquired", lane=lane, program=actor,
+           ttl_min=rec["ttl_min"], expires_at=rec["expires_at"],
+           reason=rec["reason"])
+    hlog("LOCKED lane=%s holder=%s expires=%s"
+         % (lane, actor, rec["expires_at"]))
+    print("LOCKED lane=%s holder=%s state=ACTIVE expires=%s "
+          "ttl_min=%s" % (lane, actor, rec["expires_at"],
+                          rec["ttl_min"]))
+    return 0
+
+
+def cmd_unlock(args):
+    """Release a lane lock (spec 015 FR-003): the holder
+    releases; anyone else needs --force (the operator
+    override, ledgered distinctly and noticed to the
+    holder). Effective at the next dispatch decision; a
+    running run is never touched."""
+    lane = args.lane
+    locks = expire_locks()
+    existing = locks.get(lane)
+    if existing is None:
+        print("lane %s: no lock in effect" % lane)
+        return 0
+    holder = existing.get("program")
+    actor = getattr(args, "program", None)
+    override = actor != holder
+    if override and not getattr(args, "force", False):
+        print(_lock_refusal(lane, existing)
+              + " — only the holder may release it (or pass "
+                "--force as the operator override).")
+        return 3
+    del locks[lane]
+    if not _write_locks_record(locks):
+        return 1
+    if override:
+        kw = {"lane": lane, "program": holder, "actor": actor}
+        chat = existing.get("notify_chat") or _holder_chat(holder)
+        if chat:
+            kw["notify_chat"] = chat
+        ledger("lock_released_override", **kw)
+        hlog("LOCK RELEASED (override) lane=%s holder=%s "
+             "actor=%s" % (lane, holder, actor))
+        print("LOCK RELEASED lane=%s holder=%s (operator "
+              "override by %s)" % (lane, holder, actor))
+    else:
+        ledger("lock_released", lane=lane, program=holder,
+               actor=actor)
+        hlog("LOCK RELEASED lane=%s holder=%s" % (lane, holder))
+        print("LOCK RELEASED lane=%s holder=%s" % (lane, holder))
+    return 0
+
+
 def _find_job(jobs, ref):
     """Any job (any state) by id or key — the cmd_cancel lookup
     shape, shared by the spec 013 record-targeting commands."""
@@ -750,6 +1092,41 @@ def cmd_outbox(args):
         try:
             ev = json.loads(raw)
         except ValueError:
+            continue
+        # Lane-lock notices (spec 015 FR-009): lock events
+        # carry their notice address on the event itself —
+        # there is no single job to look up — and are owed
+        # exactly on expiry, on an override release, and on
+        # an override suspend/resume. Same-holder actions
+        # carry no address, so nothing self-notifies.
+        evname = ev.get("event")
+        if evname in ("lock_expired", "lock_released_override",
+                      "lock_suspended", "lock_resumed"):
+            chat = ev.get("notify_chat")
+            owed = bool(chat) and (
+                evname in ("lock_expired", "lock_released_override")
+                or ev.get("override"))
+            if owed:
+                head = "[%s] lock lane=%s" % (
+                    ev.get("program") or "?", ev.get("lane") or "?")
+                if evname == "lock_expired":
+                    msg = ("%s EXPIRED at %s (was %s) — the lane "
+                           "is released"
+                           % (head, ev.get("expires_at") or "?",
+                              str(ev.get("state") or "active").upper()))
+                elif evname == "lock_released_override":
+                    msg = ("%s RELEASED BY OPERATOR (actor=%s) — "
+                           "your lock was released by someone else"
+                           % (head, ev.get("actor") or "?"))
+                elif evname == "lock_suspended":
+                    msg = ("%s SUSPENDED BY %s — enforcement is "
+                           "paused; the claim stands"
+                           % (head, ev.get("actor") or "?"))
+                else:
+                    msg = ("%s RESUMED BY %s — enforcement is "
+                           "active again"
+                           % (head, ev.get("actor") or "?"))
+                groups.setdefault(chat, []).append(msg)
             continue
         job = jobs.get(ev.get("job_id") or "")
         if not job or not job.get("notify_chat"):
@@ -1459,6 +1836,10 @@ def dispatch_one(job, jobs):
 def dispatch_pass(jobs, runs_by_id):
     """Returns number of jobs dispatched this sweep."""
     dispatched = 0
+    # Lane locks (spec 015 FR-007): expiry is evaluated at
+    # dispatch time, at the head of the pass — an expired lock
+    # behaves exactly like a release from this pass on.
+    locks = expire_locks(jobs=jobs)
     # Stale dispatching states: flag for a human, never auto-redispatch.
     for j in jobs:
         if j["state"] == "dispatching" and not j.get("run_id"):
@@ -1518,6 +1899,19 @@ def dispatch_pass(jobs, runs_by_id):
         if LANE_HOST.get(job["lane"]) in held_hosts \
                 and not _hold_exempt(job):
             continue  # host going down: held (see status board)
+        # Lane priority lock (spec 015 FR-002): while the lane
+        # is ACTIVE-locked by another program, a non-maintenance
+        # job waits — not refused, not reordered; its watermarks
+        # escalate as the visibility mechanism. Priority is
+        # never consulted here: it cannot trump a lock.
+        # Maintenance bypasses (FR-008) and is ledgered when it
+        # lands below.
+        lock_rec = locks.get(job["lane"])
+        lock_foreign_active = bool(
+            lock_rec and lock_rec.get("state") == "active"
+            and lock_rec.get("program") != job.get("program"))
+        if lock_foreign_active and not maint:
+            continue  # lane locked by another program (spec 015)
         if not lanes_live and active_count >= MAX_ACTIVE_DISPATCHED \
                 and not maint:
             ledger("dispatch_deferred_cap", job_id=job["id"], key=job["key"],
@@ -1533,6 +1927,13 @@ def dispatch_pass(jobs, runs_by_id):
             continue
         if dispatch_one(job, jobs):
             dispatched += 1
+            if lock_foreign_active and maint:
+                # Spec 015 FR-008: the operator's class is
+                # never locked out of his own door, and every
+                # bypass of an ACTIVE lock is on the record.
+                ledger("lock_bypassed", job_id=job["id"],
+                       key=job["key"], lane=job["lane"],
+                       holder=lock_rec.get("program"))
             active_count += 1
             held_lane_counts[job["lane"]] = \
                 held_lane_counts.get(job["lane"], 0) + 1
@@ -2472,6 +2873,11 @@ def cmd_status(args):
     print(backchannel_status_line())
     for line in host_status_lines():
         print(line)
+    # Lane locks (spec 015 FR-009): rendered in all modes,
+    # from the same file the dispatch pass enforces.
+    locks_map = load_locks()
+    for line in locks_section_lines(locks_map):
+        print(line)
     print("jobs by state: %s" % (", ".join(
         "%s=%d" % (k, by_state[k]) for k in sorted(by_state)) or "none"))
     queued = [j for j in jobs if j.get("run_status") == "queued"
@@ -2515,6 +2921,11 @@ def cmd_status(args):
                 sel = focus_match(j, prec)
                 mark = (" [admitted via %s]" % sel) if sel \
                     else " [held]"
+            lock_rec = locks_map.get(j["lane"])
+            if lock_rec and lock_rec.get("state") == "active" \
+                    and not j.get("maintenance") \
+                    and j.get("program") != lock_rec.get("program"):
+                mark += " [lock-held by %s]" % lock_rec.get("program")
             print("  pri=%-4s (%s) lane=%-7s key=%s%s"
                   % (value, source, j["lane"], j["key"], mark))
     held_cp = [j for j in jobs if j["state"] == "held_at_checkpoint"]
@@ -2628,6 +3039,54 @@ def main(argv=None):
                             "on a job (spec 013 FR-009)")
     p.add_argument("job", help="job id or key")
     p.set_defaults(fn=cmd_hold)
+
+    p = sub.add_parser("lock",
+                       help="acquire, renew, suspend or resume a "
+                            "lane priority lock (spec 015), or "
+                            "list the locks with --list")
+    p.add_argument("--lane", choices=LANES, default=None,
+                   help="lane to lock (required unless --list)")
+    p.add_argument("--program", default=None,
+                   help="the acting program: the holder when "
+                        "acquiring; the actor when suspending, "
+                        "resuming or (on unlock) releasing")
+    p.add_argument("--ttl-min", type=float, default=None,
+                   dest="ttl_min",
+                   help="lock lifetime in minutes (default: "
+                        "lock.default_ttl_min, 240; must be "
+                        "within [1, lock.max_ttl_min])")
+    p.add_argument("--reason", default="",
+                   help="reason recorded on the lock")
+    p.add_argument("--suspend", action="store_true",
+                   help="suspend enforcement (spec 015 FR-005): "
+                        "the lane flows, the claim stands, new "
+                        "acquires by others stay refused")
+    p.add_argument("--resume", action="store_true",
+                   help="resume enforcement of a suspended lock "
+                        "without re-competing for the lane")
+    p.add_argument("--force", action="store_true",
+                   help="operator override: suspend or resume "
+                        "another program's lock (ledgered, and "
+                        "the holder is notified)")
+    p.add_argument("--list", action="store_true",
+                   help="print the locks section and exit")
+    p.set_defaults(fn=cmd_lock)
+
+    p = sub.add_parser("unlock",
+                       help="release a lane priority lock "
+                            "(spec 015 FR-003): the holder "
+                            "releases, or the operator overrides "
+                            "with --force")
+    p.add_argument("--lane", required=True, choices=LANES,
+                   help="lane to release")
+    p.add_argument("--program", default=None,
+                   help="the acting program (must name the "
+                        "holder, unless --force)")
+    p.add_argument("--force", action="store_true",
+                   help="operator override: release another "
+                        "program's lock (ledgered distinctly; "
+                        "the holder is notified)")
+    p.set_defaults(fn=cmd_unlock)
 
     p = sub.add_parser("start")
     p.set_defaults(fn=cmd_start)
