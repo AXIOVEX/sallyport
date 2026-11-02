@@ -86,6 +86,19 @@ $GK lock --lane <lane> --program <your-program> --suspend|--resume
 $GK unlock --lane <lane> --program <your-program>
 $GK lock --list
 
+# Lane profiles + auto routing (spec 016): lanes live in named
+# config profiles (fleet-default = today's four lanes); render
+# them with profile. Submit with --lane auto to let the sweep
+# pick the lane from your resource hints, your program's
+# recorded history, queue load, and the host capability
+# snapshot — the decision and its inputs land on the job
+# record. A hard hint no lane can meet waits with the reason
+# recorded; it is never silently downgraded.
+$GK profile --list
+$GK profile --show [name]
+$GK submit ... --lane auto [--needs-cpu N] [--needs-ram-mb N] [--needs-gpu [VRAM_MB]] [--needs-storage-mb N] [--venue auto|native|wsl|docker]
+$GK probe-host --host <host> [--ingest <report-file>]
+
 # The hard halt: sweeps no-op entirely until started again.
 $GK stop --reason "fleet maintenance"
 $GK start
@@ -184,6 +197,26 @@ $GK outbox
   conjunction: focus admission AND, on a locked lane, being
   the holder. `gk status` renders a LOCKS section in all
   modes and marks lock-held waiting jobs.
+- **Profiles and auto routing (spec 016).** Lanes are defined
+  by the active config profile; profiles may define lanes
+  from scratch (resource class cpu|gpu|any, duration band,
+  optional workflow pin), and switching profiles is an
+  operator config edit, never a runtime verb. `--lane auto`
+  is opt-in placement: the sweep resolves the lane once, from
+  declared hints, your program's median actuals, load, locks,
+  holds, and the probed capability of the hosts — a locked
+  lane is a candidate only for its holder, and focus binds
+  auto jobs as it binds explicit ones. The scorer is
+  deterministic and its full input snapshot is recorded on
+  the job (`auto_routed` in the ledger), so a placement can
+  always be re-derived. Estimates are advisory forever: an
+  overrunning job is never killed, cancelled, or moved — its
+  actuals feed the next estimate. Capability snapshots come
+  from `gk probe-host` (probe scripts ship in
+  `gatekeeper/probes/` for Windows, Linux, macOS); a stale
+  snapshot (older than `lanes.capability_max_age_min`,
+  default 60 minutes) degrades routing to bands and load,
+  ledgered, and unknown fields count as neutral, never zero.
 
 ## Periodic status-check duty (spec 009 FR-005)
 

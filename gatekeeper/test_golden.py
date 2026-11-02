@@ -209,13 +209,15 @@ hosts:
     cwd:
       mac.yml: /Users/test
 lanes:
-  maclane:
-    host: macmini
-    runner_label: lane-maclane
-    queued: [10, 30]
-    executing:
-      mode: fixed
-      values: [5, 15]
+  profiles:
+    fleet-default:
+      maclane:
+        host: macmini
+        runner_label: lane-maclane
+        queued: [10, 30]
+        executing:
+          mode: fixed
+          values: [5, 15]
 """
 
 ROUTE_DRIVER = r"""

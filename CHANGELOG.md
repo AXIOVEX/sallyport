@@ -6,6 +6,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Spec 016 (2026-11-02): adaptive lanes. Lanes now live in
+  named **profiles** (`lanes.profiles.<name>` in config, one
+  `lanes.active_profile`): a profile is a lane table, and a
+  lane may be defined from scratch with a host, runner label,
+  concurrency, watermarks, a resource class (`cpu`|`gpu`|
+  `any`), an expected-duration band, an optional workflow pin,
+  and an enabled flag — validation is fail-closed, and the
+  pre-016 flat `lanes:` shape now fails at load with the
+  migration named. Three profiles ship: `fleet-default`
+  (today's four lanes with today's numbers — the resolved
+  table and watermarks are unchanged), `single-host-light`,
+  and `gpu-farm`. `gk profile --list` / `gk profile --show
+  [name]` render them; switching is a config edit that takes
+  effect at the next sweep. **Auto routing**: `gk submit
+  --lane auto` (or a lane-less submit under the new
+  `lanes.auto_default`, default off) lets the sweep pick the
+  lane from the job's declared hints (new `--needs-cpu`,
+  `--needs-ram-mb`, `--needs-storage-mb`, `--needs-gpu
+  [VRAM_MB]`, `--venue` flags), the program's recorded
+  history (median actual duration + dominant resource class
+  of its last ten completed jobs), current queue load, and
+  the host's **capability snapshot** — scored by a
+  deterministic pure function whose full input snapshot is
+  written onto the job record and ledgered (`auto_routed`).
+  Auto never overrides an explicit lane, a lock (spec 015),
+  focus (spec 013), a host hold, or the budget guard; a hard
+  hint no lane can meet waits with `auto_no_fit` and the
+  unmet reasons on the record, never a silent downgrade.
+  Estimates are advisory: nothing is killed, cancelled, or
+  migrated for overrunning. Capability snapshots come from
+  `gk probe-host` — dispatched as a maintenance probe job
+  where the door has a transport (Windows, WSL2), or
+  `--ingest` of a report from the shipped per-platform probe
+  scripts (`gatekeeper/probes/`, Windows CIM + nvidia-smi,
+  Linux /proc, macOS sysctl + system_profiler; Apple-silicon
+  GPUs record as unified memory, never discrete) — stored in
+  hosts.json with a timestamp; a snapshot older than
+  `lanes.capability_max_age_min` (default 60) degrades auto
+  to band routing with the degradation ledgered, and unknown
+  fields are neutral, never zero. `gk status` renders the
+  active profile, a CAPABILITY section, and each auto job's
+  resolved lane + score or no-fit reasons. New scenario
+  battery `gatekeeper/test_spec016.py` (54 checks), wired
+  into CI. VERSION unchanged — spec 013 owns 0.4.0 on this
+  stack. Repo-side only: fleet deployment (including
+  converting the fleet config to the profiles shape) is a
+  separate, later act.
+
 ### Fixed
 - Tray GDI handle leak (field crash, 2026-11-01): the tray
   re-rendered its status icon on every 5 s supervision tick and
