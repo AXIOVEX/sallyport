@@ -94,6 +94,24 @@ $GK priority <job-id-or-key> 10
 $GK hold <job-id-or-key>
 $GK resume --job <job-id-or-key>
 
+# Lane priority lock (spec 015): one program holds a lane so
+# no other program's jobs can dispatch on it — priority can
+# never trump a lock (a non-holder's priority-200 job waits;
+# the holder's priority-0 job dispatches). Non-holder jobs are
+# not refused or reordered; they wait, and their watermarks
+# escalate as usual. Re-running lock as the holder renews the
+# TTL. Suspend pauses enforcement but keeps the claim (new
+# acquires by others stay refused); resume restores it without
+# re-competing. Every lock expires on its TTL (default 240
+# min, max 1440) exactly like a release, with a notice to the
+# holder's chat. Maintenance jobs bypass locks (each bypass
+# is ledgered). Running runs are never touched.
+$GK lock --lane gpu --program <your-program> [--ttl-min N] [--reason TEXT]
+$GK lock --lane gpu --program <your-program> --suspend
+$GK lock --lane gpu --program <your-program> --resume
+$GK unlock --lane gpu --program <your-program>
+$GK lock --list
+
 # The hard halt: sweeps no-op entirely (no budget spent, no watch)
 # until started again. Start clears both a stop and a pause.
 $GK stop --reason "fleet maintenance"
@@ -186,6 +204,26 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   before the job starts); otherwise the hold takes effect for the
   job's next dispatch. Continuation is a fresh submission by the
   owning chat under a new key, resuming from its own checkpoints.
+- **Lane locks are claims, not priorities (spec 015).** A lock is
+  per lane and per program, held in `LOCKS.json` beside the pause
+  record. While your lock is ACTIVE, only your program's jobs
+  dispatch on that lane; while another program's lock is ACTIVE,
+  yours wait — submit as usual and let the watermarks speak; do
+  not raise priority to fight a lock, it cannot win. Release
+  what you take (`gk unlock --lane … --program <you>`), renew by
+  re-running `gk lock` before the TTL runs out, and use
+  `--suspend` / `--resume` on your own lock when you want the
+  lane to flow without surrendering the claim. If someone else
+  suspends, resumes, or releases your lock it is always an
+  operator override (`--force`): it is ledgered distinctly and
+  your registered chat gets an outbox notice — your own actions
+  are never self-notified. Pause and focus never change lock
+  state: locks pause with the rest of the flow and are exactly
+  as you left them when the fleet resumes, and admission is a
+  conjunction — a job must pass focus AND (on a locked lane) be
+  the holder's. `gk status` shows a LOCKS section in all modes,
+  and waiting jobs held by a lock are marked
+  `[lock-held by <program>]`.
 - `gk cancel <id-or-key>` is local bookkeeping for jobs that were never
   dispatched. It never cancels a GitHub run. There is no command in this
   system that cancels a running job on a timer — see escalation below.

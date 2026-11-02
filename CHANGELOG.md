@@ -57,6 +57,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test_guard_source.py`, `backchannel/test_agent_source.py`.
   Repo-side only — T008 (production deploy) and T005's
   owner oracle pass remain field steps. Spec 011.
+- Spec 015 (2026-11-02): lane priority lock. `gk lock
+  --lane <lane> --program <program> [--ttl-min N]
+  [--reason TEXT]` gives one program exclusive dispatch on
+  a lane; while the lock is ACTIVE only the holder's jobs
+  are dispatch-eligible there, and priority never trumps a
+  lock (a non-holder's human priority 200 waits; the
+  holder's auto priority 0 dispatches). Non-holder jobs are
+  not refused or reordered — they wait, watermarks
+  escalating. State lives in `LOCKS.json` beside
+  `PAUSED.json`, written only through the FR-013
+  verified-write path (a failed write leaves the prior
+  state byte-identical; no file = no locks = pre-015
+  behavior). One holder per lane: a second acquire is
+  refused (exit 3) naming holder, state, and expiry;
+  same-holder re-acquire renews the TTL and preserves
+  state. `gk unlock` releases by the holder, or by the
+  operator with `--force` (ledgered
+  `lock_released_override`, holder notified via the
+  outbox); `gk lock --suspend` / `--resume` pause and
+  restore enforcement without surrendering the claim (a
+  suspended lock still refuses new acquires). Every lock
+  expires on its TTL (new config `lock.default_ttl_min`
+  240, `lock.max_ttl_min` 1440), evaluated at dispatch
+  time and behaving exactly like a release (`lock_expired`
+  ledgered, holder notified), suspended locks included.
+  Maintenance jobs bypass locks as they bypass the pause,
+  each bypass ledgered `lock_bypassed`. Fleet pause/focus
+  never mutate lock state; host drains neither block nor
+  clear locks. `gk status` renders a LOCKS section in all
+  modes plus a `[lock-held by ...]` waiting mark;
+  `gk lock --list` prints it standalone. New scenario
+  battery `gatekeeper/test_spec015.py` (25 checks), wired
+  into CI. VERSION unchanged — spec 013 owns 0.4.0 on this
+  stack. Repo-side only: fleet deployment is a separate,
+  owner-gated act.
 - Spec 011 Amendment 1 (2026-10-31): owner ruling on boot
   autonomy. The FR-009 owner gate is satisfied by directive —
   Syncyard must start automatically on boot with **no
