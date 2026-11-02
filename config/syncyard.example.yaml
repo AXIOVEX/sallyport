@@ -89,6 +89,19 @@ checkpoint:
     run.yml: "C:\\Users\\trist\\Development\\Syncyard\\holds"
     wsl.yml: /home/tpierson/.syncyard/holds
 
+# Lane priority lock (spec 015 FR-007). `gk lock --lane
+# <lane> --program <program>` gives one program exclusive
+# dispatch on a lane until it releases, the operator
+# overrides, or the lock expires. Every lock carries a TTL
+# so a forgotten claim cannot squat a lane forever: a lock
+# taken without --ttl-min gets the default; a --ttl-min
+# outside [1, max_ttl_min] is refused. Failure mode: a
+# non-integer, non-positive value, or a default above the
+# maximum, fails closed at load.
+lock:
+  default_ttl_min: 240
+  max_ttl_min: 1440
+
 # Hosts. Each host names its type, the transport workflows it
 # serves (execute = run a script, grab = return a file), the
 # identity markers its venues prove themselves with, and its

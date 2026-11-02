@@ -71,6 +71,9 @@ check("golden checkpoint contract (spec 013 FR-007)",
       and cfg["checkpoint"]["holds_dir"] == {
           "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
           "wsl.yml": "/home/tpierson/.syncyard/holds"})
+check("golden lock TTLs (spec 015 FR-011)",
+      cfg["lock"]["default_ttl_min"] == 240
+      and cfg["lock"]["max_ttl_min"] == 1440)
 check("golden log cap", cfg["retention"]["human_log_max_bytes"] == 1000000)
 check("golden cwd windows", cfg["hosts"]["desktop"]["cwd"]["run.yml"] == r"C:\Users\trist")
 check("golden cwd grab null", cfg["hosts"]["desktop"]["cwd"]["grab.yml"] is None)
@@ -105,7 +108,8 @@ check("defaults == example fleet surface",
       and dflt["liveness"] == cfg["liveness"]
       and dflt["reboot"] == cfg["reboot"]
       and dflt["dispatch"] == cfg["dispatch"]
-      and dflt["checkpoint"] == cfg["checkpoint"])
+      and dflt["checkpoint"] == cfg["checkpoint"]
+      and dflt["lock"] == cfg["lock"])
 
 # 4: partial override merges.
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
@@ -181,6 +185,16 @@ expect_error("reject checkpoint holds_dir for undeclared workflow",
              "checkpoint:\n  holds_dir:\n    teleport.yml: /tmp/holds\n")
 expect_error("reject empty checkpoint holds_dir value",
              "checkpoint:\n  holds_dir:\n    run.yml: ''\n")
+expect_error("reject zero lock default TTL",
+             "lock:\n  default_ttl_min: 0\n")
+expect_error("reject negative lock max TTL",
+             "lock:\n  max_ttl_min: -10\n")
+expect_error("reject non-integer lock TTL",
+             "lock:\n  default_ttl_min: soon\n")
+expect_error("reject boolean lock TTL",
+             "lock:\n  default_ttl_min: true\n")
+expect_error("reject lock default above max",
+             "lock:\n  default_ttl_min: 2000\n  max_ttl_min: 1440\n")
 
 # 6: a valid liveness override loads and lands.
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
@@ -208,6 +222,16 @@ check("checkpoint override loads",
       over["checkpoint"]["exit_code"] == 42
       and over["checkpoint"]["marker"] == "HELD_HERE"
       and over["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE")
+
+# 9: a valid lock TTL override loads and lands (spec 015 FR-011).
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("lock:\n  default_ttl_min: 60\n  max_ttl_min: 720\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("lock TTL override loads",
+      over["lock"]["default_ttl_min"] == 60
+      and over["lock"]["max_ttl_min"] == 720)
 
 print()
 if fails:

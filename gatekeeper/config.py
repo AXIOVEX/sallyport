@@ -30,6 +30,8 @@ Validation (load time, all named errors):
     in 1..255, marker a valid marker token, env var a valid
     name, holds_dir a mapping of declared workflows to
     non-empty venue directories
+  - lane lock TTLs (spec 015 FR-011): default and maximum TTL
+    integers, positive, with default <= maximum
 """
 import os
 import re
@@ -93,6 +95,14 @@ DEFAULTS = {
             "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
             "wsl.yml": "/home/tpierson/.syncyard/holds",
         },
+    },
+    # Lane priority lock (spec 015 FR-007/FR-011): every lane
+    # lock carries a TTL so a forgotten claim cannot squat a
+    # lane forever. A lock taken without --ttl-min gets the
+    # default; no lock may exceed the maximum.
+    "lock": {
+        "default_ttl_min": 240,
+        "max_ttl_min": 1440,
     },
     "hosts": {
         "desktop": {
@@ -369,6 +379,17 @@ def validate(cfg):
             raise ConfigError(
                 f"checkpoint.holds_dir.{wname} must be a non-empty "
                 f"venue directory path")
+    lk = cfg.get("lock") or {}
+    for lkey in ("default_ttl_min", "max_ttl_min"):
+        lval = lk.get(lkey)
+        if (isinstance(lval, bool) or not isinstance(lval, int)
+                or lval <= 0):
+            raise ConfigError(
+                f"lock.{lkey} must be a positive integer "
+                f"number of minutes")
+    if lk.get("default_ttl_min", 0) > lk.get("max_ttl_min", 0):
+        raise ConfigError(
+            "lock.default_ttl_min must be <= lock.max_ttl_min")
     hosts = cfg.get("hosts") or {}
     declared = cfg.get("workflows") or []
     served = set()

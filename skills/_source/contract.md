@@ -75,6 +75,17 @@ $GK priority <job-id-or-key> <N>
 $GK hold <job-id-or-key>
 $GK resume --job <job-id-or-key>
 
+# Lane priority lock (spec 015): hold a lane for your program
+# so no other program's jobs dispatch on it — priority never
+# trumps a lock. Non-holder jobs wait (not refused, not
+# reordered); re-running lock renews the TTL; --suspend keeps
+# the claim but lets the lane flow; every lock expires on its
+# TTL exactly like a release. Maintenance jobs bypass locks.
+$GK lock --lane <lane> --program <your-program> [--ttl-min N]
+$GK lock --lane <lane> --program <your-program> --suspend|--resume
+$GK unlock --lane <lane> --program <your-program>
+$GK lock --list
+
 # The hard halt: sweeps no-op entirely until started again.
 $GK stop --reason "fleet maintenance"
 $GK start
@@ -134,6 +145,25 @@ $GK outbox
   owner continues the work with a fresh submission (the old
   job's checkpoints are the resume state), after the operator
   clears the signal with `gk resume --job <id>`.
+- **Lane priority locks (spec 015).** One program can hold a
+  lane (`gk lock --lane … --program …`): while the lock is
+  ACTIVE, only the holder's jobs dispatch on that lane, and no
+  priority — human or optimizer — admits anyone else; waiting
+  jobs are never refused or reordered, they simply wait.
+  Release what you take with `gk unlock`; renew by re-running
+  `gk lock` (the TTL extends, a suspended lock stays
+  suspended); `--suspend` / `--resume` pause and restore
+  enforcement without surrendering the claim — a suspended
+  lock still refuses new acquires by others. Every lock
+  expires on its TTL (config `lock.default_ttl_min`, default
+  240; `lock.max_ttl_min`, default 1440) exactly like a
+  release, with an outbox notice to the holder's chat, as on
+  an operator-override release or an override suspend/resume
+  — your own actions are never self-notified. Fleet pause
+  and focus never mutate lock state, and admission is a
+  conjunction: focus admission AND, on a locked lane, being
+  the holder. `gk status` renders a LOCKS section in all
+  modes and marks lock-held waiting jobs.
 
 ## Periodic status-check duty (spec 009 FR-005)
 
