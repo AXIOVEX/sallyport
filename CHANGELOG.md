@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Spec 014: tray settings UI and dynamic fleet display. The
+  tray gains a single-instance Settings dialog (opened from
+  the tray menu — the only window it ever shows) managing the
+  settings it owns on the desktop: supervision on/off, the
+  restart cap (was a compile-time constant 3/hour), the
+  refresh cadence (was a constant 5 s), stray-console hiding,
+  autostart (shown from the live HKCU Run value and written
+  only from the dialog), and per-lane supervision toggles
+  with immediate Start / Stop / Restart acts. Settings
+  persist as flat JSON in `tray-settings.json` beside the
+  tray exe and take effect on save — no reinstall; the
+  hand-rolled reader/writer adds no compile reference, so
+  the in-box csc route is unchanged. The tray menu header,
+  tooltip, and the dialog's fleet section now render the
+  gatekeeper's published status (spec 013: mode RUNNING /
+  PAUSED / FOCUSED / DRAINING, focus selectors, waiting
+  queue in dispatch order with priority and human/auto
+  source) read-only from a snapshot file, showing
+  unavailable-with-reason when no snapshot exists (the
+  publisher is a gated follow-up, spec 014 FR-009); unknown
+  modes display verbatim. The PR #39 discipline is pinned
+  by new source-battery checks: the icon still renders only
+  on runner-state change, fleet data never renders, the
+  queue list rebuilds only on a snapshot stamp change, and
+  the settings save is the tray's only file write besides
+  its log. VERSION is deliberately not bumped in this
+  change (spec 013 owns the next bump; see spec 014 FR-012).
+
 ### Fixed
 - Tray GDI handle leak (field crash, 2026-11-01): the tray
   re-rendered its status icon on every 5 s supervision tick and

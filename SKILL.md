@@ -228,6 +228,24 @@ The runners run under the **Syncyard Tray** supervisor
   Its icon is the project mark (embedded in the program): clean
   when every runner is up, amber slash when some are down,
   grayscale with a red slash when none are up or one has faulted.
+- The tray's own behavior is managed in its Settings dialog
+  (spec 014): supervision on/off, the restart cap, the refresh
+  cadence, stray-console hiding, autostart (read live from the
+  HKCU Run key; written only from the dialog), and per-lane
+  supervision toggles — persisted to `tray-settings.json` beside
+  the tray exe and applied on save, no reinstall. Per-lane
+  Start / Stop / Restart buttons in the dialog act immediately.
+- The tray also displays fleet state read-only (spec 014): the
+  gatekeeper's mode (spec 013: RUNNING / PAUSED / FOCUSED /
+  DRAINING), the waiting queue in dispatch order with each
+  job's priority and its human/auto source, and the focus
+  selectors — in the menu header, the tooltip, and the
+  dialog's fleet section — from a snapshot file at
+  `C:\Users\trist\Development\Syncyard\status\fleet-status.json`
+  when a publisher writes one. No publisher exists yet
+  (spec 014 FR-009), so the section normally reads
+  unavailable with its reason; the tray never edits fleet
+  state and never invokes the gatekeeper.
 - Runners stay in the owner's interactive session on purpose: jobs
   need his WSL distro, GPU, audio, and bench devices, which a Windows
   service in session 0 cannot reliably reach. Do not register the
