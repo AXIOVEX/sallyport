@@ -11,12 +11,14 @@ separate, later act under the standing deploy procedure and
 the owner's review of this PR — nothing in this change touches
 the running fleet, its config file, its pause or lock records,
 or its queue. This work was built stacked on
-`spec/015-lane-priority-lock` (PR #43); #43 merged into
-`spec/013-live-priority-and-pause` (PR #41) the same day, so
-this branch's PR targets the 013 branch: merge #41 first,
-then this branch retargets to main. Spec 011 phases 2–3
-(PR #42) are an independent sibling stack on the 013 base;
-neither stack depends on the other.
+`spec/015-lane-priority-lock` (PR #43); #43 and spec 011
+phases 2–3 (PR #42) both merged into
+`spec/013-live-priority-and-pause` (PR #41) the same day, and
+this branch was rebased onto that branch's tip — the spec
+011 drain validation now checks its per-lane windows against
+the active profile's lanes, the one place the two features
+meet in config. This branch's PR targets the 013 branch:
+merge #41 first, then this branch retargets to main.
 
 **Direction (owner, 2026-11-02 ~09:58 ET)**: "we want lane
 customization, it would be good to have auto as well and this
