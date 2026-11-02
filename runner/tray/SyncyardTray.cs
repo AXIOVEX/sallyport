@@ -1,6 +1,7 @@
 // SyncyardTray.cs - windowless supervisor for the Syncyard runners.
 //
-// Spec: AXIOVEX/syncyard spec 007 (windowless supervision).
+// Spec: AXIOVEX/syncyard spec 007 (windowless supervision) and
+// spec 014 (tray settings UI and dynamic fleet display).
 // Claim: the desktop runners run with NO console window created and
 // none left open in the owner's interactive session, while staying in
 // that session so jobs keep access to the owner's WSL distro, audio
@@ -8,6 +9,16 @@
 // cannot reach those). This tray app is the supervisor: it starts
 // each runner hidden, restarts it if it dies (capped, then it asks
 // for the owner), and hides any stray runner console window.
+//
+// Spec 014: the tray's own behavior (supervision, restart cap,
+// refresh cadence, autostart, per-lane supervision) is managed from
+// a settings dialog and persisted to tray-settings.json beside the
+// exe; fleet state (the gatekeeper's mode and queue, spec 013) is
+// displayed read-only from a published snapshot file when one
+// exists, and shown as unavailable, with the reason, when none
+// does. The tray never edits fleet state and never creates a
+// console; the settings dialog is the only window it ever shows,
+// and only when the owner opens it from the menu.
 //
 // Compile (no SDK install needed - csc ships with Windows):
 //   csc /target:winexe /out:SyncyardTray.exe /win32icon:logo.ico
@@ -23,8 +34,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -42,6 +55,541 @@ namespace SyncyardTray
         public string DisplayName
         {
             get { return "lane-" + Lane + "  (" + Dir + ")"; }
+        }
+    }
+
+    // Minimal, tolerant JSON reading for the two flat shapes this
+    // program consumes (its own settings file, spec 014 FR-001, and
+    // the fleet snapshot, FR-008), plus the escaping its one writer
+    // needs. Hand-rolled on purpose: the tray compiles with the
+    // in-box csc and only the WinForms + Drawing references, and
+    // that route does not change. Tolerance rules: an unknown key
+    // is ignored, a missing key yields the caller's default, a
+    // malformed value yields the caller's default. Nothing here
+    // throws on bad content.
+    internal static class MiniJson
+    {
+        public static bool HasKey(string text, string key)
+        {
+            return FindValueStart(text, key) >= 0;
+        }
+
+        public static string GetString(string text, string key)
+        {
+            if (text == null) return null;
+            int i = FindValueStart(text, key);
+            if (i < 0 || i >= text.Length || text[i] != '"') return null;
+            return ParseString(text, i);
+        }
+
+        public static bool GetBool(string text, string key, bool def)
+        {
+            if (text == null) return def;
+            int i = FindValueStart(text, key);
+            if (i < 0) return def;
+            if (MatchAt(text, i, "true")) return true;
+            if (MatchAt(text, i, "false")) return false;
+            return def;
+        }
+
+        public static int GetInt(string text, string key, int def)
+        {
+            if (text == null) return def;
+            int i = FindValueStart(text, key);
+            if (i < 0) return def;
+            int j = i;
+            if (j < text.Length && (text[j] == '-' || text[j] == '+')) j++;
+            int start = j;
+            while (j < text.Length && text[j] >= '0' && text[j] <= '9') j++;
+            if (j == start) return def;
+            int v;
+            return int.TryParse(text.Substring(i, j - i),
+                NumberStyles.Integer, CultureInfo.InvariantCulture,
+                out v) ? v : def;
+        }
+
+        public static string GetObject(string text, string key)
+        {
+            if (text == null) return null;
+            int i = FindValueStart(text, key);
+            if (i < 0 || i >= text.Length || text[i] != '{') return null;
+            return ExtractBalanced(text, i);
+        }
+
+        public static List<string> GetObjects(string text, string key)
+        {
+            var list = new List<string>();
+            if (text == null) return list;
+            int i = FindValueStart(text, key);
+            if (i < 0 || i >= text.Length || text[i] != '[') return list;
+            int j = i + 1;
+            while (j < text.Length)
+            {
+                while (j < text.Length &&
+                       (char.IsWhiteSpace(text[j]) || text[j] == ',')) j++;
+                if (j >= text.Length || text[j] == ']') break;
+                if (text[j] == '{')
+                {
+                    string obj = ExtractBalanced(text, j);
+                    if (obj == null) break;
+                    list.Add(obj);
+                    j += obj.Length;
+                }
+                else
+                {
+                    // A scalar array element: skip to the separator.
+                    while (j < text.Length && text[j] != ',' &&
+                           text[j] != ']') j++;
+                }
+            }
+            return list;
+        }
+
+        public static List<string> GetStringArray(string text, string key)
+        {
+            var list = new List<string>();
+            if (text == null) return list;
+            int i = FindValueStart(text, key);
+            if (i < 0 || i >= text.Length || text[i] != '[') return list;
+            int j = i + 1;
+            while (j < text.Length)
+            {
+                while (j < text.Length &&
+                       (char.IsWhiteSpace(text[j]) || text[j] == ',')) j++;
+                if (j >= text.Length || text[j] == ']') break;
+                if (text[j] == '"')
+                {
+                    string s = ParseString(text, j);
+                    if (s == null) break;
+                    list.Add(s);
+                    j = SkipString(text, j);
+                }
+                else
+                {
+                    while (j < text.Length && text[j] != ',' &&
+                           text[j] != ']') j++;
+                }
+            }
+            return list;
+        }
+
+        public static string Escape(string s)
+        {
+            if (s == null) return "";
+            var sb = new StringBuilder();
+            foreach (char c in s)
+            {
+                if (c == '"') sb.Append("\\\"");
+                else if (c == '\\') sb.Append("\\\\");
+                else if (c < ' ') sb.Append(' ');
+                else sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        // Index of the first character of the value for "key", or
+        // -1. Finds the key as a quoted token followed by a colon.
+        private static int FindValueStart(string text, string key)
+        {
+            if (text == null) return -1;
+            string needle = "\"" + key + "\"";
+            int from = 0;
+            while (from < text.Length)
+            {
+                int i = text.IndexOf(needle, from,
+                    StringComparison.Ordinal);
+                if (i < 0) return -1;
+                int j = i + needle.Length;
+                while (j < text.Length && char.IsWhiteSpace(text[j])) j++;
+                if (j < text.Length && text[j] == ':')
+                {
+                    j++;
+                    while (j < text.Length &&
+                           char.IsWhiteSpace(text[j])) j++;
+                    return j;
+                }
+                from = i + 1;
+            }
+            return -1;
+        }
+
+        private static bool MatchAt(string text, int i, string word)
+        {
+            if (i < 0 || i + word.Length > text.Length) return false;
+            return string.Compare(text, i, word, 0, word.Length,
+                StringComparison.Ordinal) == 0;
+        }
+
+        // text[i] must be the opening quote. Returns the unescaped
+        // string content, or null if the string never terminates.
+        private static string ParseString(string text, int i)
+        {
+            var sb = new StringBuilder();
+            int j = i + 1;
+            while (j < text.Length)
+            {
+                char c = text[j];
+                if (c == '"') return sb.ToString();
+                if (c == '\\' && j + 1 < text.Length)
+                {
+                    char e = text[j + 1];
+                    if (e == 'n') sb.Append('\n');
+                    else if (e == 't') sb.Append('\t');
+                    else if (e == 'r') sb.Append('\r');
+                    else sb.Append(e);
+                    j += 2;
+                    continue;
+                }
+                sb.Append(c);
+                j++;
+            }
+            return null;
+        }
+
+        // Index just past the string that opens at text[i].
+        private static int SkipString(string text, int i)
+        {
+            int j = i + 1;
+            while (j < text.Length)
+            {
+                if (text[j] == '\\') { j += 2; continue; }
+                if (text[j] == '"') return j + 1;
+                j++;
+            }
+            return j;
+        }
+
+        // The balanced {...} or [...] substring opening at text[i],
+        // string-aware; null if it never closes.
+        private static string ExtractBalanced(string text, int i)
+        {
+            char open = text[i];
+            char close = open == '{' ? '}' : ']';
+            int depth = 0;
+            bool inStr = false;
+            for (int j = i; j < text.Length; j++)
+            {
+                char c = text[j];
+                if (inStr)
+                {
+                    if (c == '\\') j++;
+                    else if (c == '"') inStr = false;
+                    continue;
+                }
+                if (c == '"') inStr = true;
+                else if (c == open) depth++;
+                else if (c == close)
+                {
+                    depth--;
+                    if (depth == 0) return text.Substring(i, j - i + 1);
+                }
+            }
+            return null;
+        }
+    }
+
+    // The tray's own settings (spec 014 Part A): flat JSON in
+    // tray-settings.json beside the tray exe, loaded at startup,
+    // saved only from the settings dialog. The writer emits exactly
+    // the keys the reader consumes - the source battery proves the
+    // parity. Defaults are the pre-spec-014 behavior, so a tray
+    // with no settings file behaves exactly as the old tray did.
+    internal sealed class TraySettings
+    {
+        public bool Autostart = true;
+        public bool SupervisionEnabled = true;
+        public int MaxRestartsPerHour = 3;
+        public int TickSeconds = 5;
+        public bool HideStrayConsoles = true;
+        public string FleetStatusPath =
+            @"C:\Users\trist\Development\Syncyard\status\fleet-status.json";
+        public int FleetStaleSeconds = 300;
+
+        private readonly Dictionary<string, bool> _laneEnabled =
+            new Dictionary<string, bool>();
+
+        public static readonly string[] Lanes =
+            { "long", "quick", "normal", "gpu" };
+
+        // Set by Load/Save when the file could not be read or
+        // written; the tray logs it and carries on with defaults.
+        public static string LastNote;
+
+        public bool LaneEnabled(string lane)
+        {
+            bool v;
+            return _laneEnabled.TryGetValue(lane, out v) ? v : true;
+        }
+
+        public void SetLaneEnabled(string lane, bool enabled)
+        {
+            _laneEnabled[lane] = enabled;
+        }
+
+        public static string FilePath
+        {
+            get
+            {
+                return Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    "tray-settings.json");
+            }
+        }
+
+        public static TraySettings Defaults()
+        {
+            var s = new TraySettings();
+            foreach (var lane in Lanes) s._laneEnabled[lane] = true;
+            s.Autostart = AutostartIsRegistered();
+            return s;
+        }
+
+        public static TraySettings Load()
+        {
+            var s = Defaults();
+            try
+            {
+                if (!File.Exists(FilePath))
+                {
+                    LastNote = "no settings file; defaults in use";
+                    return s;
+                }
+                string text = File.ReadAllText(FilePath);
+                s.Autostart = MiniJson.GetBool(text, "autostart",
+                    s.Autostart);
+                s.SupervisionEnabled = MiniJson.GetBool(text,
+                    "supervisionEnabled", s.SupervisionEnabled);
+                s.MaxRestartsPerHour = Clamp(MiniJson.GetInt(text,
+                    "maxRestartsPerHour", s.MaxRestartsPerHour), 1, 20);
+                s.TickSeconds = Clamp(MiniJson.GetInt(text,
+                    "tickSeconds", s.TickSeconds), 2, 60);
+                s.HideStrayConsoles = MiniJson.GetBool(text,
+                    "hideStrayConsoles", s.HideStrayConsoles);
+                string fp = MiniJson.GetString(text, "fleetStatusPath");
+                if (!string.IsNullOrEmpty(fp)) s.FleetStatusPath = fp;
+                s.FleetStaleSeconds = Clamp(MiniJson.GetInt(text,
+                    "fleetStaleSeconds", s.FleetStaleSeconds), 30, 3600);
+                foreach (var lane in Lanes)
+                    s.SetLaneEnabled(lane, MiniJson.GetBool(text,
+                        "laneEnabled_" + lane, true));
+            }
+            catch (Exception ex)
+            {
+                LastNote = "settings file unreadable (" + ex.Message +
+                    "); defaults in use";
+                return Defaults();
+            }
+            return s;
+        }
+
+        public void Save()
+        {
+            LastNote = null;
+            try { File.WriteAllText(FilePath, Serialize()); }
+            catch (Exception ex)
+            {
+                LastNote = "settings save failed: " + ex.Message;
+            }
+        }
+
+        public string Serialize()
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\n");
+            Line(sb, "version", "1", true);
+            Line(sb, "autostart", Bool(Autostart), true);
+            Line(sb, "supervisionEnabled", Bool(SupervisionEnabled), true);
+            Line(sb, "maxRestartsPerHour",
+                MaxRestartsPerHour.ToString(CultureInfo.InvariantCulture),
+                true);
+            Line(sb, "tickSeconds",
+                TickSeconds.ToString(CultureInfo.InvariantCulture), true);
+            Line(sb, "hideStrayConsoles", Bool(HideStrayConsoles), true);
+            Line(sb, "fleetStatusPath",
+                "\"" + MiniJson.Escape(FleetStatusPath) + "\"", true);
+            Line(sb, "fleetStaleSeconds",
+                FleetStaleSeconds.ToString(CultureInfo.InvariantCulture),
+                true);
+            for (int i = 0; i < Lanes.Length; i++)
+                Line(sb, "laneEnabled_" + Lanes[i],
+                    Bool(LaneEnabled(Lanes[i])), i < Lanes.Length - 1);
+            sb.Append("}\n");
+            return sb.ToString();
+        }
+
+        private static void Line(StringBuilder sb, string key,
+            string value, bool comma)
+        {
+            sb.Append("  \"").Append(key).Append("\": ").Append(value);
+            sb.Append(comma ? ",\n" : "\n");
+        }
+
+        private static string Bool(bool v) { return v ? "true" : "false"; }
+
+        private static int Clamp(int v, int lo, int hi)
+        {
+            return v < lo ? lo : v > hi ? hi : v;
+        }
+
+        // --- autostart (HKCU Run) -----------------------------------
+        // The Run value is the machine's actual autostart state:
+        // installers set it, the spec 011 conversion retires it,
+        // and this class is the only tray code that touches it -
+        // read to tell the truth in the dialog and in the load
+        // default, written only by ApplyAutostart from the
+        // dialog's save path (spec 014 FR-005). The tray never
+        // registers itself at startup.
+
+        private const string RunKeyPath =
+            @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string RunValueName = "SyncyardTray";
+
+        public static bool AutostartIsRegistered()
+        {
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser
+                    .OpenSubKey(RunKeyPath, false))
+                {
+                    return key != null &&
+                        key.GetValue(RunValueName) != null;
+                }
+            }
+            catch { return false; }
+        }
+
+        public void ApplyAutostart()
+        {
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser
+                    .OpenSubKey(RunKeyPath, true))
+                {
+                    if (key == null) return;
+                    if (Autostart)
+                        key.SetValue(RunValueName, "\"" +
+                            Application.ExecutablePath + "\"");
+                    else
+                        key.DeleteValue(RunValueName, false);
+                }
+            }
+            catch (Exception ex)
+            {
+                LastNote = "autostart change failed: " + ex.Message;
+            }
+        }
+    }
+
+    internal sealed class FleetJob
+    {
+        public string Key = "";
+        public string Program = "";
+        public string Lane = "";
+        public int Priority;
+        public bool HasPriority;
+        public string PrioritySource;   // null when not published
+        public bool Held;
+        public bool HasHeld;
+    }
+
+    // A read-only view of the gatekeeper's published status
+    // (spec 014 Part C, contract in FR-008). The tray reads the
+    // snapshot file at most once per tick and never writes it.
+    // The mode string is carried verbatim - a mode this build
+    // does not know is displayed as read, never dropped.
+    internal sealed class FleetStatus
+    {
+        public bool HasData;
+        public bool Stale;
+        public string Problem;          // "missing" | "unparseable"
+        public string Mode = "";
+        public bool Draining;
+        public string Reason = "";
+        public string GeneratedAt = "";
+        public double AgeSeconds = -1;
+        public readonly List<string> FocusKeys = new List<string>();
+        public readonly List<string> FocusPrograms = new List<string>();
+        public readonly List<string> FocusChats = new List<string>();
+        public readonly List<FleetJob> Waiting = new List<FleetJob>();
+
+        public string ModeLine()
+        {
+            return Draining ? Mode + " - DRAINING" : Mode;
+        }
+
+        public static string FormatAge(double seconds)
+        {
+            if (seconds < 0) return "age unknown";
+            if (seconds < 90) return ((int)seconds) + "s old";
+            if (seconds < 5400) return ((int)(seconds / 60)) + "m old";
+            return ((int)(seconds / 3600)) + "h old";
+        }
+
+        public static FleetStatus Load(string path, int staleSeconds)
+        {
+            var st = new FleetStatus();
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !File.Exists(path))
+                {
+                    st.Problem = "missing";
+                    return st;
+                }
+                string text = File.ReadAllText(path);
+                string mode = MiniJson.GetString(text, "mode");
+                if (mode == null)
+                {
+                    st.Problem = "unparseable";
+                    return st;
+                }
+                st.HasData = true;
+                st.Mode = mode;
+                st.Draining = MiniJson.GetBool(text, "draining", false);
+                st.Reason = MiniJson.GetString(text, "reason") ?? "";
+                st.GeneratedAt =
+                    MiniJson.GetString(text, "generated_at") ?? "";
+                string focus = MiniJson.GetObject(text, "focus");
+                if (focus != null)
+                {
+                    st.FocusKeys.AddRange(
+                        MiniJson.GetStringArray(focus, "keys"));
+                    st.FocusPrograms.AddRange(
+                        MiniJson.GetStringArray(focus, "programs"));
+                    st.FocusChats.AddRange(
+                        MiniJson.GetStringArray(focus, "chats"));
+                }
+                foreach (var obj in MiniJson.GetObjects(text, "waiting"))
+                {
+                    var job = new FleetJob();
+                    job.Key = MiniJson.GetString(obj, "key") ?? "";
+                    job.Program = MiniJson.GetString(obj, "program") ?? "";
+                    job.Lane = MiniJson.GetString(obj, "lane") ?? "";
+                    job.HasPriority = MiniJson.HasKey(obj, "priority");
+                    job.Priority = MiniJson.GetInt(obj, "priority", 0);
+                    job.PrioritySource =
+                        MiniJson.GetString(obj, "priority_source");
+                    job.HasHeld = MiniJson.HasKey(obj, "held");
+                    job.Held = MiniJson.GetBool(obj, "held", false);
+                    st.Waiting.Add(job);
+                }
+                DateTime gen;
+                if (DateTime.TryParse(st.GeneratedAt,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AdjustToUniversal |
+                        DateTimeStyles.AssumeUniversal, out gen))
+                {
+                    st.AgeSeconds =
+                        (DateTime.UtcNow - gen).TotalSeconds;
+                    if (st.AgeSeconds < 0) st.AgeSeconds = 0;
+                    st.Stale = st.AgeSeconds > staleSeconds;
+                }
+            }
+            catch
+            {
+                st.HasData = false;
+                st.Problem = "unparseable";
+            }
+            return st;
         }
     }
 
@@ -101,7 +649,6 @@ namespace SyncyardTray
     {
         private const int SW_HIDE = 0;
         private const int SW_SHOW = 5;
-        private const int MaxRestartsPerHour = 3;
 
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -118,6 +665,9 @@ namespace SyncyardTray
         private int _iconState = -1;
         private ContextMenuStrip _menu;
         private int _tick;
+        private TraySettings _settings;
+        private FleetStatus _fleet;
+        private SettingsForm _settingsForm;
 
         public TrayApp()
         {
@@ -166,14 +716,20 @@ namespace SyncyardTray
             _icon.Visible = true;
             _icon.DoubleClick += delegate { RebuildMenu(); };
 
+            _settings = TraySettings.Load();
+            if (TraySettings.LastNote != null)
+                Log("settings: " + TraySettings.LastNote);
+
             Log("tray started");
             RefreshStates();
-            StartMissing();
-            HideStrayConsoles();
+            StartMissing(false);
+            if (_settings.HideStrayConsoles) HideStrayConsoles();
+            _fleet = FleetStatus.Load(_settings.FleetStatusPath,
+                _settings.FleetStaleSeconds);
             RebuildMenu();
 
             _timer = new System.Windows.Forms.Timer();
-            _timer.Interval = 5000;
+            _timer.Interval = _settings.TickSeconds * 1000;
             _timer.Tick += OnTick;
             _timer.Start();
         }
@@ -193,8 +749,9 @@ namespace SyncyardTray
             _tick++;
             bool wasFaulted = AnyFaulted();
             RefreshStates();
-            StartMissing();
-            if (_tick % 6 == 0) HideStrayConsoles();   // every ~30 s
+            StartMissing(false);
+            if (_tick % 6 == 0 && _settings.HideStrayConsoles)
+                HideStrayConsoles();   // every ~30 s
             if (!wasFaulted && AnyFaulted())
             {
                 _icon.ShowBalloonTip(10000, "Syncyard runners",
@@ -202,7 +759,13 @@ namespace SyncyardTray
                     "It will not be restarted again - open the tray menu.",
                     ToolTipIcon.Error);
             }
+            // One fleet read per tick, after supervision, so the
+            // menu, tooltip, and any open dialog all render the
+            // same snapshot (spec 014 FR-008/FR-010).
+            _fleet = FleetStatus.Load(_settings.FleetStatusPath,
+                _settings.FleetStaleSeconds);
             RebuildMenu();
+            RefreshSettingsDialog();
         }
 
         private bool AnyFaulted()
@@ -239,17 +802,24 @@ namespace SyncyardTray
             catch { return null; }
         }
 
-        private void StartMissing()
+        // The supervision pass. manual=true is an explicit owner
+        // act (Start all, dialog buttons): it bypasses the master
+        // supervision toggle but never a lane's own toggle -
+        // an unsupervised lane is started only from its own
+        // per-lane Start control (spec 014 FR-004/FR-006).
+        private void StartMissing(bool manual)
         {
+            if (!manual && !_settings.SupervisionEnabled) return;
             foreach (var r in _runners)
             {
+                if (!_settings.LaneEnabled(r.Lane)) continue;
                 if (r.Running || r.Faulted) continue;
                 if (!Directory.Exists(r.Dir)) continue;
                 if (!File.Exists(Path.Combine(r.Dir, "run.cmd"))) continue;
 
                 var now = DateTime.UtcNow;
                 r.RestartTimes.RemoveAll(t => (now - t).TotalHours > 1.0);
-                if (r.RestartTimes.Count >= MaxRestartsPerHour)
+                if (r.RestartTimes.Count >= _settings.MaxRestartsPerHour)
                 {
                     r.Faulted = true;
                     Log("OWNER NEEDED: " + r.Lane + " hit the restart cap");
@@ -318,9 +888,101 @@ namespace SyncyardTray
                 r.RestartTimes.Clear();
             }
             RefreshStates();
-            StartMissing();
+            StartMissing(true);
             RefreshStates();
             RebuildMenu();
+        }
+
+        private void RestartRunner(RunnerDef r)
+        {
+            // One act composed of the existing acts, each of which
+            // logs itself: stop, fault-clear, start (spec 014 FR-006).
+            StopRunner(r);
+            r.Faulted = false;
+            r.RestartTimes.Clear();
+            RefreshStates();
+            if (!r.Running) StartRunner(r);
+            RefreshStates();
+        }
+
+        // --- settings surface (spec 014) ----------------------------
+
+        internal IList<RunnerDef> Runners { get { return _runners; } }
+        internal TraySettings Settings { get { return _settings; } }
+        internal FleetStatus Fleet { get { return _fleet; } }
+
+        internal void LaneStart(RunnerDef r)
+        {
+            r.Faulted = false;
+            r.RestartTimes.Clear();
+            StartRunner(r);
+            RefreshStates();
+            RebuildMenu();
+        }
+
+        internal void LaneStop(RunnerDef r)
+        {
+            StopRunner(r);
+            RefreshStates();
+            RebuildMenu();
+        }
+
+        internal void LaneRestart(RunnerDef r)
+        {
+            RestartRunner(r);
+            RebuildMenu();
+        }
+
+        internal void ApplySettings(TraySettings s)
+        {
+            _settings = s;
+            _settings.Save();
+            if (TraySettings.LastNote != null)
+                Log("settings: " + TraySettings.LastNote);
+            TraySettings.LastNote = null;
+            if (s.Autostart != TraySettings.AutostartIsRegistered())
+            {
+                s.ApplyAutostart();
+                if (TraySettings.LastNote != null)
+                    Log("settings: " + TraySettings.LastNote);
+                else
+                    Log("autostart " +
+                        (s.Autostart ? "enabled" : "disabled") +
+                        " from the settings dialog");
+            }
+            _timer.Interval = _settings.TickSeconds * 1000;
+            Log("settings saved: supervision=" +
+                (_settings.SupervisionEnabled ? "on" : "off") +
+                " cap=" + _settings.MaxRestartsPerHour +
+                " tick=" + _settings.TickSeconds + "s" +
+                " hideConsoles=" +
+                (_settings.HideStrayConsoles ? "on" : "off"));
+            _fleet = FleetStatus.Load(_settings.FleetStatusPath,
+                _settings.FleetStaleSeconds);
+            RebuildMenu();
+        }
+
+        private void OpenSettings()
+        {
+            if (_settingsForm != null && !_settingsForm.IsDisposed)
+            {
+                _settingsForm.Activate();
+                return;
+            }
+            _settingsForm = new SettingsForm(this);
+            _settingsForm.FormClosed +=
+                delegate { _settingsForm = null; };
+            _settingsForm.Show();
+        }
+
+        private void RefreshSettingsDialog()
+        {
+            try
+            {
+                if (_settingsForm != null && !_settingsForm.IsDisposed)
+                    _settingsForm.RefreshDynamic();
+            }
+            catch { }
         }
 
         private void StopAll()
@@ -370,9 +1032,53 @@ namespace SyncyardTray
 
         // --- tray UI ------------------------------------------------------
 
+        // The menu's fleet header (spec 014 FR-007): the
+        // gatekeeper's mode and queue at a glance, rendered from
+        // the last snapshot read - text only, rebuilt with the
+        // menu on the existing tick cadence, never an icon render.
+        private string FleetMenuText()
+        {
+            if (_fleet == null) return "Fleet: not loaded yet";
+            if (!_fleet.HasData)
+                return "Fleet: unavailable (" + _fleet.Problem + ")";
+            string s = "Fleet: " + _fleet.ModeLine() + " - " +
+                _fleet.Waiting.Count + " waiting";
+            if (_fleet.Stale)
+                s += " - STALE (" + FleetStatus.FormatAge(
+                    _fleet.AgeSeconds) + ")";
+            return s;
+        }
+
+        private string FleetNextText()
+        {
+            if (_fleet == null || !_fleet.HasData ||
+                _fleet.Waiting.Count == 0) return null;
+            var j = _fleet.Waiting[0];
+            string s = "Next: " + j.Key + " (" + j.Lane;
+            if (j.HasPriority)
+            {
+                s += ", pri " + j.Priority;
+                if (j.PrioritySource != null)
+                    s += ", " + j.PrioritySource;
+            }
+            if (j.HasHeld && j.Held) s += ", held";
+            return s + ")";
+        }
+
         private void RebuildMenu()
         {
             var menu = new ContextMenuStrip();
+            var fleetLine = new ToolStripMenuItem(FleetMenuText());
+            fleetLine.Enabled = false;
+            menu.Items.Add(fleetLine);
+            string nextText = FleetNextText();
+            if (nextText != null)
+            {
+                var nextLine = new ToolStripMenuItem(nextText);
+                nextLine.Enabled = false;
+                menu.Items.Add(nextLine);
+            }
+            menu.Items.Add(new ToolStripSeparator());
             int running = 0;
             foreach (var r in _runners) if (r.Running) running++;
             var startAll = new ToolStripMenuItem("Start all runners");
@@ -427,6 +1133,9 @@ namespace SyncyardTray
             show.Click += delegate { SetStrayConsoles(SW_SHOW); };
             menu.Items.Add(show);
             menu.Items.Add(new ToolStripSeparator());
+            var settingsItem = new ToolStripMenuItem("Settings...");
+            settingsItem.Click += delegate { OpenSettings(); };
+            menu.Items.Add(settingsItem);
             var log = new ToolStripMenuItem("Open tray log");
             log.Click += delegate
             {
@@ -451,8 +1160,25 @@ namespace SyncyardTray
             int iconState = AnyFaulted() || running == 0 ? 2
                           : running == _runners.Count ? 0 : 1;
             SetIcon(iconState);
-            _icon.Text = "Syncyard: " + running + "/" + _runners.Count +
-                         " runners up";
+            _icon.Text = TooltipText(running);
+        }
+
+        // The tooltip carries the fleet mode + waiting count when
+        // a snapshot exists (spec 014 FR-007), capped at the
+        // notification area's safe text length. The icon itself
+        // stays purely runner-derived - fleet data never renders.
+        private string TooltipText(int running)
+        {
+            string s = "Syncyard: " + running + "/" + _runners.Count +
+                " runners up";
+            if (_fleet != null && _fleet.HasData)
+            {
+                s += " - " + _fleet.ModeLine() + " - " +
+                    _fleet.Waiting.Count + " waiting";
+                if (_fleet.Stale) s += " - STALE";
+            }
+            if (s.Length > 120) s = s.Substring(0, 120);
+            return s;
         }
 
         // Icon states (FR-007): 0 = all runners up, clean color
@@ -560,6 +1286,364 @@ namespace SyncyardTray
                     "  " + msg + Environment.NewLine);
             }
             catch { }
+        }
+    }
+
+    // The settings dialog (spec 014 Part B): the only window the
+    // tray ever shows, opened only from the tray menu, one instance
+    // at a time. Checkboxes and fields are saved settings (applied
+    // by Save through TrayApp.ApplySettings; Cancel discards them);
+    // the lane buttons are immediate acts through the tray's
+    // existing start/stop/restart paths and are NOT undone by
+    // Cancel - the dialog says so on its face. Dynamic text (lane
+    // states, the fleet section) refreshes by re-setting text on
+    // these existing controls from the tray tick; the queue list
+    // rebuilds only when the snapshot's generated_at changes.
+    // The dialog allocates no icon or bitmap resources.
+    internal sealed class SettingsForm : Form
+    {
+        private readonly TrayApp _app;
+        private readonly CheckBox _chkSupervision;
+        private readonly CheckBox _chkAutostart;
+        private readonly CheckBox _chkHide;
+        private readonly NumericUpDown _numCap;
+        private readonly NumericUpDown _numTick;
+        private readonly CheckBox[] _laneChk;
+        private readonly Label[] _laneState;
+        private readonly Label _fleetMode;
+        private readonly Label _fleetDetail;
+        private readonly TextBox _txtFleetPath;
+        private readonly NumericUpDown _numStale;
+        private readonly ListView _queue;
+        private string _queueStamp;
+
+        public SettingsForm(TrayApp app)
+        {
+            _app = app;
+            Text = "Syncyard Tray Settings";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            StartPosition = FormStartPosition.CenterScreen;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ClientSize = new Size(600, 684);
+
+            var grpTray = new GroupBox();
+            grpTray.Text = "Tray";
+            grpTray.Location = new Point(12, 12);
+            grpTray.Size = new Size(576, 150);
+            Controls.Add(grpTray);
+
+            _chkSupervision = new CheckBox();
+            _chkSupervision.Text =
+                "Supervise runners (auto-start and restart)";
+            _chkSupervision.Location = new Point(16, 24);
+            _chkSupervision.Size = new Size(280, 20);
+            grpTray.Controls.Add(_chkSupervision);
+
+            _chkHide = new CheckBox();
+            _chkHide.Text = "Hide stray runner consoles";
+            _chkHide.Location = new Point(308, 24);
+            _chkHide.Size = new Size(250, 20);
+            grpTray.Controls.Add(_chkHide);
+
+            _chkAutostart = new CheckBox();
+            _chkAutostart.Text = "Start Syncyard Tray at logon";
+            _chkAutostart.Location = new Point(16, 50);
+            _chkAutostart.Size = new Size(280, 20);
+            grpTray.Controls.Add(_chkAutostart);
+
+            var lblCap = new Label();
+            lblCap.Text = "Restart cap (per runner per hour):";
+            lblCap.Location = new Point(16, 84);
+            lblCap.Size = new Size(230, 20);
+            grpTray.Controls.Add(lblCap);
+            _numCap = new NumericUpDown();
+            _numCap.Minimum = 1;
+            _numCap.Maximum = 20;
+            _numCap.Location = new Point(250, 82);
+            _numCap.Size = new Size(70, 20);
+            grpTray.Controls.Add(_numCap);
+
+            var lblTick = new Label();
+            lblTick.Text = "Refresh cadence (seconds):";
+            lblTick.Location = new Point(16, 112);
+            lblTick.Size = new Size(230, 20);
+            grpTray.Controls.Add(lblTick);
+            _numTick = new NumericUpDown();
+            _numTick.Minimum = 2;
+            _numTick.Maximum = 60;
+            _numTick.Location = new Point(250, 110);
+            _numTick.Size = new Size(70, 20);
+            grpTray.Controls.Add(_numTick);
+
+            var grpLanes = new GroupBox();
+            grpLanes.Text = "Runner lanes";
+            grpLanes.Location = new Point(12, 174);
+            grpLanes.Size = new Size(576, 204);
+            Controls.Add(grpLanes);
+
+            var hint = new Label();
+            hint.Text = "Checkboxes are saved settings. Buttons act " +
+                "immediately and are not undone by Cancel.";
+            hint.Location = new Point(16, 22);
+            hint.Size = new Size(544, 20);
+            grpLanes.Controls.Add(hint);
+
+            _laneChk = new CheckBox[TraySettings.Lanes.Length];
+            _laneState = new Label[TraySettings.Lanes.Length];
+            for (int i = 0; i < TraySettings.Lanes.Length; i++)
+            {
+                string lane = TraySettings.Lanes[i];
+                int y = 48 + i * 34;
+                var chk = new CheckBox();
+                chk.Text = "lane-" + lane;
+                chk.Location = new Point(16, y);
+                chk.Size = new Size(100, 20);
+                grpLanes.Controls.Add(chk);
+                _laneChk[i] = chk;
+
+                var state = new Label();
+                state.Location = new Point(124, y + 2);
+                state.Size = new Size(170, 20);
+                grpLanes.Controls.Add(state);
+                _laneState[i] = state;
+
+                var captured = lane;
+                var btnStart = new Button();
+                btnStart.Text = "Start";
+                btnStart.Location = new Point(306, y - 2);
+                btnStart.Size = new Size(78, 24);
+                btnStart.Click += delegate
+                {
+                    var r = FindRunner(captured);
+                    if (r != null) { _app.LaneStart(r); RefreshDynamic(); }
+                };
+                grpLanes.Controls.Add(btnStart);
+
+                var btnStop = new Button();
+                btnStop.Text = "Stop";
+                btnStop.Location = new Point(392, y - 2);
+                btnStop.Size = new Size(78, 24);
+                btnStop.Click += delegate
+                {
+                    var r = FindRunner(captured);
+                    if (r == null) return;
+                    var ok = MessageBox.Show(
+                        "Stop the lane-" + captured + " runner? " +
+                        "A job running on it will be killed.",
+                        "Syncyard Tray", MessageBoxButtons.OKCancel,
+                        MessageBoxIcon.Warning);
+                    if (ok == DialogResult.OK)
+                    {
+                        _app.LaneStop(r);
+                        RefreshDynamic();
+                    }
+                };
+                grpLanes.Controls.Add(btnStop);
+
+                var btnRestart = new Button();
+                btnRestart.Text = "Restart";
+                btnRestart.Location = new Point(478, y - 2);
+                btnRestart.Size = new Size(78, 24);
+                btnRestart.Click += delegate
+                {
+                    var r = FindRunner(captured);
+                    if (r != null) { _app.LaneRestart(r); RefreshDynamic(); }
+                };
+                grpLanes.Controls.Add(btnRestart);
+            }
+
+            var grpFleet = new GroupBox();
+            grpFleet.Text =
+                "Fleet (read-only - managed with the gk commands)";
+            grpFleet.Location = new Point(12, 390);
+            grpFleet.Size = new Size(576, 232);
+            Controls.Add(grpFleet);
+
+            _fleetMode = new Label();
+            _fleetMode.Location = new Point(16, 24);
+            _fleetMode.Size = new Size(544, 20);
+            grpFleet.Controls.Add(_fleetMode);
+
+            _fleetDetail = new Label();
+            _fleetDetail.Location = new Point(16, 46);
+            _fleetDetail.Size = new Size(544, 20);
+            grpFleet.Controls.Add(_fleetDetail);
+
+            var lblPath = new Label();
+            lblPath.Text = "Snapshot path:";
+            lblPath.Location = new Point(16, 74);
+            lblPath.Size = new Size(96, 20);
+            grpFleet.Controls.Add(lblPath);
+            _txtFleetPath = new TextBox();
+            _txtFleetPath.Location = new Point(116, 72);
+            _txtFleetPath.Size = new Size(444, 20);
+            grpFleet.Controls.Add(_txtFleetPath);
+
+            var lblStale = new Label();
+            lblStale.Text = "Treat as stale after (seconds):";
+            lblStale.Location = new Point(16, 102);
+            lblStale.Size = new Size(230, 20);
+            grpFleet.Controls.Add(lblStale);
+            _numStale = new NumericUpDown();
+            _numStale.Minimum = 30;
+            _numStale.Maximum = 3600;
+            _numStale.Location = new Point(250, 100);
+            _numStale.Size = new Size(70, 20);
+            grpFleet.Controls.Add(_numStale);
+
+            _queue = new ListView();
+            _queue.View = View.Details;
+            _queue.FullRowSelect = true;
+            _queue.Location = new Point(16, 130);
+            _queue.Size = new Size(544, 62);
+            _queue.Columns.Add("Key", 205);
+            _queue.Columns.Add("Program", 90);
+            _queue.Columns.Add("Lane", 55);
+            _queue.Columns.Add("Pri", 40);
+            _queue.Columns.Add("Source", 70);
+            _queue.Columns.Add("State", 60);
+            grpFleet.Controls.Add(_queue);
+
+            var note = new Label();
+            note.Text = "Published by the gatekeeper and shown " +
+                "read-only. Change fleet state with the gk commands " +
+                "(spec 013), not from the tray.";
+            note.Location = new Point(16, 200);
+            note.Size = new Size(544, 28);
+            grpFleet.Controls.Add(note);
+
+            var btnSave = new Button();
+            btnSave.Text = "Save";
+            btnSave.Location = new Point(404, 640);
+            btnSave.Size = new Size(84, 26);
+            btnSave.Click += delegate { OnSave(); };
+            Controls.Add(btnSave);
+
+            var btnCancel = new Button();
+            btnCancel.Text = "Cancel";
+            btnCancel.Location = new Point(496, 640);
+            btnCancel.Size = new Size(84, 26);
+            btnCancel.Click += delegate { Close(); };
+            Controls.Add(btnCancel);
+
+            var s = app.Settings;
+            _chkSupervision.Checked = s.SupervisionEnabled;
+            _chkHide.Checked = s.HideStrayConsoles;
+            // The checkbox tells the machine's actual truth at
+            // open time (spec 014 FR-005), whatever set it last.
+            _chkAutostart.Checked = TraySettings.AutostartIsRegistered();
+            _numCap.Value = s.MaxRestartsPerHour;
+            _numTick.Value = s.TickSeconds;
+            _txtFleetPath.Text = s.FleetStatusPath;
+            _numStale.Value = s.FleetStaleSeconds;
+            for (int i = 0; i < TraySettings.Lanes.Length; i++)
+                _laneChk[i].Checked =
+                    s.LaneEnabled(TraySettings.Lanes[i]);
+            RefreshDynamic();
+        }
+
+        private RunnerDef FindRunner(string lane)
+        {
+            foreach (var r in _app.Runners)
+                if (string.Equals(r.Lane, lane,
+                        StringComparison.OrdinalIgnoreCase))
+                    return r;
+            return null;
+        }
+
+        private void OnSave()
+        {
+            var cur = _app.Settings;
+            var next = new TraySettings();
+            next.Autostart = _chkAutostart.Checked;
+            next.SupervisionEnabled = _chkSupervision.Checked;
+            next.MaxRestartsPerHour = (int)_numCap.Value;
+            next.TickSeconds = (int)_numTick.Value;
+            next.HideStrayConsoles = _chkHide.Checked;
+            string fp = _txtFleetPath.Text.Trim();
+            next.FleetStatusPath =
+                fp.Length > 0 ? fp : cur.FleetStatusPath;
+            next.FleetStaleSeconds = (int)_numStale.Value;
+            for (int i = 0; i < TraySettings.Lanes.Length; i++)
+                next.SetLaneEnabled(TraySettings.Lanes[i],
+                    _laneChk[i].Checked);
+            _app.ApplySettings(next);
+            Close();
+        }
+
+        // Called from the tray tick (and after this dialog's own
+        // actions): re-set text on the existing controls only;
+        // rebuild the queue list only when the snapshot's stamp
+        // changed (spec 014 FR-010).
+        public void RefreshDynamic()
+        {
+            for (int i = 0; i < TraySettings.Lanes.Length; i++)
+            {
+                var r = FindRunner(TraySettings.Lanes[i]);
+                _laneState[i].Text = r == null ? "not registered"
+                    : r.Faulted ? "FAULTED - owner needed"
+                    : r.Running ? "running" : "stopped";
+            }
+            var f = _app.Fleet;
+            if (f == null)
+            {
+                _fleetMode.Text = "Fleet: not loaded yet";
+                _fleetDetail.Text = "";
+                return;
+            }
+            if (!f.HasData)
+            {
+                _fleetMode.Text =
+                    "Fleet: unavailable (" + f.Problem + ")";
+                _fleetDetail.Text = "No snapshot at the path below. " +
+                    "The section lights up when a publisher writes " +
+                    "one (spec 014 FR-009).";
+                if (_queueStamp != null)
+                {
+                    _queue.Items.Clear();
+                    _queueStamp = null;
+                }
+                return;
+            }
+            _fleetMode.Text = "Fleet: " + f.ModeLine() + " - " +
+                f.Waiting.Count + " waiting - snapshot " +
+                FleetStatus.FormatAge(f.AgeSeconds) +
+                (f.Stale ? " - STALE" : "");
+            string detail = "";
+            if (f.FocusPrograms.Count + f.FocusKeys.Count +
+                f.FocusChats.Count > 0)
+            {
+                detail = "Focus: programs [" +
+                    string.Join(", ", f.FocusPrograms.ToArray()) +
+                    "] keys [" +
+                    string.Join(", ", f.FocusKeys.ToArray()) +
+                    "] chats [" +
+                    string.Join(", ", f.FocusChats.ToArray()) + "]";
+            }
+            else if (f.Reason.Length > 0)
+            {
+                detail = f.Reason;
+            }
+            _fleetDetail.Text = detail;
+            if (f.GeneratedAt != _queueStamp)
+            {
+                _queueStamp = f.GeneratedAt;
+                _queue.Items.Clear();
+                foreach (var j in f.Waiting)
+                {
+                    var item = new ListViewItem(j.Key);
+                    item.SubItems.Add(j.Program);
+                    item.SubItems.Add(j.Lane);
+                    item.SubItems.Add(j.HasPriority
+                        ? j.Priority.ToString(
+                            CultureInfo.InvariantCulture) : "");
+                    item.SubItems.Add(j.PrioritySource ?? "");
+                    item.SubItems.Add(j.HasHeld
+                        ? (j.Held ? "held" : "admitted") : "");
+                    _queue.Items.Add(item);
+                }
+            }
         }
     }
 }
