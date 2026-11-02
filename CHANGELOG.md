@@ -128,6 +128,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a genuine-mismatch refusal case proving the security
   property survived the fix.
 
+## [0.4.0] - 2026-11-02
+### Added
+- Spec 013 — live priority and pause control for the
+  gatekeeper. **Focus mode** (`gk focus --except-key /
+  --except-program / --except-chat`, repeatable selectors):
+  pause everything except the named jobs; the pause record's
+  schema is a superset of the legacy shape, and a legacy
+  single-`except_key` record (the fleet's 2026-11-01 pause)
+  reads as a one-key focus with identical effect for the
+  standing fleet queue. **Live priorities**: a `priority`
+  field on every job record, settable at submit
+  (`--priority`) and changeable while the job waits
+  (`gk priority`; dispatched or finished jobs refuse, exit 3).
+  **Auto-optimization with human precedence** (FR-012):
+  waiting jobs without a human-set priority are ordered by a
+  deterministic optimizer (declared expectation, lane fit,
+  +1 per 10 minutes of aging, capped at 100); human values
+  are pinned, win ties against auto values, and values above
+  the cap outrank every auto job permanently. **Drain**
+  (`gk pause --drain`, `gk focus --drain`): executing work
+  finishes, nothing new starts outside the admitted set, and
+  the sweep settles the record itself. **Checkpoint holds**
+  (`gk hold`, `gk resume --job`): a per-job hold-signal file
+  whose path reaches the job as `$SYNCYARD_HOLD_FILE` (new
+  optional `hold_file` input on the run/wsl workflows); a job
+  that polls it, prints `CHECKPOINT_PAUSED`, and exits 86 is
+  harvested as the new state `held_at_checkpoint` — never
+  reported as a completion or a failure. The signal contract
+  is the file, not the writer: a host-local actor (the spec
+  011 host guard, when a shutdown is imminent) can create
+  the same per-job file directly with no gatekeeper
+  round-trip, and the harvest is identical either way. All
+  mutations ride
+  the FR-013 verified writes and are ledgered; `gk status`
+  shows the pipeline mode (RUNNING / PAUSED / FOCUSED /
+  DRAINING), the waiting set in effective dispatch order with
+  priorities and sources, and held-at-checkpoint jobs.
+  Battery: `gatekeeper/test_spec013.py` (wired into CI), plus
+  config, golden, and workflow-contract extensions. Not yet
+  deployed to the fleet gatekeeper; that follows owner review
+  of the spec 013 PR.
+
 ## [0.3.0] - 2026-10-31
 ### Added
 - Spec 010 Phase 5 docs (T017 + T018, 2026-10-31):

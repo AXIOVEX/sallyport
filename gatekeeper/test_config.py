@@ -61,6 +61,16 @@ check("golden liveness threshold (spec 011 FR-001)",
       cfg["liveness"]["down_after_s"] == 900)
 check("golden reboot grace (spec 011 FR-015)",
       cfg["reboot"]["grace_s"] == 60)
+check("golden optimizer knobs (spec 013 FR-012)",
+      cfg["dispatch"]["optimizer_ceiling"] == 100
+      and cfg["dispatch"]["optimizer_aging_step_min"] == 10)
+check("golden checkpoint contract (spec 013 FR-007)",
+      cfg["checkpoint"]["exit_code"] == 86
+      and cfg["checkpoint"]["marker"] == "CHECKPOINT_PAUSED"
+      and cfg["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE"
+      and cfg["checkpoint"]["holds_dir"] == {
+          "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
+          "wsl.yml": "/home/tpierson/.syncyard/holds"})
 check("golden log cap", cfg["retention"]["human_log_max_bytes"] == 1000000)
 check("golden cwd windows", cfg["hosts"]["desktop"]["cwd"]["run.yml"] == r"C:\Users\trist")
 check("golden cwd grab null", cfg["hosts"]["desktop"]["cwd"]["grab.yml"] is None)
@@ -93,7 +103,9 @@ check("defaults == example fleet surface",
       dflt["lanes"] == cfg["lanes"] and dflt["hosts"] == cfg["hosts"]
       and dflt["budget"] == cfg["budget"] and dflt["workflows"] == cfg["workflows"]
       and dflt["liveness"] == cfg["liveness"]
-      and dflt["reboot"] == cfg["reboot"])
+      and dflt["reboot"] == cfg["reboot"]
+      and dflt["dispatch"] == cfg["dispatch"]
+      and dflt["checkpoint"] == cfg["checkpoint"])
 
 # 4: partial override merges.
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
@@ -147,6 +159,28 @@ expect_error("reject non-numeric reboot grace",
              "reboot:\n  grace_s: soon\n")
 expect_error("reject boolean reboot grace",
              "reboot:\n  grace_s: true\n")
+expect_error("reject zero optimizer ceiling",
+             "dispatch:\n  optimizer_ceiling: 0\n")
+expect_error("reject non-integer optimizer ceiling",
+             "dispatch:\n  optimizer_ceiling: high\n")
+expect_error("reject zero optimizer aging step",
+             "dispatch:\n  optimizer_aging_step_min: 0\n")
+expect_error("reject zero checkpoint exit code",
+             "checkpoint:\n  exit_code: 0\n")
+expect_error("reject out-of-range checkpoint exit code",
+             "checkpoint:\n  exit_code: 256\n")
+expect_error("reject non-integer checkpoint exit code",
+             "checkpoint:\n  exit_code: soon\n")
+expect_error("reject boolean checkpoint exit code",
+             "checkpoint:\n  exit_code: true\n")
+expect_error("reject lowercase checkpoint marker",
+             "checkpoint:\n  marker: checkpoint_paused\n")
+expect_error("reject empty checkpoint env var",
+             "checkpoint:\n  env_var: ''\n")
+expect_error("reject checkpoint holds_dir for undeclared workflow",
+             "checkpoint:\n  holds_dir:\n    teleport.yml: /tmp/holds\n")
+expect_error("reject empty checkpoint holds_dir value",
+             "checkpoint:\n  holds_dir:\n    run.yml: ''\n")
 
 # 6: a valid liveness override loads and lands.
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
@@ -163,6 +197,17 @@ with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
 over = cfgmod.load_config(path)
 os.unlink(path)
 check("reboot grace override loads", over["reboot"]["grace_s"] == 120)
+
+# 8: a valid checkpoint override loads and lands.
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("checkpoint:\n  exit_code: 42\n  marker: HELD_HERE\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("checkpoint override loads",
+      over["checkpoint"]["exit_code"] == 42
+      and over["checkpoint"]["marker"] == "HELD_HERE"
+      and over["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE")
 
 print()
 if fails:

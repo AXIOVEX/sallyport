@@ -26,6 +26,10 @@ Validation (load time, all named errors):
   - transport ceiling positive
   - liveness threshold (spec 011 FR-001) a positive number
   - reboot grace (spec 011 FR-015) a positive number
+  - checkpoint contract (spec 013 FR-007): exit code an integer
+    in 1..255, marker a valid marker token, env var a valid
+    name, holds_dir a mapping of declared workflows to
+    non-empty venue directories
 """
 import os
 import re
@@ -54,6 +58,13 @@ DEFAULTS = {
         "lock_stale_min": 10,
         "duplicate_policy": "refuse",
         "soft_cap_min": 30,
+        # Priority optimizer (spec 013 FR-012): auto-assigned
+        # effective priorities never exceed this ceiling (a
+        # human-set priority above it is unreachable by any
+        # auto job), and an auto job gains +1 per this many
+        # minutes waited.
+        "optimizer_ceiling": 100,
+        "optimizer_aging_step_min": 10,
     },
     "transport": {"max_script_bytes": 49152},
     "markers": {"pattern": r"^[A-Z][A-Z0-9_]{2,}([ :]|$)"},
@@ -67,6 +78,22 @@ DEFAULTS = {
     # --delay overrides it, so in-flight uploads and log
     # writes finish before the host goes down.
     "reboot": {"grace_s": 60},
+    # Checkpoint hold (spec 013 FR-007): the cooperative
+    # job-level pause contract. A dispatch passes each script
+    # job the venue path of its per-job hold file (holds_dir
+    # per workflow + "<job-id>.hold"); the transport workflow
+    # exports that path to the job's script as the env var
+    # named here. A job that polls the file stops at its next
+    # checkpoint, prints the marker, and exits with exit_code.
+    "checkpoint": {
+        "exit_code": 86,
+        "marker": "CHECKPOINT_PAUSED",
+        "env_var": "SYNCYARD_HOLD_FILE",
+        "holds_dir": {
+            "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
+            "wsl.yml": "/home/tpierson/.syncyard/holds",
+        },
+    },
     "hosts": {
         "desktop": {
             "type": "windows",
@@ -310,6 +337,38 @@ def validate(cfg):
             or grace <= 0):
         raise ConfigError(
             "reboot.grace_s must be a positive number of seconds")
+    ck = cfg.get("checkpoint") or {}
+    code = ck.get("exit_code")
+    if (isinstance(code, bool) or not isinstance(code, int)
+            or not 1 <= code <= 255):
+        raise ConfigError(
+            "checkpoint.exit_code must be an integer in 1..255")
+    marker = ck.get("marker")
+    if (not isinstance(marker, str)
+            or not re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", marker or "")):
+        raise ConfigError(
+            "checkpoint.marker must be a marker token "
+            "(ALL_CAPS, at least 3 characters)")
+    env_var = ck.get("env_var")
+    if (not isinstance(env_var, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_var or "")):
+        raise ConfigError(
+            "checkpoint.env_var must be a valid environment "
+            "variable name")
+    holds = ck.get("holds_dir")
+    if not isinstance(holds, dict):
+        raise ConfigError(
+            "checkpoint.holds_dir must be a mapping of workflow "
+            "to venue directory")
+    for wname, wdir in holds.items():
+        if wname not in (cfg.get("workflows") or []):
+            raise ConfigError(
+                f"checkpoint.holds_dir: workflow {wname!r} is not "
+                f"in the top-level workflows list")
+        if not (isinstance(wdir, str) and wdir):
+            raise ConfigError(
+                f"checkpoint.holds_dir.{wname} must be a non-empty "
+                f"venue directory path")
     hosts = cfg.get("hosts") or {}
     declared = cfg.get("workflows") or []
     served = set()
@@ -367,6 +426,17 @@ def validate(cfg):
     dp = (cfg.get("dispatch") or {}).get("duplicate_policy")
     if dp not in ("refuse", "allow"):
         raise ConfigError("dispatch.duplicate_policy must be refuse|allow")
+    ceil = (cfg.get("dispatch") or {}).get("optimizer_ceiling")
+    if (isinstance(ceil, bool) or not isinstance(ceil, int)
+            or ceil <= 0):
+        raise ConfigError(
+            "dispatch.optimizer_ceiling must be a positive integer")
+    step = (cfg.get("dispatch") or {}).get("optimizer_aging_step_min")
+    if (isinstance(step, bool)
+            or not isinstance(step, (int, float)) or step <= 0):
+        raise ConfigError(
+            "dispatch.optimizer_aging_step_min must be a positive "
+            "number of minutes")
     try:
         re.compile((cfg.get("markers") or {}).get("pattern", ""))
     except re.error as e:

@@ -37,6 +37,9 @@ QUEUE_DIR = os.path.join(BASE, "queue")
 LEDGER = os.path.join(BASE, "ledger.jsonl")
 LOCK_DIR = os.path.join(BASE, ".sweep.lock")
 PAUSE_FILE = os.path.join(BASE, "PAUSED.json")
+# Staged hold-signal writer scripts (spec 013 FR-009); durable
+# under BASE like every other gatekeeper script (never /tmp).
+HOLDS_DIR = os.path.join(BASE, "holds")
 STOP_FILE = os.path.join(BASE, "STOPPED.json")
 OUTBOX_CURSOR = os.path.join(BASE, "outbox-cursor.json")
 HOSTS_FILE = os.path.join(BASE, "hosts.json")   # host liveness (spec 011)
@@ -121,6 +124,19 @@ for _h in _CFG["hosts"].values():
 MARKER_RE = re.compile(_CFG["markers"]["pattern"])
 LIVENESS_DOWN_AFTER_S = _CFG["liveness"]["down_after_s"]
 REBOOT_GRACE_S = _CFG["reboot"]["grace_s"]
+# Checkpoint hold (spec 013 FR-007): the cooperative job-level
+# pause contract — per-job venue hold file, the marker a held
+# job prints, the exit code it stops with, the env var the
+# transport workflows export the path under.
+CHECKPOINT_EXIT_CODE = int(_CFG["checkpoint"]["exit_code"])
+CHECKPOINT_MARKER = _CFG["checkpoint"]["marker"]
+CHECKPOINT_ENV_VAR = _CFG["checkpoint"]["env_var"]
+CHECKPOINT_HOLDS_DIR = dict(_CFG["checkpoint"]["holds_dir"])
+# Priority optimizer (spec 013 FR-012): auto-assigned effective
+# priorities are capped at the ceiling (a human-set priority
+# above it is unreachable by any auto job) and age +1 per step.
+OPTIMIZER_CEILING = int(_CFG["dispatch"]["optimizer_ceiling"])
+OPTIMIZER_AGING_STEP_MIN = _CFG["dispatch"]["optimizer_aging_step_min"]
 
 # Host routing (spec 010 FR-003/FR-004): a job names a lane; the
 # lane's host is the venue. A workflow the host does not serve is
@@ -274,6 +290,130 @@ def pause_state():
         return {"ts": None, "reason": ""}
 
 
+def pause_record():
+    """The normalized pause/focus record (spec 013 FR-001), or
+    None when not paused. Every field of the stored record is
+    preserved; the normalized view adds the superset-schema
+    fields with defaults. A legacy record carrying a single
+    `except_key` string (the fleet's 2026-11-01 pause shape)
+    normalizes to focused mode with that key as a one-element
+    key list, so the exception the record itself names is
+    effective under the new reader."""
+    rec = pause_state()
+    if rec is None:
+        return None
+    out = dict(rec)
+    keys = [str(k) for k in (rec.get("except_keys") or [])]
+    legacy = rec.get("except_key")
+    if legacy and str(legacy) not in keys:
+        keys.append(str(legacy))
+    out["except_keys"] = keys
+    out["except_programs"] = [str(p)
+                              for p in (rec.get("except_programs") or [])]
+    out["except_chats"] = [str(c)
+                           for c in (rec.get("except_chats") or [])]
+    out["drain"] = bool(rec.get("drain"))
+    focused = bool(keys or out["except_programs"] or out["except_chats"])
+    out["mode"] = "focused" if focused else "paused"
+    return out
+
+
+def focus_match(job, rec):
+    """The selector admitting this job under a pause/focus
+    record (spec 013 FR-002), or None. A key selector matches
+    on equality or prefix, so a chat can focus a whole job
+    family with one selector."""
+    if rec is None:
+        return None
+    key = str(job.get("key") or "")
+    for sel in rec.get("except_keys") or []:
+        if key == sel or key.startswith(sel):
+            return "key:" + sel
+    program = job.get("program")
+    if program and program in (rec.get("except_programs") or []):
+        return "program:" + str(program)
+    chat = job.get("notify_chat")
+    if chat and chat in (rec.get("except_chats") or []):
+        return "chat:" + str(chat)
+    return None
+
+
+def selectors_text(rec):
+    """A compact rendering of a focus record's selector set,
+    for status banners and command output."""
+    parts = (["key=%s" % k for k in rec.get("except_keys") or []]
+             + ["program=%s" % p
+                for p in rec.get("except_programs") or []]
+             + ["chat=%s" % c for c in rec.get("except_chats") or []])
+    return ", ".join(parts) if parts else "(none)"
+
+
+# --- Live priority + the optimizer (spec 013 FR-003/FR-004/FR-012)
+
+def _prio(job):
+    """The record's nominal priority as an int (absent or
+    malformed reads as 0 — pre-spec-013 records carry none)."""
+    try:
+        return int(job.get("priority") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _auto_base(job):
+    """Optimizer base from the declared expectation (FR-012):
+    short jobs first; an undeclared expectation counts as the
+    conservative 180 minutes."""
+    exp = job.get("expected_min")
+    e = 180 if exp is None else exp
+    if e <= 2:
+        return 50
+    if e <= 10:
+        return 40
+    if e <= 30:
+        return 30
+    if e <= 120:
+        return 20
+    return 10
+
+
+def auto_priority(job, now):
+    """The optimizer's effective priority for an auto job
+    (FR-012): base + lane-fit bonus + aging, capped at the
+    ceiling. A pure function of the record and the evaluation
+    instant — it writes nothing, so it can never go stale and
+    never overrides a human value (it is not applied to
+    human-set jobs at all)."""
+    exp = job.get("expected_min")
+    fit = 0
+    if exp is not None:
+        w2 = QUEUED_WM.get(job.get("lane"), (0, 0))[1]
+        if w2 and exp <= w2:
+            fit = 5
+    waited = minutes_between(parse_iso(job.get("created_at")), now)
+    aging = 0
+    if waited is not None and waited > 0:
+        aging = int(waited // OPTIMIZER_AGING_STEP_MIN)
+    return min(OPTIMIZER_CEILING, _auto_base(job) + fit + aging)
+
+
+def effective_priority(job, now):
+    """(value, source) used for ordering: a human job's pinned
+    nominal value; an auto job's optimizer-assigned value."""
+    if job.get("priority_source") == "human":
+        return _prio(job), "human"
+    return auto_priority(job, now), "auto"
+
+
+def dispatch_sort_key(job, now):
+    """The unified dispatch order (FR-012): effective priority
+    descending, then human before auto at equal value, then
+    created_at. Admission (pause/focus/drain, host holds) is
+    decided before ordering and is never overridden by it."""
+    value, source = effective_priority(job, now)
+    return (-value, 0 if source == "human" else 1,
+            job.get("created_at") or "")
+
+
 def _write_text_file(path, text):
     """Write a small text file through the write-verify-retry path
     (spec 001 FR-012), landed by atomic swap (FR-013): the payload
@@ -305,29 +445,143 @@ def _write_text_file(path, text):
             pass
 
 
-def cmd_pause(args):
-    cur = pause_state()
-    if cur is not None:
-        print("ALREADY PAUSED since %s reason=%s"
-              % (cur.get("ts"), cur.get("reason") or ""))
-        return 0
-    rec = {"ts": now_iso(), "reason": args.reason or ""}
+def _write_pause_record(rec):
+    """Write the pause/focus record through the same verified
+    write as every other control file; False (with the error
+    printed) when the write did not verify."""
     try:
         _write_text_file(PAUSE_FILE,
                          json.dumps(rec, indent=2, sort_keys=True))
     except (OSError, subprocess.SubprocessError) as exc:
-        print("ERROR: could not write the pause file (%s). The pause is "
-              "NOT in effect." % exc)
+        print("ERROR: could not write the pause file (%s). The "
+              "change is NOT in effect." % exc)
+        return False
+    return True
+
+
+def cmd_pause(args):
+    cur = pause_state()
+    drain = bool(getattr(args, "drain", False))
+    if cur is not None:
+        if drain and not cur.get("drain"):
+            # Spec 013 FR-005: an immediate pause becomes a
+            # draining one in place; every other field of the
+            # record (focus selectors included) is preserved.
+            cur["drain"] = True
+            cur["drain_since"] = now_iso()
+            if not _write_pause_record(cur):
+                return 1
+            ledger("drain_started", reason=cur.get("reason", ""))
+            hlog("DRAINING at %s (pause record updated in place)"
+                 % cur["drain_since"])
+            print("DRAINING at %s — executing jobs finish, "
+                  "nothing new dispatches, then the pause "
+                  "settles." % cur["drain_since"])
+            return 0
+        print("ALREADY PAUSED since %s reason=%s"
+              % (cur.get("ts"), cur.get("reason") or ""))
+        return 0
+    rec = {"ts": now_iso(), "reason": args.reason or ""}
+    if drain:
+        rec["drain"] = True
+        rec["drain_since"] = now_iso()
+    if not _write_pause_record(rec):
         return 1
-    ledger("paused", reason=rec["reason"])
+    ledger("paused", reason=rec["reason"], drain=drain)
     hlog("PAUSED at %s reason=%s" % (rec["ts"], rec["reason"]))
-    print("PAUSED at %s — dispatch of program jobs is held; "
-          "maintenance jobs still dispatch; the watch pass continues."
-          % rec["ts"])
+    if drain:
+        print("PAUSED at %s — DRAINING: executing jobs finish, "
+              "nothing new dispatches, then the pause settles."
+              % rec["ts"])
+    else:
+        print("PAUSED at %s — dispatch of program jobs is held; "
+              "maintenance jobs still dispatch; the watch pass "
+              "continues." % rec["ts"])
     return 0
 
 
-def cmd_resume(_args):
+def cmd_focus(args):
+    keys = list(args.except_key or [])
+    programs = list(args.except_program or [])
+    chats = list(args.except_chat or [])
+    if not (keys or programs or chats):
+        print("REFUSED: focus needs at least one selector "
+              "(--except-key, --except-program or --except-chat); "
+              "an empty selector set would hold everything, "
+              "which is plain 'gk pause'.")
+        return 2
+    rec = pause_state() or {}
+    rec.setdefault("ts", now_iso())
+    if args.reason:
+        rec["reason"] = args.reason
+    rec.setdefault("reason", "")
+    rec["except_keys"] = keys
+    rec["except_programs"] = programs
+    rec["except_chats"] = chats
+    if getattr(args, "drain", False) and not rec.get("drain"):
+        rec["drain"] = True
+        rec["drain_since"] = now_iso()
+    if not _write_pause_record(rec):
+        return 1
+    norm = pause_record()
+    ledger("focused", selectors=selectors_text(norm),
+           reason=rec.get("reason", ""))
+    hlog("FOCUSED at %s selectors=%s"
+         % (now_iso(), selectors_text(norm)))
+    print("FOCUSED at %s — only jobs matching [%s] dispatch; "
+          "maintenance jobs still flow%s."
+          % (rec["ts"], selectors_text(norm),
+             "; draining toward the focus set" if rec.get("drain")
+             else ""))
+    return 0
+
+
+def _find_job(jobs, ref):
+    """Any job (any state) by id or key — the cmd_cancel lookup
+    shape, shared by the spec 013 record-targeting commands."""
+    for j in jobs:
+        if j["id"] == ref or j.get("key") == ref:
+            return j
+    return None
+
+
+def _resume_job(jobref):
+    """Job-level resume (spec 013 FR-009): clear the job's hold
+    request and withdraw its hold signal on the venue. The job
+    keeps its state — continuation is the owning chat's new
+    submission, per the checkpoint contract. A hold raised
+    host-side (FR-007) leaves no request on the record; a
+    `held_at_checkpoint` job is releasable either way, so the
+    withdrawal is queued regardless of which side raised the
+    signal."""
+    job = _find_job(load_jobs(), jobref)
+    if job is None:
+        print("no job %r (active or recent)" % jobref)
+        return 4
+    if not job.get("hold_requested") \
+            and job["state"] != "held_at_checkpoint":
+        print("job %s (key=%s, state=%s) has no hold requested — "
+              "nothing to release"
+              % (job["id"], job.get("key"), job["state"]))
+        return 0
+    job["hold_requested"] = False
+    job["hold_released_at"] = now_iso()
+    save_job(job)
+    ledger("hold_released", job_id=job["id"], key=job.get("key"))
+    sid, err = _submit_signal_job(job, hold=False)
+    if err:
+        print("hold released on the record for %s, but the signal "
+              "withdrawal could not be queued: %s" % (job["id"], err))
+        return 4
+    print("HOLD RELEASED for %s (key=%s); withdrawal queued as "
+          "%s. The job stays %s — resubmit to continue."
+          % (job["id"], job.get("key"), sid, job["state"]))
+    return 0
+
+
+def cmd_resume(args):
+    if getattr(args, "job", None):
+        return _resume_job(args.job)
     if pause_state() is None:
         print("NOT PAUSED")
         return 0
@@ -510,13 +764,24 @@ def cmd_outbox(args):
                 (" expected ~%g min" % exp) if exp else "")
         elif (ev.get("event") == "state_change"
                 and ev.get("to_status") == "completed"):
-            marks = job.get("markers") or []
-            hl = [m for m in marks if ("RESULT" in m or "VERDICT" in m)][:3]
-            msg = "%s COMPLETED run %s conclusion=%s markers=%d%s" % (
-                head, ev.get("run_id"), ev.get("conclusion") or "?",
-                len(marks),
-                (" | " + " ;; ".join(hl)) if hl
-                else (" | verdict pending harvest" if not marks else ""))
+            if job.get("state") == "held_at_checkpoint":
+                # Spec 013 FR-008: a checkpoint hold is never
+                # reported as a completion (or a failure).
+                msg = ("%s HELD_AT_CHECKPOINT run %s conclusion=%s "
+                       "— the job stopped itself cooperatively; "
+                       "resubmit to continue"
+                       % (head, ev.get("run_id"),
+                          ev.get("conclusion") or "?"))
+            else:
+                marks = job.get("markers") or []
+                hl = [m for m in marks
+                      if ("RESULT" in m or "VERDICT" in m)][:3]
+                msg = "%s COMPLETED run %s conclusion=%s markers=%d%s" % (
+                    head, ev.get("run_id"), ev.get("conclusion") or "?",
+                    len(marks),
+                    (" | " + " ;; ".join(hl)) if hl
+                    else (" | verdict pending harvest" if not marks
+                          else ""))
         elif (ev.get("event") == "watermark_escalation"
                 and ev.get("level") == "W2"):
             msg = "%s ESCALATED W2 %s run %s age=%s min" % (
@@ -767,6 +1032,14 @@ def cmd_submit(args):
         "flags": [],
         "maintenance": bool(getattr(args, "maintenance", False)),
         "notify_chat": getattr(args, "notify_chat", None),
+        # Spec 013 FR-003: an explicit --priority pins the job
+        # as human-set; anything else is optimizer territory.
+        "priority": (int(args.priority)
+                     if getattr(args, "priority", None) is not None
+                     else 0),
+        "priority_source": ("human"
+                            if getattr(args, "priority", None)
+                            is not None else "auto"),
     }
     if args.workflow == "grab.yml":
         if not args.grab_path:
@@ -845,6 +1118,8 @@ def cmd_adopt(args):
         "watermarks": {},
         "flags": [],
         "notify_chat": getattr(args, "notify_chat", None),
+        "priority": 0,
+        "priority_source": "auto",
     }
     save_job(job)
     ledger("adopted", job_id=job["id"], key=job["key"],
@@ -878,6 +1153,206 @@ def cmd_cancel(args):
     save_job(target)
     ledger("cancelled_local", job_id=target["id"], key=target["key"])
     print("CANCELLED (local only, nothing was dispatched) %s" % target["id"])
+    return 0
+
+
+def cmd_priority(args):
+    """Live priority change (spec 013 FR-004): a submitted job
+    only — ordering cannot apply to work already dispatched or
+    done. Stamps the job human-set (FR-012's pin) and goes
+    through the FR-013 verified write like every mutation."""
+    job = _find_job(load_jobs(), args.job)
+    if job is None:
+        print("ERROR: no job with id/key '%s'" % args.job)
+        return 2
+    if job["state"] != "submitted":
+        print("REFUSED: job %s is state=%s — priority orders the "
+              "waiting set only, and this job has already left it. "
+              "Nothing was changed."
+              % (job["id"], job["state"]))
+        return 3
+    old = _prio(job)
+    job["priority"] = int(args.value)
+    job["priority_source"] = "human"
+    save_job(job)
+    ledger("priority_changed", job_id=job["id"], key=job.get("key"),
+           old=old, new=int(args.value), source="human")
+    print("PRIORITY %s key=%s %s -> %s (human-set; effective at "
+          "the next sweep)" % (job["id"], job.get("key"), old,
+                               int(args.value)))
+    return 0
+
+
+# --- checkpoint holds (spec 013 FR-007/FR-008/FR-009) ------------------------
+
+def hold_signal_path(job):
+    """The venue path of this job's hold-signal file, or None
+    when its workflow runs on no signal-capable venue
+    (grab.yml). The path is passed to the job at dispatch as
+    the `hold_file` workflow input and reaches the job's
+    environment as $SYNCYARD_HOLD_FILE (FR-007)."""
+    directory = CHECKPOINT_HOLDS_DIR.get(job.get("workflow"))
+    if not directory:
+        return None
+    sep = "\\" if job.get("workflow") == "run.yml" else "/"
+    return directory + sep + job["id"] + ".hold"
+
+
+def checkpoint_marker_seen(job):
+    """True when the job's harvested markers carry the
+    checkpoint marker (FR-008): the marker alone, or followed
+    by a space, colon or equals — the boundary rule the
+    marker regex itself uses."""
+    for ln in job.get("markers") or []:
+        s = ln.strip()
+        if s == CHECKPOINT_MARKER:
+            return True
+        if s.startswith(CHECKPOINT_MARKER) and s[
+                len(CHECKPOINT_MARKER):
+                len(CHECKPOINT_MARKER) + 1] in (" ", ":", "="):
+            return True
+    return False
+
+
+def _signal_script_body(workflow, target_path, hold):
+    """The signal writer's script: create (hold=True) or remove
+    (hold=False) exactly the one venue file, printing a marker
+    either way. One short script per venue dialect."""
+    directory = target_path.rsplit("\\", 1)[0] \
+        if "\\" in target_path else target_path.rsplit("/", 1)[0]
+    if workflow == "run.yml":
+        if hold:
+            return "\n".join([
+                "$ErrorActionPreference = 'Stop'",
+                "New-Item -ItemType Directory -Force -Path '%s' "
+                "| Out-Null" % directory,
+                "Set-Content -NoNewline -Path '%s' -Value 'held'"
+                % target_path,
+                "'HOLD_SIGNAL_SET=%s'" % target_path,
+            ]) + "\n"
+        return "\n".join([
+            "Remove-Item -Force -ErrorAction SilentlyContinue "
+            "-Path '%s'" % target_path,
+            "'HOLD_SIGNAL_CLEARED=%s'" % target_path,
+        ]) + "\n"
+    if hold:
+        return "\n".join([
+            "mkdir -p '%s'" % directory,
+            "printf held > '%s'" % target_path,
+            "echo \"HOLD_SIGNAL_SET=%s\"" % target_path,
+        ]) + "\n"
+    return "\n".join([
+        "rm -f '%s'" % target_path,
+        "echo \"HOLD_SIGNAL_CLEARED=%s\"" % target_path,
+    ]) + "\n"
+
+
+def _submit_signal_job(target, hold):
+    """Deliver (or withdraw) a hold signal via an internal
+    maintenance job on the target's own workflow (FR-009):
+    maintenance, so the delivery flows under any pause, focus
+    or host hold, exactly like the gatekeeper's reboot signal.
+    Returns (signal_job_id, None) or (None, error)."""
+    workflow = target.get("workflow")
+    target_path = hold_signal_path(target)
+    if not target_path:
+        return None, ("workflow %s has no hold-signal venue"
+                      % workflow)
+    verb = "hold" if hold else "unhold"
+    key = "gk-%s-%s" % (verb, target["id"])
+    lane = target.get("lane") or "quick"
+    refusal = route_refusal(lane, workflow)
+    if refusal:
+        return None, refusal
+    jobs = load_jobs()
+    if find_active(jobs, key=key):
+        return None, ("a %s signal for %s is already in flight"
+                      % (verb, target["id"]))
+    os.makedirs(HOLDS_DIR, exist_ok=True)
+    script_path = os.path.join(HOLDS_DIR, key + ".script")
+    with open(script_path, "wb") as f:
+        f.write(_signal_script_body(workflow, target_path,
+                                    hold).encode("utf-8"))
+    with open(script_path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    job = {
+        "id": new_job_id(key),
+        "key": key,
+        "program": "syncyard",
+        "workflow": workflow,
+        "lane": lane,
+        "cwd": DEFAULT_CWD[workflow],
+        "expected_min": 2,
+        "state": "submitted",
+        "created_at": now_iso(),
+        "run_id": None,
+        "run_status": None,
+        "run_conclusion": None,
+        "adopted": False,
+        "verdict_source": None,
+        "watermarks": {},
+        "flags": [],
+        "maintenance": True,
+        "notify_chat": target.get("notify_chat"),
+        "priority": 0,
+        "priority_source": "auto",
+        "script_path": script_path,
+        "script_sha256": digest,
+    }
+    save_job(job)
+    ledger("submitted", job_id=job["id"], key=job["key"],
+           program=job["program"], workflow=job["workflow"],
+           lane=job["lane"], script_sha256=job["script_sha256"])
+    return job["id"], None
+
+
+def cmd_hold(args):
+    """Request a cooperative checkpoint hold (spec 013 FR-009):
+    record the request on the job, then deliver the signal
+    file to its venue. Only a job that has not yet dispatched
+    can act on the signal (it polls from its first step); the
+    request is refused for grab jobs (no signal venue) and for
+    terminal jobs."""
+    job = _find_job(load_jobs(), args.job)
+    if job is None:
+        print("ERROR: no job with id/key '%s'" % args.job)
+        return 2
+    if job.get("workflow") == "grab.yml" \
+            or job.get("workflow") not in CHECKPOINT_HOLDS_DIR:
+        print("REFUSED: job %s runs %s, which has no hold-signal "
+              "venue — grab jobs cannot be checkpoint-held."
+              % (job["id"], job.get("workflow")))
+        return 3
+    if job["state"] in ("completed", "cancelled",
+                        "held_at_checkpoint"):
+        print("REFUSED: job %s is state=%s — there is no "
+              "running or waiting work left to hold."
+              % (job["id"], job["state"]))
+        return 3
+    if job.get("hold_requested"):
+        print("hold already requested for %s (key=%s) at %s"
+              % (job["id"], job.get("key"),
+                 job.get("hold_requested_at")))
+        return 0
+    job["hold_requested"] = True
+    job["hold_requested_at"] = now_iso()
+    save_job(job)
+    ledger("hold_requested", job_id=job["id"], key=job.get("key"),
+           signal_path=hold_signal_path(job))
+    sid, err = _submit_signal_job(job, hold=True)
+    if err:
+        print("hold recorded on %s (key=%s), but the signal "
+              "could not be queued: %s. The job will not see a "
+              "signal until delivery succeeds — re-run 'gk hold' "
+              "after fixing the cause."
+              % (job["id"], job.get("key"), err))
+        return 4
+    print("HOLD REQUESTED for %s (key=%s): the signal file "
+          "reaches the venue via %s; a job polling "
+          "$SYNCYARD_HOLD_FILE stops at its next checkpoint. "
+          "Note: a job already running cannot see a signal "
+          "created after it started polling — see spec 013."
+          % (job["id"], job.get("key"), sid))
     return 0
 
 
@@ -938,6 +1413,9 @@ def dispatch_one(job, jobs):
             gh_args += ["-f", "image=" + job["image"]]
         if job.get("mounts"):
             gh_args += ["-f", "mounts=" + job["mounts"]]
+        hold_path = hold_signal_path(job)
+        if hold_path:
+            gh_args += ["-f", "hold_file=" + hold_path]
     rc, out, err = run_cmd(["gh"] + gh_args, timeout=60)
     run_id = None
     # Newer gh prints the created run URL on stdout - most robust capture.
@@ -1000,9 +1478,21 @@ def dispatch_pass(jobs, runs_by_id):
         held_lane_counts[j["lane"]] = held_lane_counts.get(j["lane"], 0) + 1
     held_hashes = {(j["workflow"], j.get("script_sha256")) for j in holding
                    if j.get("script_sha256")}
+    # Effective dispatch order (spec 013 FR-003/FR-012): the
+    # optimizer's unified key, evaluated once against a single
+    # instant so the whole pass orders consistently.
+    now = now_dt()
     waiting = sorted([j for j in jobs if j["state"] == "submitted"],
-                     key=lambda j: j["created_at"])
-    paused = (pause_state() is not None or stop_state() is not None)
+                     key=lambda j: dispatch_sort_key(j, now))
+    # Admission under a pause/focus record is one rule (spec 013
+    # FR-002), evaluated before ordering: maintenance flows; a
+    # job the focus record admits flows; the gatekeeper's own
+    # reboot jobs flow via the maintenance exemption, as today.
+    # A STOP record admits nothing beyond maintenance, exactly
+    # as today's combined check did. Drain (FR-005) changes no
+    # admission — it only adds the settle transition.
+    prec = pause_record()
+    gate_active = prec is not None or stop_state() is not None
     # Host dispatch holds (spec 011 FR-006): a host that has gone
     # down takes no new dispatches on any of its lanes — maintenance
     # included, the host is going away — until the hold is cleared
@@ -1022,8 +1512,9 @@ def dispatch_pass(jobs, runs_by_id):
     lanes_live = os.path.isfile(LANES_LIVE_FILE)
     for job in waiting:
         maint = bool(job.get("maintenance"))
-        if paused and not maint:
-            continue  # paused: program work holds; maintenance flows
+        if gate_active and not maint:
+            if prec is None or focus_match(job, prec) is None:
+                continue  # held by the pause/focus/stop gate
         if LANE_HOST.get(job["lane"]) in held_hosts \
                 and not _hold_exempt(job):
             continue  # host going down: held (see status board)
@@ -1238,9 +1729,23 @@ def watch_pass(jobs, runs_by_id):
             job["run_conclusion"] = run.get("conclusion")
             if not job.get("log_fetched_at"):
                 fetch_log_once(job)
-            job["state"] = "completed"
-            job["completed_at"] = job.get("completed_at") or now_iso()
-            save_job_safe(job, "completed")
+            if checkpoint_marker_seen(job):
+                # Spec 013 FR-008: the job stopped itself at a
+                # cooperative checkpoint. A distinct terminal
+                # state — not a completion, not a failure —
+                # whatever the run's conclusion says; the
+                # conclusion is kept on the record verbatim.
+                job["state"] = "held_at_checkpoint"
+                job["held_at_checkpoint_at"] = now_iso()
+                save_job_safe(job, "held_at_checkpoint")
+                ledger("held_at_checkpoint", job_id=job["id"],
+                       key=job["key"], run_id=job["run_id"],
+                       run_conclusion=job["run_conclusion"])
+            else:
+                job["state"] = "completed"
+                job["completed_at"] = (job.get("completed_at")
+                                        or now_iso())
+                save_job_safe(job, "completed")
         else:
             breaches += eval_watermarks(job, run)
             save_job_safe(job, "watch_update")
@@ -1265,6 +1770,41 @@ def acquire_lock():
             except OSError:
                 return False
         return False
+
+
+def maybe_settle_drain():
+    """The drain settle (spec 013 FR-005): when a draining
+    pause/focus record has nothing left executing outside its
+    admitted set, the drain completes — the record stays (the
+    pause itself stands) with `drain` cleared and the settle
+    stamped and ledgered. Maintenance jobs never block a
+    settle: they flow under every mode and are not what a
+    drain waits for. Admitted jobs still executing DO block
+    it under focus (the pipeline drains toward the focus set);
+    under a plain pause nothing program-side is admitted, so
+    any executing program job blocks."""
+    prec = pause_record()
+    if prec is None or not prec.get("drain"):
+        return False
+    for j in load_jobs():
+        if j.get("maintenance"):
+            continue
+        if j["state"] not in RUN_HOLDING_STATES:
+            continue
+        if j.get("run_status") == "completed":
+            continue
+        if focus_match(j, prec) is not None:
+            continue
+        return False
+    rec = pause_state()
+    rec["drain"] = False
+    rec["drain_settled_at"] = now_iso()
+    _write_text_file(PAUSE_FILE,
+                     json.dumps(rec, indent=2, sort_keys=True))
+    ledger("drain_settled", mode=prec["mode"])
+    hlog("DRAIN SETTLED at %s — the pause stands, fully "
+         "quiescent." % rec["drain_settled_at"])
+    return True
 
 
 def cmd_sweep(_args):
@@ -1314,15 +1854,23 @@ def cmd_sweep(_args):
         changes = breaches = 0
         if not lerr:
             changes, breaches = watch_pass(jobs, runs_by_id)
+            maybe_settle_drain()
         active = len([j for j in load_jobs()
                       if j["state"] in RUN_HOLDING_STATES
                       and j.get("run_status") != "completed"])
         waiting = len([j for j in load_jobs() if j["state"] == "submitted"])
+        prec_now = pause_record()
+        mode_tok = ""
+        if prec_now is not None:
+            mode_tok = (" FOCUSED" if prec_now["mode"] == "focused"
+                        else " PAUSED")
+            if prec_now.get("drain"):
+                mode_tok += " DRAINING"
         summary = ("SWEEP %s budget_remaining=%d%s%s dispatched=%d "
                    "changes=%d breaches=%d active=%d waiting=%d"
                    % (now_iso(), remaining,
                       " STANDDOWN" if standdown else "",
-                      " PAUSED" if pause_state() is not None else "",
+                      mode_tok,
                       dispatched, changes, breaches, active, waiting))
         print(summary)
         hlog(summary)
@@ -1904,11 +2452,23 @@ def cmd_status(args):
     if st is not None:
         print("!! STOPPED since %s — %s (sweeps no-op until `gk start`)"
               % (st.get("ts"), st.get("reason") or "no reason recorded"))
-    ps = pause_state()
-    if ps is not None:
-        print("!! PAUSED since %s — %s (program dispatch held; "
-              "maintenance jobs still flow)"
-              % (ps.get("ts"), ps.get("reason") or "no reason recorded"))
+    prec = pause_record()
+    if prec is not None:
+        if prec["mode"] == "focused":
+            print("!! FOCUSED since %s — %s (only jobs matching "
+                  "[%s] dispatch; maintenance jobs still flow)"
+                  % (prec.get("ts"),
+                     prec.get("reason") or "no reason recorded",
+                     selectors_text(prec)))
+        else:
+            print("!! PAUSED since %s — %s (program dispatch held; "
+                  "maintenance jobs still flow)"
+                  % (prec.get("ts"),
+                     prec.get("reason") or "no reason recorded"))
+        if prec.get("drain"):
+            print("!! DRAINING since %s — executing jobs finish, "
+                  "nothing new dispatches, then the pause settles"
+                  % (prec.get("drain_since") or prec.get("ts")))
     print(backchannel_status_line())
     for line in host_status_lines():
         print(line)
@@ -1937,6 +2497,34 @@ def cmd_status(args):
                   % (j["key"], j.get("run_id"), j.get("run_conclusion"),
                      j.get("verdict_source"),
                      len(j.get("markers", []))))
+    # Spec 013 FR-003/FR-006/FR-012: the waiting set in
+    # effective dispatch order (the same key the sweep uses,
+    # evaluated now), with priorities, sources, and each job's
+    # standing under the current pause/focus record.
+    now = now_dt()
+    waiting = sorted([j for j in jobs if j["state"] == "submitted"],
+                     key=lambda j: dispatch_sort_key(j, now))
+    if waiting:
+        print("\nwaiting (dispatch order):")
+        for j in waiting:
+            value, source = effective_priority(j, now)
+            mark = ""
+            if j.get("maintenance"):
+                mark = " [maintenance: admitted]"
+            elif prec is not None:
+                sel = focus_match(j, prec)
+                mark = (" [admitted via %s]" % sel) if sel \
+                    else " [held]"
+            print("  pri=%-4s (%s) lane=%-7s key=%s%s"
+                  % (value, source, j["lane"], j["key"], mark))
+    held_cp = [j for j in jobs if j["state"] == "held_at_checkpoint"]
+    if held_cp:
+        print("\nheld at checkpoint:")
+        for j in held_cp:
+            print("  %s run=%s conclusion=%s held_at=%s — resubmit "
+                  "to continue" % (j["key"], j.get("run_id"),
+                                    j.get("run_conclusion"),
+                                    j.get("held_at_checkpoint_at")))
     issues = [(j, job_issues(j)) for j in jobs]
     issues = [(j, i) for (j, i) in issues if i]
     print("\nISSUES: %d" % len(issues))
@@ -1988,14 +2576,58 @@ def main(argv=None):
     p.add_argument("--notify-chat", default=None,
                    help="chat id to push started/completed/escalated "
                         "updates for this job to (see `gk outbox`)")
+    p.add_argument("--priority", type=int, default=None,
+                   help="human-set dispatch priority (spec 013 "
+                        "FR-003): higher dispatches first; setting "
+                        "it pins the job against the optimizer")
     p.set_defaults(fn=cmd_submit)
 
     p = sub.add_parser("pause")
     p.add_argument("--reason", default="")
+    p.add_argument("--drain", action="store_true",
+                   help="drain first (spec 013 FR-005): executing "
+                        "jobs finish, nothing new dispatches, then "
+                        "the pause settles")
     p.set_defaults(fn=cmd_pause)
 
+    p = sub.add_parser("focus",
+                       help="pause all but the selected jobs "
+                            "(spec 013 FR-001): only jobs matching "
+                            "a selector dispatch")
+    p.add_argument("--except-key", action="append", default=None,
+                   help="job key or key prefix to keep flowing "
+                        "(repeatable)")
+    p.add_argument("--except-program", action="append", default=None,
+                   help="program to keep flowing (repeatable)")
+    p.add_argument("--except-chat", action="append", default=None,
+                   help="notify-chat id whose jobs keep flowing "
+                        "(repeatable)")
+    p.add_argument("--reason", default="")
+    p.add_argument("--drain", action="store_true",
+                   help="drain toward the focus set (spec 013 "
+                        "FR-005)")
+    p.set_defaults(fn=cmd_focus)
+
     p = sub.add_parser("resume")
+    p.add_argument("--job", default=None,
+                   help="release one job's checkpoint hold "
+                        "(spec 013 FR-009) instead of clearing "
+                        "the pipeline pause")
     p.set_defaults(fn=cmd_resume)
+
+    p = sub.add_parser("priority",
+                       help="change a waiting job's priority "
+                            "(spec 013 FR-004)")
+    p.add_argument("job", help="job id or key (submitted jobs only)")
+    p.add_argument("value", type=int,
+                   help="new priority (higher dispatches first)")
+    p.set_defaults(fn=cmd_priority)
+
+    p = sub.add_parser("hold",
+                       help="request a cooperative checkpoint hold "
+                            "on a job (spec 013 FR-009)")
+    p.add_argument("job", help="job id or key")
+    p.set_defaults(fn=cmd_hold)
 
     p = sub.add_parser("start")
     p.set_defaults(fn=cmd_start)

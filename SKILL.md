@@ -64,6 +64,36 @@ $GK status --repo
 $GK pause --reason "WSL cleanup + compact"
 $GK resume
 
+# Focus (spec 013): pause everything EXCEPT the selected jobs.
+# Selectors are repeatable and combinable; a key selector matches
+# the key or any key under it as a prefix. While focused, only
+# matching jobs (plus maintenance) dispatch. `gk resume` clears
+# pause and focus together.
+$GK focus --except-program gpu-unlock --reason "only the GPU work runs"
+$GK focus --except-key probe- --except-chat <chat-id>
+
+# Drain (spec 013): stop starting new work and let what is
+# executing finish; when the last non-admitted job completes the
+# pause settles itself (DRAINING shows in status meanwhile).
+# Composes with focus: the pipeline drains toward the focus set.
+$GK pause --drain --reason "wind down after this batch"
+$GK focus --except-program gpu-unlock --drain
+
+# Priorities (spec 013): higher dispatches first within the
+# waiting set. Set one at submit, or change it live while the
+# job is still waiting (a dispatched or finished job refuses).
+$GK submit ... --priority 10 --key <unique-key>
+$GK priority <job-id-or-key> 10
+
+# Checkpoint hold (spec 013): ask a job to stop itself at its
+# next checkpoint. The gatekeeper writes a hold-signal file on
+# the job's venue; a job that polls $SYNCYARD_HOLD_FILE, prints
+# CHECKPOINT_PAUSED and exits 86 is harvested as
+# held_at_checkpoint — not a failure. Release clears the signal;
+# the owning chat resubmits to continue.
+$GK hold <job-id-or-key>
+$GK resume --job <job-id-or-key>
+
 # The hard halt: sweeps no-op entirely (no budget spent, no watch)
 # until started again. Start clears both a stop and a pause.
 $GK stop --reason "fleet maintenance"
@@ -111,6 +141,36 @@ $GK reboot --host <host> [--force] [--delay <seconds>] [--requested-by <chat-id>
   the key for the same work; check `gk status` instead.
 - `--expected-min` matters for `long` and `gpu` jobs: health watermarks
   are judged against the declared expectation before lane defaults.
+- **Priorities auto-optimize by default (spec 013).** A job with no
+  explicit priority is ordered by the sweep's optimizer: shorter
+  declared expectations first, a small bonus for fitting the lane,
+  and steady aging (+1 per 10 minutes waited) so nothing starves —
+  an auto job's effective priority caps at 100. An explicit
+  `--priority` or `gk priority` value is **human-set and pinned**:
+  the optimizer never moves it, it wins any tie against an
+  auto-assigned value, and a value above 100 outranks every auto
+  job permanently. `gk status` lists the waiting set in effective
+  dispatch order with each job's effective priority and source
+  (`human`/`auto`), so the optimizer's hand is always visible and
+  overridable. Pause, focus, drain, and host holds are admission
+  decisions and outrank the optimizer absolutely: a held job never
+  dispatches, whatever its effective priority.
+- **Checkpoint holds are cooperative (spec 013).** The gatekeeper
+  cannot pause an arbitrary running script mid-flight. The signal
+  file can be raised by the gatekeeper (`gk hold`), by the job
+  itself, or directly by a host-local actor (for example the
+  spec 011 host guard when a shutdown is imminent) creating the
+  file at the same per-job path — no gatekeeper round-trip — and
+  the harvest is identical whichever side raised it. A job that
+  wants to be holdable polls the file named by `$SYNCYARD_HOLD_FILE`
+  between steps; when the file exists it prints `CHECKPOINT_PAUSED`,
+  exits with code 86, and the sweep records `held_at_checkpoint`
+  (the run's conclusion is kept verbatim but is not the verdict).
+  A signal created after a job's run started reaches that job only
+  if its venue directory already exists (the workflows create it
+  before the job starts); otherwise the hold takes effect for the
+  job's next dispatch. Continuation is a fresh submission by the
+  owning chat under a new key, resuming from its own checkpoints.
 - `gk cancel <id-or-key>` is local bookkeeping for jobs that were never
   dispatched. It never cancels a GitHub run. There is no command in this
   system that cancels a running job on a timer — see escalation below.

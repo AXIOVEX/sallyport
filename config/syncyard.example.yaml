@@ -31,6 +31,8 @@ dispatch:
   lock_stale_min: 10
   duplicate_policy: refuse    # refuse | allow (same --key while active)
   soft_cap_min: 30            # jobs expected longer are announced first
+  optimizer_ceiling: 100      # spec 013 FR-012: auto priorities cap here
+  optimizer_aging_step_min: 10  # spec 013 FR-012: +1 auto priority per 10 min waited
 
 # Script transport. Workflow inputs have a practical size
 # ceiling (~54 KB observed); larger scripts must use the
@@ -64,6 +66,28 @@ liveness:
 # non-positive or non-numeric value fails closed at load.
 reboot:
   grace_s: 60
+
+# Checkpoint hold (spec 013 FR-007). The cooperative job-level
+# pause contract: at dispatch each script job is passed the
+# venue path of its own hold file (holds_dir for its workflow
+# + "<job-id>.hold"), and the transport workflow exports that
+# path to the job's script as the env var named here. A job
+# that polls the file stops at its next checkpoint, prints
+# the marker, and exits with exit_code. The gatekeeper cannot
+# pause an arbitrary running script mid-flight — the contract
+# is cooperative, and a job that never polls the file is never
+# paused by it. Failure mode: an exit code outside 1..255, a
+# marker that is not a marker token, an invalid env var name,
+# or a holds_dir naming an undeclared workflow fails closed
+# at load. A workflow with no holds_dir entry gets no hold
+# file (gk hold refuses it by name).
+checkpoint:
+  exit_code: 86
+  marker: CHECKPOINT_PAUSED
+  env_var: SYNCYARD_HOLD_FILE
+  holds_dir:
+    run.yml: "C:\\Users\\trist\\Development\\Syncyard\\holds"
+    wsl.yml: /home/tpierson/.syncyard/holds
 
 # Hosts. Each host names its type, the transport workflows it
 # serves (execute = run a script, grab = return a file), the

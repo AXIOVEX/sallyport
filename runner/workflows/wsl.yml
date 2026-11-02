@@ -26,6 +26,9 @@ on:
         description: "WSL working directory"
         required: false
         default: '/home/tpierson'
+      hold_file:
+        description: "Checkpoint hold-signal path inside the distro (spec 013 FR-007); the job reads it via $SYNCYARD_HOLD_FILE"
+        required: false
 
 jobs:
   wsl:
@@ -37,11 +40,17 @@ jobs:
         env:
           CMD_B64: ${{ inputs.cmd_b64 }}
           WSL_CWD: ${{ inputs.cwd }}
+          HOLD_FILE: ${{ inputs.hold_file }}
         run: |
           $script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CMD_B64))
           $f = Join-Path $env:RUNNER_TEMP 'job.sh'
           [IO.File]::WriteAllText($f, ($script -replace "`r`n","`n"))
           # Manual Windows->WSL path conversion (wslpath strips backslashes via pwsh arg passing)
           $wslPath = '/mnt/' + $f.Substring(0,1).ToLower() + ($f.Substring(2) -replace '\\','/')
-          & wsl.exe -- bash -lc "cd '$env:WSL_CWD' && bash '$wslPath'"
+          $inner = "cd '$env:WSL_CWD' && bash '$wslPath'"
+          if ($env:HOLD_FILE) {
+            $holdDir = $env:HOLD_FILE.Substring(0, $env:HOLD_FILE.LastIndexOf('/'))
+            $inner = "mkdir -p '$holdDir' && SYNCYARD_HOLD_FILE='$env:HOLD_FILE' $inner"
+          }
+          & wsl.exe -- bash -lc $inner
           exit $LASTEXITCODE

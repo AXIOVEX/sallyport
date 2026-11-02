@@ -26,6 +26,9 @@ on:
         description: "Working directory"
         required: false
         default: 'C:\Users\trist'
+      hold_file:
+        description: "Checkpoint hold-signal path on this host (spec 013 FR-007); the job reads it via $env:SYNCYARD_HOLD_FILE"
+        required: false
 
 jobs:
   run:
@@ -38,8 +41,10 @@ jobs:
         working-directory: ${{ inputs.cwd }}
         env:
           CMD_B64: ${{ inputs.cmd_b64 }}
+          SYNCYARD_HOLD_FILE: ${{ inputs.hold_file }}
         run: |
           $script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CMD_B64))
+          if ($env:SYNCYARD_HOLD_FILE) { New-Item -ItemType Directory -Force -Path (Split-Path $env:SYNCYARD_HOLD_FILE) | Out-Null }
           $f = Join-Path $env:RUNNER_TEMP 'job.ps1'
           Set-Content -Path $f -Value $script -Encoding UTF8
           & pwsh -NoProfile -ExecutionPolicy Bypass -File $f

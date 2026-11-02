@@ -64,6 +64,15 @@ for fname in EXECUTE + GRAB:
     else:
         check(f"{fname}: takes path", "\n      path:" in text)
 
+# The checkpoint hold signal (spec 013 FR-007): the two venue
+# workflows that carry a holds_dir declare the hold_file input
+# and pass it to the job as SYNCYARD_HOLD_FILE.
+for fname in ("run.yml", "wsl.yml"):
+    text = open(os.path.join(WF_DIR, fname)).read()
+    check(f"{fname}: takes hold_file (spec 013)", "hold_file:" in text)
+    check(f"{fname}: exposes SYNCYARD_HOLD_FILE (spec 013)",
+          "SYNCYARD_HOLD_FILE" in text)
+
 # The docker transport declares its venue inputs and runs docker.
 dtext = open(os.path.join(WF_DIR, "docker.yml")).read()
 check("docker.yml: takes image", "\n      image:" in dtext)
