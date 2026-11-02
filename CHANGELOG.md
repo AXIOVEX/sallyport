@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Spec 017: standalone distribution. Syncyard now builds as
+  a standalone Python package alongside the gh extension:
+  a root `pyproject.toml` defines the single distribution
+  `syncyard`, its version read dynamically from the repo
+  VERSION file (no packaging edit on a version bump), zero
+  runtime dependencies, and a `syncyard` console command
+  that is a direct entry point to the gatekeeper's own
+  `main()` — no re-implemented verbs. The package-dir
+  mapping installs the literal `gatekeeper/` and
+  `backchannel/` files as the `syncyard` and
+  `syncyard.backchannel` namespace packages, so the
+  packaged code is the checkout code byte-for-byte (the new
+  packaging battery compares them, installs the wheel into
+  a fresh venv offline, and smokes the console command and
+  the config load). A tag-triggered release workflow
+  builds, `twine check`s, smoke-installs, and publishes to
+  PyPI via OIDC trusted publishing — no stored tokens; a
+  manual dry run does everything except publish. The first
+  publish waits on the owner's one-time trusted-publisher
+  registration on pypi.org (the name `syncyard` was checked
+  available, 2026-11-02). Documentation gains a MkDocs
+  site (stock theme, strict build wired into CI) and a
+  `.readthedocs.yaml`, ready for the owner's Read the Docs
+  import; the site excludes the unsent pitch brief and
+  labels spec-stage features as specified, not shipped.
+  The skills pack and this repo's SKILL.md now name the
+  standalone route beside the checkout and `gh syncyard`
+  routes wherever a command form is given. VERSION is
+  deliberately not bumped in this change (the release
+  mechanics ride the next feature version).
+
+### Added
 - Spec 014: tray settings UI and dynamic fleet display. The
   tray gains a single-instance Settings dialog (opened from
   the tray menu — the only window it ever shows) managing the

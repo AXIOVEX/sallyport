@@ -29,7 +29,7 @@ implement; behavior with no spec gets a spec in the same change.
 ## Commands
 
 ```bash
-GK="python3 gatekeeper/gk.py"
+GK="python3 gatekeeper/gk.py"   # or: gh syncyard   # or: syncyard (standalone package, spec 017)
 
 # Submit a Windows PowerShell job
 $GK submit --program <your-program> --workflow run.yml \
@@ -501,3 +501,46 @@ shipped (2026-11-01)**: `gk reboot` is implemented in the
 gatekeeper (refusal / backchannel / maintenance / unreachable
 pinned by golden scenario 7); the live fire drill on the
 production host is T022, still open.
+
+## Spec 017 — standalone distribution (specified + implemented 2026-11-02)
+
+Owner direction: keep the skill pack current, and keep a
+**standalone Syncyard alongside the extension**, with PyPI
+and Read the Docs. The repo root now carries a
+`pyproject.toml` defining the single distribution
+`syncyard`: version read dynamically from the repo `VERSION`
+file, zero runtime dependencies, and a `syncyard` console
+command that is a direct entry point to the gatekeeper's own
+`main()` — the full verb surface, nothing re-implemented.
+The package-dir mapping installs the literal `gatekeeper/`
+and `backchannel/` files as the `syncyard` and
+`syncyard.backchannel` namespace packages, so the packaged
+code is the checkout code byte-for-byte (`gk.py` loads
+`config.py` by file path from its own directory; the sibling
+layout is all the packaging needs). The fleet's door does
+not move: the live gatekeeper still runs by path from its
+own tree, and this change edits no gatekeeper, runner,
+tray, or backchannel code. An installed gatekeeper keeps its
+state beside the installed package and takes its config from
+`SYNCYARD_CONFIG` / `SYNCARD_CONFIG` or a `syncyard.yaml`
+beside the code. A tag-triggered release workflow builds,
+checks (`twine check`), smoke-installs into a clean venv,
+and publishes to PyPI by OIDC trusted publishing — no
+stored tokens; a manual dispatch runs the same pipeline as
+a dry run. **Two owner gates stand**: the first publish
+waits on the owner's pending trusted-publisher registration
+for project `syncyard` on pypi.org (name checked available
+2026-11-02, HTTP 404), and the public docs site waits on
+the owner's import on readthedocs.org (slug `syncyard`).
+The docs themselves are in the repo and build strict in CI:
+MkDocs (stock theme, no plugins), `.readthedocs.yaml`
+config v2 / Python 3.12, the unsent pitch brief excluded,
+spec-stage features (013 priorities/focus, 015 locks, 016
+adaptive lanes) labelled specified-not-shipped, and the
+changelog page a byte-synced copy of `CHANGELOG.md` pinned
+by the packaging battery (`packaging/test_packaging.py`).
+The skills contract now names the standalone route beside
+the checkout and `gh syncyard` routes wherever a command
+form is given, in all eight regenerated editions. Flagged
+follow-up, not built here: teach the `AXIOVEX/gh-syncyard`
+doctor lookup to also resolve a pip-installed `syncyard`.

@@ -1,0 +1,36 @@
+# Syncyard documentation site (spec 017 FR-006).
+# Built with MkDocs only - the stock theme, no plugins - so the
+# same build runs locally, in CI (`mkdocs build --strict`), and
+# on Read the Docs (.readthedocs.yaml).
+site_name: Syncyard
+site_description: Synchronized, gated dispatch to your own machines - self-hosted runner lanes plus an API-budget gatekeeper for agent workflows.
+site_url: https://syncyard.readthedocs.io/
+repo_url: https://github.com/AXIOVEX/syncyard
+repo_name: AXIOVEX/syncyard
+
+theme:
+  name: mkdocs
+
+strict: true
+
+# docs/github-pitch.md is a prepared, unsent pitch brief
+# (spec 010 FR-011), not documentation; it never joins the site.
+exclude_docs: |
+  github-pitch.md
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quickstart: quickstart.md
+  - Concepts: concepts.md
+  - Configuration: configuration.md
+  - Skills pack: skills.md
+  - Fleet standard: STANDARD.md
+  - Migration: MIGRATION.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - tables
+  - fenced_code
