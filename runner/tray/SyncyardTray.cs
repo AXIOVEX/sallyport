@@ -1,7 +1,8 @@
 // SyncyardTray.cs - windowless supervisor for the Syncyard runners.
 //
-// Spec: AXIOVEX/syncyard spec 007 (windowless supervision) and
-// spec 014 (tray settings UI and dynamic fleet display).
+// Spec: AXIOVEX/syncyard spec 007 (windowless supervision),
+// spec 014 (tray settings UI and dynamic fleet display), and
+// spec 018 (tray connection indicator).
 // Claim: the desktop runners run with NO console window created and
 // none left open in the owner's interactive session, while staying in
 // that session so jobs keep access to the owner's WSL distro, audio
@@ -304,6 +305,15 @@ namespace SyncyardTray
         public string FleetStatusPath =
             @"C:\Users\trist\Development\Syncyard\status\fleet-status.json";
         public int FleetStaleSeconds = 300;
+        // Spec 018: the backchannel agent's heartbeat file on this
+        // host. The deployed agent (backchannel/agent.sh) writes
+        // it at ~/syncyard-backchannel/repo/channels/syncyard-dev/
+        // heartbeat.json inside the owner's WSL distro; the tray
+        // reads the same file through the distro's UNC share.
+        public string ConnectionHeartbeatPath =
+            @"\\wsl.localhost\Ubuntu-24.04\home\tpierson\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json";
+        public int ConnectionStaleSeconds = 180;
+        public int ConnectionDownSeconds = 900;
 
         private readonly Dictionary<string, bool> _laneEnabled =
             new Dictionary<string, bool>();
@@ -369,6 +379,24 @@ namespace SyncyardTray
                 if (!string.IsNullOrEmpty(fp)) s.FleetStatusPath = fp;
                 s.FleetStaleSeconds = Clamp(MiniJson.GetInt(text,
                     "fleetStaleSeconds", s.FleetStaleSeconds), 30, 3600);
+                string hb = MiniJson.GetString(text,
+                    "connectionHeartbeatPath");
+                if (!string.IsNullOrEmpty(hb))
+                    s.ConnectionHeartbeatPath = hb;
+                s.ConnectionStaleSeconds = Clamp(MiniJson.GetInt(text,
+                    "connectionStaleSeconds", s.ConnectionStaleSeconds),
+                    10, 3600);
+                s.ConnectionDownSeconds = Clamp(MiniJson.GetInt(text,
+                    "connectionDownSeconds", s.ConnectionDownSeconds),
+                    30, 86400);
+                if (s.ConnectionStaleSeconds >= s.ConnectionDownSeconds)
+                {
+                    // An inverted pair cannot be evaluated; fall
+                    // back to the FR-001 defaults rather than
+                    // guess which bound the owner meant.
+                    s.ConnectionStaleSeconds = 180;
+                    s.ConnectionDownSeconds = 900;
+                }
                 foreach (var lane in Lanes)
                     s.SetLaneEnabled(lane, MiniJson.GetBool(text,
                         "laneEnabled_" + lane, true));
@@ -409,6 +437,17 @@ namespace SyncyardTray
                 "\"" + MiniJson.Escape(FleetStatusPath) + "\"", true);
             Line(sb, "fleetStaleSeconds",
                 FleetStaleSeconds.ToString(CultureInfo.InvariantCulture),
+                true);
+            Line(sb, "connectionHeartbeatPath",
+                "\"" + MiniJson.Escape(ConnectionHeartbeatPath) + "\"",
+                true);
+            Line(sb, "connectionStaleSeconds",
+                ConnectionStaleSeconds.ToString(
+                    CultureInfo.InvariantCulture),
+                true);
+            Line(sb, "connectionDownSeconds",
+                ConnectionDownSeconds.ToString(
+                    CultureInfo.InvariantCulture),
                 true);
             for (int i = 0; i < Lanes.Length; i++)
                 Line(sb, "laneEnabled_" + Lanes[i],
@@ -593,6 +632,158 @@ namespace SyncyardTray
         }
     }
 
+    // The tray's connection state (spec 018): whether this host
+    // is in contact with the fleet, judged ONLY from signals
+    // already present on the host - the backchannel agent's
+    // heartbeat file (primary) and, when a publisher exists, the
+    // fleet-status snapshot (secondary). The tray makes no
+    // network calls of its own and never becomes a second
+    // watcher; the indicator is display only (FR-007): this
+    // section reads the signal files and nothing else - it
+    // starts nothing, stops nothing, and writes nothing.
+    internal sealed class ConnectionStatus
+    {
+        public const int Connected = 0;
+        public const int Stale = 1;
+        public const int Disconnected = 2;
+
+        public int State = Disconnected;
+        public bool HasSignal;
+        public double AgeSeconds = -1;
+        public string SignalName = "";   // "heartbeat" | "fleet snapshot"
+        public bool HeartbeatSeen;
+        public bool SnapshotSeen;
+
+        // The pure state function (FR-001): no signal ever seen
+        // is DISCONNECTED - a fresh install must not claim a
+        // connection it has never observed.
+        public static int StateForAge(bool hasSignal, double ageSeconds,
+            int staleSeconds, int downSeconds)
+        {
+            if (!hasSignal) return Disconnected;
+            if (ageSeconds <= staleSeconds) return Connected;
+            if (ageSeconds <= downSeconds) return Stale;
+            return Disconnected;
+        }
+
+        public static string StateName(int state)
+        {
+            return state == Connected ? "CONNECTED"
+                 : state == Stale ? "STALE" : "DISCONNECTED";
+        }
+
+        public static string FormatAgeShort(double seconds)
+        {
+            if (seconds < 90) return ((int)seconds) + " s";
+            return ((int)(seconds / 60)) + " min";
+        }
+
+        // The menu/tooltip wording (FR-003). The no-signal case
+        // reads "unknown" in words even though the icon state
+        // is DISCONNECTED: the words report what the tray knows,
+        // the icon reports the state it must assume.
+        public string Line()
+        {
+            if (!HasSignal)
+                return "Connection: unknown (no signal seen yet)";
+            if (State == Connected)
+                return "Connection: connected (" + SignalName + " " +
+                    FormatAgeShort(AgeSeconds) + " ago)";
+            if (State == Stale)
+                return "Connection: stale (" + SignalName + " " +
+                    FormatAgeShort(AgeSeconds) + " ago)";
+            return "Connection: disconnected (no " + SignalName +
+                " for " + FormatAgeShort(AgeSeconds) + ")";
+        }
+
+        // Signal honesty (FR-004): name exactly the signals the
+        // judgement could rest on - never imply a fleet-side
+        // confirmation the tray does not have.
+        public string SignalDetail()
+        {
+            if (HeartbeatSeen && SnapshotSeen)
+                return "signals: backchannel heartbeat + fleet snapshot";
+            if (SnapshotSeen) return "signal: fleet snapshot only";
+            return "signal: backchannel heartbeat only";
+        }
+
+        // Evaluate the newest available signal. The snapshot's
+        // age is the one FleetStatus already computed from its
+        // embedded generated_at; a snapshot with no readable
+        // stamp is not a usable signal.
+        public static ConnectionStatus Evaluate(string heartbeatPath,
+            FleetStatus fleet, int staleSeconds, int downSeconds)
+        {
+            var cs = new ConnectionStatus();
+            double hbAge;
+            cs.HeartbeatSeen = TryHeartbeatAge(heartbeatPath, out hbAge);
+            double snapAge = -1;
+            if (fleet != null && fleet.HasData && fleet.AgeSeconds >= 0)
+            {
+                cs.SnapshotSeen = true;
+                snapAge = fleet.AgeSeconds;
+            }
+            if (cs.HeartbeatSeen &&
+                (!cs.SnapshotSeen || hbAge <= snapAge))
+            {
+                cs.HasSignal = true;
+                cs.AgeSeconds = hbAge;
+                cs.SignalName = "heartbeat";
+            }
+            else if (cs.SnapshotSeen)
+            {
+                cs.HasSignal = true;
+                cs.AgeSeconds = snapAge;
+                cs.SignalName = "fleet snapshot";
+            }
+            cs.State = StateForAge(cs.HasSignal, cs.AgeSeconds,
+                staleSeconds, downSeconds);
+            return cs;
+        }
+
+        // The heartbeat's age from its own embedded "ts" (the
+        // agent stamps every beat, backchannel/agent.sh), with
+        // the file's write time as the fallback when the stamp
+        // is unreadable. Read-only and vanishing-tolerant: the
+        // agent replaces the file atomically, but a share can
+        // still drop mid-read - retry once, then treat the file
+        // as missing for this tick.
+        private static bool TryHeartbeatAge(string path,
+            out double ageSeconds)
+        {
+            ageSeconds = -1;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                try
+                {
+                    if (string.IsNullOrEmpty(path) ||
+                        !File.Exists(path))
+                        return false;
+                    string text = File.ReadAllText(path);
+                    string ts = MiniJson.GetString(text, "ts");
+                    DateTime stamp;
+                    if (ts != null && DateTime.TryParse(ts,
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.AdjustToUniversal |
+                            DateTimeStyles.AssumeUniversal, out stamp))
+                    {
+                        ageSeconds =
+                            (DateTime.UtcNow - stamp).TotalSeconds;
+                    }
+                    else
+                    {
+                        ageSeconds = (DateTime.UtcNow -
+                            File.GetLastWriteTimeUtc(path)).TotalSeconds;
+                    }
+                    if (ageSeconds < 0) ageSeconds = 0;
+                    return true;
+                }
+                catch { /* vanished mid-read: one retry, above */ }
+            }
+            return false;
+        }
+    }
+
     internal static class Program
     {
         [STAThread]
@@ -663,10 +854,13 @@ namespace SyncyardTray
         private readonly Image _logoImage;
         private Icon _currentIcon;
         private int _iconState = -1;
+        private int _iconConnState = -1;
         private ContextMenuStrip _menu;
         private int _tick;
         private TraySettings _settings;
         private FleetStatus _fleet;
+        private ConnectionStatus _conn;
+        private int _lastConnState = -1;
         private SettingsForm _settingsForm;
 
         public TrayApp()
@@ -726,6 +920,15 @@ namespace SyncyardTray
             if (_settings.HideStrayConsoles) HideStrayConsoles();
             _fleet = FleetStatus.Load(_settings.FleetStatusPath,
                 _settings.FleetStaleSeconds);
+            // The connection baseline (spec 018): evaluated
+            // once here so the first tick's compare-and-log has
+            // a prior state; the startup state itself is not a
+            // transition and is not logged as one.
+            _conn = ConnectionStatus.Evaluate(
+                _settings.ConnectionHeartbeatPath, _fleet,
+                _settings.ConnectionStaleSeconds,
+                _settings.ConnectionDownSeconds);
+            _lastConnState = _conn.State;
             RebuildMenu();
 
             _timer = new System.Windows.Forms.Timer();
@@ -764,6 +967,25 @@ namespace SyncyardTray
             // same snapshot (spec 014 FR-008/FR-010).
             _fleet = FleetStatus.Load(_settings.FleetStatusPath,
                 _settings.FleetStaleSeconds);
+            // The connection judgement rides the same tick
+            // (spec 018 FR-001); a transition is logged with the
+            // signal age that caused it, and only a transition
+            // (FR-006) - steady-state ticks write nothing.
+            _conn = ConnectionStatus.Evaluate(
+                _settings.ConnectionHeartbeatPath, _fleet,
+                _settings.ConnectionStaleSeconds,
+                _settings.ConnectionDownSeconds);
+            if (_conn.State != _lastConnState)
+            {
+                Log("connection " +
+                    ConnectionStatus.StateName(_lastConnState) +
+                    " -> " + ConnectionStatus.StateName(_conn.State) +
+                    " (" + (_conn.HasSignal
+                        ? _conn.SignalName + " age " +
+                            ((int)_conn.AgeSeconds) + " s"
+                        : "no signal seen") + ")");
+                _lastConnState = _conn.State;
+            }
             RebuildMenu();
             RefreshSettingsDialog();
         }
@@ -910,6 +1132,7 @@ namespace SyncyardTray
         internal IList<RunnerDef> Runners { get { return _runners; } }
         internal TraySettings Settings { get { return _settings; } }
         internal FleetStatus Fleet { get { return _fleet; } }
+        internal ConnectionStatus Connection { get { return _conn; } }
 
         internal void LaneStart(RunnerDef r)
         {
@@ -959,6 +1182,16 @@ namespace SyncyardTray
                 (_settings.HideStrayConsoles ? "on" : "off"));
             _fleet = FleetStatus.Load(_settings.FleetStatusPath,
                 _settings.FleetStaleSeconds);
+            // A settings save can move the thresholds or the
+            // heartbeat path (spec 018 FR-005): re-evaluate and
+            // re-baseline silently - a change the owner just
+            // made in the dialog is not a fleet transition and
+            // must not log as one.
+            _conn = ConnectionStatus.Evaluate(
+                _settings.ConnectionHeartbeatPath, _fleet,
+                _settings.ConnectionStaleSeconds,
+                _settings.ConnectionDownSeconds);
+            _lastConnState = _conn.State;
             RebuildMenu();
         }
 
@@ -1049,6 +1282,21 @@ namespace SyncyardTray
             return s;
         }
 
+        // The menu's connection lines (spec 018 FR-003/FR-004):
+        // the state in words, then which signals it rests on.
+        private string ConnectionText()
+        {
+            if (_conn == null)
+                return "Connection: unknown (no signal seen yet)";
+            return _conn.Line();
+        }
+
+        private string ConnectionDetailText()
+        {
+            if (_conn == null) return "signal: backchannel heartbeat only";
+            return _conn.SignalDetail();
+        }
+
         private string FleetNextText()
         {
             if (_fleet == null || !_fleet.HasData ||
@@ -1078,6 +1326,13 @@ namespace SyncyardTray
                 nextLine.Enabled = false;
                 menu.Items.Add(nextLine);
             }
+            var connLine = new ToolStripMenuItem(ConnectionText());
+            connLine.Enabled = false;
+            menu.Items.Add(connLine);
+            var connDetail = new ToolStripMenuItem(
+                ConnectionDetailText());
+            connDetail.Enabled = false;
+            menu.Items.Add(connDetail);
             menu.Items.Add(new ToolStripSeparator());
             int running = 0;
             foreach (var r in _runners) if (r.Running) running++;
@@ -1159,18 +1414,23 @@ namespace SyncyardTray
 
             int iconState = AnyFaulted() || running == 0 ? 2
                           : running == _runners.Count ? 0 : 1;
-            SetIcon(iconState);
+            SetIcon(iconState, _conn.State);
             _icon.Text = TooltipText(running);
         }
 
         // The tooltip carries the fleet mode + waiting count when
         // a snapshot exists (spec 014 FR-007), capped at the
-        // notification area's safe text length. The icon itself
-        // stays purely runner-derived - fleet data never renders.
+        // notification area's safe text length. Fleet data never
+        // renders into the icon itself; the icon's second
+        // dimension is the connection state (spec 018), judged
+        // from host-local signals only.
         private string TooltipText(int running)
         {
             string s = "Syncyard: " + running + "/" + _runners.Count +
                 " runners up";
+            // The tooltip carries the connection line too
+            // (spec 018 FR-003), ahead of the fleet summary.
+            if (_conn != null) s += " - " + _conn.Line();
             if (_fleet != null && _fleet.HasData)
             {
                 s += " - " + _fleet.ModeLine() + " - " +
@@ -1187,7 +1447,17 @@ namespace SyncyardTray
         // light and dark taskbars. The dot exists only if the mark
         // itself failed to load, which the embedded resource makes a
         // should-never-happen path.
-        private void SetIcon(int state)
+        //
+        // Spec 018 adds the second dimension WITHOUT touching the
+        // runner semantics above: the slash stays runner-only, and
+        // the connection state is drawn as a link mark in the
+        // icon's bottom-right corner (DrawLinkMark) - solid when
+        // connected, hollow amber when stale, broken when
+        // disconnected, and a disconnected host's mark is
+        // desaturated even when its runners are all up, because
+        // from the owner's chair that host has fallen off the
+        // fleet and must read as off at a glance.
+        private void SetIcon(int state, int conn)
         {
             // Render only on a state change. The 2026-11-01 field
             // build re-rendered on every 5 s tick and leaked the
@@ -1196,8 +1466,9 @@ namespace SyncyardTray
             // 10.5 h; the tray then died with a System.Drawing
             // OutOfMemoryException raised while it was building its
             // own error dialog. Renders are now rare AND tight.
-            if (state == _iconState && _currentIcon != null) return;
+            if (state == _iconState && conn == _iconConnState && _currentIcon != null) return;
             _iconState = state;
+            _iconConnState = conn;
             var bmp = new Bitmap(32, 32);
             using (var g = Graphics.FromImage(bmp))
             {
@@ -1208,11 +1479,13 @@ namespace SyncyardTray
                 g.Clear(Color.Transparent);
                 if (_logoImage != null)
                 {
-                    if (state == 2)
+                    if (state == 2 || conn == ConnectionStatus.Disconnected)
                     {
                         // Fully offline reads as a dead icon: the mark
                         // in grayscale under the red slash, visibly
-                        // different from the live color states.
+                        // different from the live color states. Spec
+                        // 018: a disconnected host desaturates the
+                        // same way, whatever its runners are doing.
                         var gray = new System.Drawing.Imaging.ColorMatrix(
                             new float[][] {
                                 new float[] {0.33f, 0.33f, 0.33f, 0, 0},
@@ -1244,6 +1517,7 @@ namespace SyncyardTray
                         using (var pen = new Pen(slash, 5))
                             g.DrawLine(pen, 6, 26, 26, 6);
                     }
+                    DrawLinkMark(g, conn);
                 }
                 else
                 {
@@ -1275,6 +1549,51 @@ namespace SyncyardTray
             _icon.Icon = _currentIcon;
             if (old != null) old.Dispose();
             bmp.Dispose();
+        }
+
+        // The connection link mark (spec 018 FR-002), drawn in
+        // the icon's bottom-right corner - the corner the runner
+        // slash's diagonal (bottom-left to top-right) leaves
+        // clear. Two interlocking rings: thick-walled (solid)
+        // when connected, thin-walled (hollow) amber when stale;
+        // when disconnected, a single ring with a gap, struck
+        // through in the fault red. The wall thickness is the
+        // solid/hollow distinction. A white halo sits under the
+        // mark so it reads on light and dark taskbars, like the
+        // slash. Primitives on the icon's existing bitmap only:
+        // no new bitmap, no new handle (the PR #39 discipline).
+        private static void DrawLinkMark(Graphics g, int conn)
+        {
+            Color link = conn == ConnectionStatus.Connected
+                ? Color.FromArgb(34, 139, 34)
+                : conn == ConnectionStatus.Stale
+                ? Color.FromArgb(235, 165, 25)
+                : Color.FromArgb(225, 45, 45);
+            float wall = conn == ConnectionStatus.Connected ? 3f : 1.6f;
+            if (conn == ConnectionStatus.Disconnected)
+            {
+                using (var halo = new Pen(Color.White, 3.6f))
+                    g.DrawArc(halo, 19, 19, 11, 11, 35, 290);
+                using (var pen = new Pen(link, 1.6f))
+                    g.DrawArc(pen, 19, 19, 11, 11, 35, 290);
+                using (var halo = new Pen(Color.White, 4.4f))
+                    g.DrawLine(halo, 19, 30, 30, 19);
+                using (var strike = new Pen(link, 2.4f))
+                    g.DrawLine(strike, 19, 30, 30, 19);
+            }
+            else
+            {
+                using (var halo = new Pen(Color.White, wall + 2f))
+                {
+                    g.DrawEllipse(halo, 16, 20, 9, 9);
+                    g.DrawEllipse(halo, 22, 14, 9, 9);
+                }
+                using (var pen = new Pen(link, wall))
+                {
+                    g.DrawEllipse(pen, 16, 20, 9, 9);
+                    g.DrawEllipse(pen, 22, 14, 9, 9);
+                }
+            }
         }
 
         private void Log(string msg)
@@ -1310,8 +1629,14 @@ namespace SyncyardTray
         private readonly NumericUpDown _numTick;
         private readonly CheckBox[] _laneChk;
         private readonly Label[] _laneState;
+        private readonly Label _connState;
+        private readonly Label _connDetail;
+        private readonly TextBox _txtHeartbeatPath;
+        private readonly NumericUpDown _numConnStale;
+        private readonly NumericUpDown _numConnDown;
         private readonly Label _fleetMode;
         private readonly Label _fleetDetail;
+        private readonly Label _fleetSignal;
         private readonly TextBox _txtFleetPath;
         private readonly NumericUpDown _numStale;
         private readonly ListView _queue;
@@ -1325,7 +1650,7 @@ namespace SyncyardTray
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
             MinimizeBox = false;
-            ClientSize = new Size(600, 684);
+            ClientSize = new Size(600, 826);
 
             var grpTray = new GroupBox();
             grpTray.Text = "Tray";
@@ -1376,9 +1701,59 @@ namespace SyncyardTray
             _numTick.Size = new Size(70, 20);
             grpTray.Controls.Add(_numTick);
 
+            var grpConn = new GroupBox();
+            grpConn.Text = "Connection (this host to the fleet)";
+            grpConn.Location = new Point(12, 174);
+            grpConn.Size = new Size(576, 132);
+            Controls.Add(grpConn);
+
+            _connState = new Label();
+            _connState.Location = new Point(16, 24);
+            _connState.Size = new Size(544, 20);
+            grpConn.Controls.Add(_connState);
+
+            _connDetail = new Label();
+            _connDetail.Location = new Point(16, 46);
+            _connDetail.Size = new Size(544, 20);
+            grpConn.Controls.Add(_connDetail);
+
+            var lblHb = new Label();
+            lblHb.Text = "Heartbeat file:";
+            lblHb.Location = new Point(16, 74);
+            lblHb.Size = new Size(96, 20);
+            grpConn.Controls.Add(lblHb);
+            _txtHeartbeatPath = new TextBox();
+            _txtHeartbeatPath.Location = new Point(116, 72);
+            _txtHeartbeatPath.Size = new Size(444, 20);
+            grpConn.Controls.Add(_txtHeartbeatPath);
+
+            var lblConnStale = new Label();
+            lblConnStale.Text = "Stale after (seconds):";
+            lblConnStale.Location = new Point(16, 102);
+            lblConnStale.Size = new Size(160, 20);
+            grpConn.Controls.Add(lblConnStale);
+            _numConnStale = new NumericUpDown();
+            _numConnStale.Minimum = 10;
+            _numConnStale.Maximum = 3600;
+            _numConnStale.Location = new Point(180, 100);
+            _numConnStale.Size = new Size(70, 20);
+            grpConn.Controls.Add(_numConnStale);
+
+            var lblConnDown = new Label();
+            lblConnDown.Text = "Down after (seconds):";
+            lblConnDown.Location = new Point(270, 102);
+            lblConnDown.Size = new Size(160, 20);
+            grpConn.Controls.Add(lblConnDown);
+            _numConnDown = new NumericUpDown();
+            _numConnDown.Minimum = 30;
+            _numConnDown.Maximum = 86400;
+            _numConnDown.Location = new Point(434, 100);
+            _numConnDown.Size = new Size(70, 20);
+            grpConn.Controls.Add(_numConnDown);
+
             var grpLanes = new GroupBox();
             grpLanes.Text = "Runner lanes";
-            grpLanes.Location = new Point(12, 174);
+            grpLanes.Location = new Point(12, 318);
             grpLanes.Size = new Size(576, 204);
             Controls.Add(grpLanes);
 
@@ -1456,8 +1831,8 @@ namespace SyncyardTray
             var grpFleet = new GroupBox();
             grpFleet.Text =
                 "Fleet (read-only - managed with the gk commands)";
-            grpFleet.Location = new Point(12, 390);
-            grpFleet.Size = new Size(576, 232);
+            grpFleet.Location = new Point(12, 534);
+            grpFleet.Size = new Size(576, 240);
             Controls.Add(grpFleet);
 
             _fleetMode = new Label();
@@ -1496,7 +1871,7 @@ namespace SyncyardTray
             _queue.View = View.Details;
             _queue.FullRowSelect = true;
             _queue.Location = new Point(16, 130);
-            _queue.Size = new Size(544, 62);
+            _queue.Size = new Size(544, 48);
             _queue.Columns.Add("Key", 205);
             _queue.Columns.Add("Program", 90);
             _queue.Columns.Add("Lane", 55);
@@ -1505,24 +1880,31 @@ namespace SyncyardTray
             _queue.Columns.Add("State", 60);
             grpFleet.Controls.Add(_queue);
 
+            // The connection judgement's signal set, stated in
+            // the fleet section too (spec 018 FR-004).
+            _fleetSignal = new Label();
+            _fleetSignal.Location = new Point(16, 186);
+            _fleetSignal.Size = new Size(544, 16);
+            grpFleet.Controls.Add(_fleetSignal);
+
             var note = new Label();
             note.Text = "Published by the gatekeeper and shown " +
                 "read-only. Change fleet state with the gk commands " +
                 "(spec 013), not from the tray.";
-            note.Location = new Point(16, 200);
+            note.Location = new Point(16, 206);
             note.Size = new Size(544, 28);
             grpFleet.Controls.Add(note);
 
             var btnSave = new Button();
             btnSave.Text = "Save";
-            btnSave.Location = new Point(404, 640);
+            btnSave.Location = new Point(404, 786);
             btnSave.Size = new Size(84, 26);
             btnSave.Click += delegate { OnSave(); };
             Controls.Add(btnSave);
 
             var btnCancel = new Button();
             btnCancel.Text = "Cancel";
-            btnCancel.Location = new Point(496, 640);
+            btnCancel.Location = new Point(496, 786);
             btnCancel.Size = new Size(84, 26);
             btnCancel.Click += delegate { Close(); };
             Controls.Add(btnCancel);
@@ -1535,6 +1917,9 @@ namespace SyncyardTray
             _chkAutostart.Checked = TraySettings.AutostartIsRegistered();
             _numCap.Value = s.MaxRestartsPerHour;
             _numTick.Value = s.TickSeconds;
+            _txtHeartbeatPath.Text = s.ConnectionHeartbeatPath;
+            _numConnStale.Value = s.ConnectionStaleSeconds;
+            _numConnDown.Value = s.ConnectionDownSeconds;
             _txtFleetPath.Text = s.FleetStatusPath;
             _numStale.Value = s.FleetStaleSeconds;
             for (int i = 0; i < TraySettings.Lanes.Length; i++)
@@ -1555,12 +1940,33 @@ namespace SyncyardTray
         private void OnSave()
         {
             var cur = _app.Settings;
+            // Spec 018 FR-005: the connection thresholds must
+            // satisfy stale < down. An invalid pair is refused
+            // here, with the fields named, and nothing is saved
+            // - the prior values stay in force.
+            int cStale = (int)_numConnStale.Value;
+            int cDown = (int)_numConnDown.Value;
+            if (cStale >= cDown)
+            {
+                MessageBox.Show(
+                    "Connection stale threshold (" + cStale +
+                    " s) must be less than the down threshold (" +
+                    cDown + " s). Settings were not saved.",
+                    "Syncyard Tray", MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
             var next = new TraySettings();
             next.Autostart = _chkAutostart.Checked;
             next.SupervisionEnabled = _chkSupervision.Checked;
             next.MaxRestartsPerHour = (int)_numCap.Value;
             next.TickSeconds = (int)_numTick.Value;
             next.HideStrayConsoles = _chkHide.Checked;
+            string hb = _txtHeartbeatPath.Text.Trim();
+            next.ConnectionHeartbeatPath =
+                hb.Length > 0 ? hb : cur.ConnectionHeartbeatPath;
+            next.ConnectionStaleSeconds = cStale;
+            next.ConnectionDownSeconds = cDown;
             string fp = _txtFleetPath.Text.Trim();
             next.FleetStatusPath =
                 fp.Length > 0 ? fp : cur.FleetStatusPath;
@@ -1585,6 +1991,18 @@ namespace SyncyardTray
                     : r.Faulted ? "FAULTED - owner needed"
                     : r.Running ? "running" : "stopped";
             }
+            // The connection section (spec 018): the state in
+            // words plus the signal set it rests on, refreshed
+            // from the tray tick like the lane states.
+            var c = _app.Connection;
+            _connState.Text = c == null
+                ? "Connection: unknown (no signal seen yet)"
+                : c.Line();
+            string sig = c == null
+                ? "signal: backchannel heartbeat only"
+                : c.SignalDetail();
+            _connDetail.Text = sig;
+            _fleetSignal.Text = sig;
             var f = _app.Fleet;
             if (f == null)
             {

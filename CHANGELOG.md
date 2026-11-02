@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Spec 018: tray connection indicator. The tray icon gains a
+  second dimension beside runner health: a link mark in the
+  icon's corner (solid when connected, hollow amber when
+  stale, broken with the mark desaturated when disconnected)
+  judged only from signals already present on the host — the
+  backchannel agent's heartbeat file (its embedded `ts`; the
+  deployed agent's WSL path is the default, reached through
+  the `\\wsl.localhost` share) and, when a publisher exists,
+  the fleet snapshot's stamp — newest signal wins. Three
+  states from signal age with tray-settings thresholds
+  (`connectionStaleSeconds` 180, `connectionDownSeconds` 900,
+  the down bound mirroring the gatekeeper's host liveness
+  limit); no signal ever seen reads as disconnected on the
+  icon and "unknown" in words. The menu, tooltip, and the
+  settings dialog's new Connection section state the state
+  in words and name the exact signal set (until the spec 014
+  FR-009 publisher ships: "backchannel heartbeat only").
+  Every transition is logged to tray.log with its signal
+  age. Rendering stays render-on-change, now keyed on the
+  (runner, connection) pair; the runner slash geometry and
+  semantics are untouched, and the link mark is primitives
+  on the existing bitmap (no new handle churn). Display
+  only: no network probe, no signal-file writes, no gating
+  of supervision. VERSION is deliberately not bumped (the
+  spec 013 stack owns 0.4.0).
 - Spec 014: tray settings UI and dynamic fleet display. The
   tray gains a single-instance Settings dialog (opened from
   the tray menu — the only window it ever shows) managing the
