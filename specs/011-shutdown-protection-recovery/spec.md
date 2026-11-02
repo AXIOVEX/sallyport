@@ -87,6 +87,149 @@ keyboard could revive.
 - **FR-015 (Part D, below) is added**: a controlled,
   drain-aware host reboot verb for the gatekeeper.
 
+## Amendment 2 — Owner speed directive: the drain and the guard (2026-11-02, ~02:29 ET)
+
+The owner, ordering this build (verbatim intent): "make sure
+when we are running, we block boot and when we see a
+reboot/shutdown eminent, we pause all jobs and wait for
+checkpoints - be as fast as we can." This amendment states
+the Phase 2 (drain) and Phase 3 (guard + going-down writer)
+requirements at the speed the directive demands. The
+protection level is unchanged: **delay + drain + checkpoint
++ notify, never prevent.**
+
+**The two drains, reconciled (spec 013 vs this spec).** Spec
+013's `gk pause --drain` (and `gk focus --drain`) is
+**pipeline-scoped and passive**: it signals nothing, holds
+nothing per host, and merely lets the sweep notice that the
+globally executing set has emptied before it stamps the
+pause record settled — its subject is the pipeline. This
+spec's `gk drain --host` (FR-007) is **host-scoped and
+active**: it sets the host's drain hold (below), raises
+checkpoint holds on the host's running jobs through spec
+013's FR-008 signal path, waits for each job's own deadline,
+and returns a per-job verdict — its subject is one machine
+about to go away. A job dispatches only when **both** layers
+admit it: the global admission (pause / focus / optimizer)
+and the per-host holds (the FR-006 going-down hold and this
+drain hold) are a conjunction, and no layer's verb clears
+another layer's state — `gk resume` clears the global record
+only; `gk host-resume <host>` clears that host's holds (both
+kinds, one act). The drain hold is a distinct field on the
+host's liveness record, not a reuse of the FR-006 hold: a
+going-down ingest must never be able to clear an operator's
+drain, nor an operator's drain masquerade as a shutdown.
+
+- **FR-007-A (`gk drain --host`, the operator drain).**
+  Behavior: signal every running checkpoint-capable job on
+  the host first, then set the host's drain hold, then wait
+  per lane (the host's checkpoint window, FR-005) and print
+  a per-job verdict — CHECKPOINTED, FINISHED, ENDED, or
+  UNCHECKPOINTED with a named reason — exiting 0 exactly
+  when no job is left uncheckpointed. Queued jobs on the
+  host are never signaled; they wait under the drain hold.
+  The verdict covers gatekeeper jobs only: no supervised
+  work is registered until the FR-008 vehicle exists
+  (Phase 4), and the verdict text says so. Acceptance mode:
+  test (`gatekeeper/test_spec011.py`, scenarios 1–10) +
+  human-as-oracle (T005's live pass, still owed). *This
+  does not establish* that any individual job honors its
+  hold — the harvest is the contract's marker, and a job
+  that never prints it is named UNCHECKPOINTED, not assumed
+  checkpointed.
+- **FR-002-A (guard duty (a) — the block, immediately).**
+  The guard MUST register the OS shutdown block with a
+  reason string naming the running-job count as soon as it
+  observes running work (pre-registered in steady state, so
+  no registration race exists inside the shutdown's own
+  countdown), and MUST veto a session-end attempt while a
+  drain is incomplete. Acceptance mode: test (source
+  battery, `runner/guard/test_guard_source.py`) + oracle at
+  T006. *This does not establish* the block against a forced
+  shutdown (`/f`, a critical session end): Windows law
+  (the design envelope) says those cannot be reliably
+  blocked, and the guard's critical path records and signals
+  without claiming a veto.
+- **FR-008-A (guard duty (b) — local hold raising).** On a
+  session-end signal the guard MUST raise the hold file of
+  every running checkpoint-capable job it can see in the
+  running-job registry, at the exact spec 013 paths carried
+  by each registry entry, by local file creation only — no
+  gatekeeper round-trip, no network call of any kind exists
+  in the component. The registry is maintained by the
+  transport workflows themselves (an entry written before
+  the job runs, removed when it ends, aged out by its
+  `started` stamp when orphaned): the guard covers exactly
+  the checkpoint-capable set, the same set `gk drain`
+  signals. Acceptance mode: test (source battery + workflow
+  contract battery) + oracle at T006. *This does not
+  establish* coverage of jobs whose registration failed
+  (registration is best-effort by design — its failure
+  degrades coverage, never the job) or of job classes with
+  no hold venue (grab, docker, POSIX lanes), which the
+  guard cannot see and does not claim to.
+- **FR-003-A (guard duty (c) — the writer, fastest
+  channel).** The guard MUST write the going-down record —
+  the Phase 1 shape exactly, dedupe keyed by (host, ts) —
+  BEFORE vetoing, through a verified write (temp file,
+  read-back compare, rename), to the well-known host file
+  the backchannel agent merges into the heartbeat payload.
+  **Channel, stated and justified**: the heartbeat payload
+  is the only input the shipped Phase 1 ingest reads, and
+  the sweep already spends exactly one read of it per pass;
+  the merge therefore adds no new API class, no new
+  heartbeat format, and no ingest change — the fastest
+  channel the existing contract supports. Host-local
+  latency is one file write (sub-second); end-to-end
+  ingest latency is bounded by the agent cycle (~60 s) plus
+  the sweep cadence, and that bound is part of this
+  requirement, not a footnote. `uncheckpointed` at write
+  time is the at-risk set; the record is never rewritten —
+  final checkpoint accounting is the gatekeeper's marker
+  harvest, and a same-(host, ts) rewrite would be deduped
+  away by design. Acceptance mode: test (the writer-contract
+  scenarios ingest the guard's exact record shape in
+  `gatekeeper/test_spec011.py`, including exactly-once) +
+  oracle at T006. *This does not establish* the supervised
+  half of the record: the guard writes `supervised: []`
+  because no FR-008 registrations exist on the host yet —
+  Phase 4 populates it, and the empty list is the honest
+  current value.
+- **FR-005-A (guard duty (d) — bounded release + re-issue).**
+  The guard MUST release the block when the registry empties
+  (every running job checkpointed or ended) or when the
+  configured checkpoint window expires — the guard's own
+  `window_s`, default 120 s, set independently of the
+  gatekeeper's `drain.window_s` because the guard must act
+  with the gatekeeper unreachable — MUST write a drain
+  outcome record either way, and MUST then re-issue the
+  pending action: a logoff via ExitWindowsEx, anything else
+  as a restart. **Restart is a named design decision for
+  the owner's review**: WM_QUERYENDSESSION cannot
+  distinguish the vetoed action (restart vs poweroff); a
+  restart returns the host to service under Part C's
+  boot story, while a poweroff leaves the fleet dark until
+  someone is at the machine. The guard yields exactly once
+  to its own re-issued action so it cannot veto-loop.
+  Acceptance mode: test (source battery settle paths) +
+  oracle at T006. *This does not establish* behavior under
+  a second, genuinely new shutdown arriving inside the
+  10-minute yield — that attempt is allowed by design
+  (it is indistinguishable from the re-issued one), and the
+  limitation is stated here rather than discovered later.
+- **Config (`drain` section).** `drain.window_s` (default
+  120), `drain.per_lane_window_s` (per-lane overrides of
+  the FR-005 per-lane deadline), `drain.guard_stale_after_s`
+  (default 180): fail-closed validated, mirrored exactly in
+  `config/syncyard.example.yaml`. The guard-staleness rule
+  implements T007's gatekeeper half: the guard's beat rides
+  the heartbeat as `guard`, staleness is judged against the
+  carrying heartbeat's own timestamp (both host-clock), a
+  transition ledgers `guard_stale` / `guard_recovered`
+  exactly once, and `gk status` shows the beat and its
+  staleness — a stopped guard is a visible host-health
+  entry, never silent.
+
 ## The gap
 
 Syncyard's components each survive some failures and none of

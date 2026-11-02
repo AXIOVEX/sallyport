@@ -48,9 +48,32 @@ jobs:
           # Manual Windows->WSL path conversion (wslpath strips backslashes via pwsh arg passing)
           $wslPath = '/mnt/' + $f.Substring(0,1).ToLower() + ($f.Substring(2) -replace '\\','/')
           $inner = "cd '$env:WSL_CWD' && bash '$wslPath'"
+          $regFileWsl = $null
           if ($env:HOLD_FILE) {
             $holdDir = $env:HOLD_FILE.Substring(0, $env:HOLD_FILE.LastIndexOf('/'))
             $inner = "mkdir -p '$holdDir' && SYNCYARD_HOLD_FILE='$env:HOLD_FILE' $inner"
+            # Running-job registry (spec 011 Phase 3): same
+            # contract as run.yml — an entry in the `running`
+            # dir beside the holds dir while the job runs, so
+            # the host guard can find this job and its hold
+            # file locally. Written from here over the WSL UNC
+            # path (the distro is running: this job is in it).
+            # Best-effort: failure degrades guard coverage,
+            # never the job; the entry is removed at job end
+            # and ages out by its `started` stamp if orphaned.
+            try {
+              $jid = [IO.Path]::GetFileNameWithoutExtension($env:HOLD_FILE)
+              $parent = $holdDir.Substring(0, $holdDir.LastIndexOf('/'))
+              $distro = ((wsl.exe --list --quiet | Where-Object { $_ -match '\S' } | Select-Object -First 1) -replace "`0", "").Trim()
+              $uncDir = '\\wsl.localhost\' + $distro + ($parent -replace '/', '\') + '\running'
+              New-Item -ItemType Directory -Force -Path $uncDir | Out-Null
+              $regFileWsl = Join-Path $uncDir "$jid.entry"
+              $lines = @("job_id=$jid", "run_id=${{ github.run_id }}", "workflow=wsl.yml", "lane=${{ inputs.lane }}", "hold_file=$env:HOLD_FILE", "hold_file_win=\\wsl.localhost\$distro" + ($env:HOLD_FILE -replace '/', '\'), "started=$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))")
+              Set-Content -Path "$regFileWsl.tmp" -Value $lines -Encoding UTF8
+              Move-Item -Force "$regFileWsl.tmp" $regFileWsl
+            } catch { $regFileWsl = $null }
           }
           & wsl.exe -- bash -lc $inner
-          exit $LASTEXITCODE
+          $rc = $LASTEXITCODE
+          if ($regFileWsl) { Remove-Item -Force -ErrorAction SilentlyContinue $regFileWsl }
+          exit $rc

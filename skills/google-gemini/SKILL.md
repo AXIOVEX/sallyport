@@ -143,6 +143,26 @@ $GK outbox
   owner continues the work with a fresh submission (the old
   job's checkpoints are the resume state), after the operator
   clears the signal with `gk resume --job <id>`.
+- **Host drains and the shutdown guard (spec 011).**
+  `gk drain --host <host>` is the polite prelude to restarting
+  or shutting down one host: it signals the host's running
+  checkpoint-capable jobs, sets the host's drain hold, waits
+  out the checkpoint window, and prints a per-job verdict
+  (exit 0 = CLEAN, 1 = INTERRUPTING with the uncheckpointed
+  jobs named). It is host-scoped and active — distinct from
+  `gk pause --drain`, which is global and passive — and
+  neither clears the other's state; `gk host-resume <host>`
+  clears that host's holds (drain and going-down alike). On a
+  guarded host the guard does the same drain automatically
+  when a shutdown, restart, or logoff is imminent: it blocks
+  the session end with a reason string, writes the going-down
+  record first, raises the running jobs' hold files locally
+  (no gatekeeper round-trip), and releases the block and
+  re-issues the pending action when every job has settled or
+  the window expires — delay, never prevent. The guard's
+  heartbeat rides the host liveness record; a stale guard
+  beat in `gk status` means the protection is down — report
+  it, never work around it.
 
 ## Periodic status-check duty (spec 009 FR-005)
 

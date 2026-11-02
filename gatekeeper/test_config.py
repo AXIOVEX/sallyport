@@ -71,6 +71,10 @@ check("golden checkpoint contract (spec 013 FR-007)",
       and cfg["checkpoint"]["holds_dir"] == {
           "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
           "wsl.yml": "/home/tpierson/.syncyard/holds"})
+check("golden drain (spec 011 FR-005/FR-007)",
+      cfg["drain"]["window_s"] == 120
+      and cfg["drain"]["per_lane_window_s"] == {}
+      and cfg["drain"]["guard_stale_after_s"] == 180)
 check("golden log cap", cfg["retention"]["human_log_max_bytes"] == 1000000)
 check("golden cwd windows", cfg["hosts"]["desktop"]["cwd"]["run.yml"] == r"C:\Users\trist")
 check("golden cwd grab null", cfg["hosts"]["desktop"]["cwd"]["grab.yml"] is None)
@@ -105,6 +109,7 @@ check("defaults == example fleet surface",
       and dflt["liveness"] == cfg["liveness"]
       and dflt["reboot"] == cfg["reboot"]
       and dflt["dispatch"] == cfg["dispatch"]
+      and dflt["drain"] == cfg["drain"]
       and dflt["checkpoint"] == cfg["checkpoint"])
 
 # 4: partial override merges.
@@ -181,6 +186,22 @@ expect_error("reject checkpoint holds_dir for undeclared workflow",
              "checkpoint:\n  holds_dir:\n    teleport.yml: /tmp/holds\n")
 expect_error("reject empty checkpoint holds_dir value",
              "checkpoint:\n  holds_dir:\n    run.yml: ''\n")
+expect_error("reject zero drain window",
+             "drain:\n  window_s: 0\n")
+expect_error("reject negative drain window",
+             "drain:\n  window_s: -10\n")
+expect_error("reject non-numeric drain window",
+             "drain:\n  window_s: soon\n")
+expect_error("reject boolean drain window",
+             "drain:\n  window_s: true\n")
+expect_error("reject drain override for undeclared lane",
+             "drain:\n  per_lane_window_s:\n    warp: 30\n")
+expect_error("reject zero drain per-lane window",
+             "drain:\n  per_lane_window_s:\n    quick: 0\n")
+expect_error("reject non-mapping drain per-lane windows",
+             "drain:\n  per_lane_window_s: 30\n")
+expect_error("reject zero guard staleness bound",
+             "drain:\n  guard_stale_after_s: 0\n")
 
 # 6: a valid liveness override loads and lands.
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
@@ -208,6 +229,17 @@ check("checkpoint override loads",
       over["checkpoint"]["exit_code"] == 42
       and over["checkpoint"]["marker"] == "HELD_HERE"
       and over["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE")
+
+# 9: a valid drain override loads and lands.
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("drain:\n  window_s: 45\n  per_lane_window_s:\n    gpu: 300\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("drain override loads",
+      over["drain"]["window_s"] == 45
+      and over["drain"]["per_lane_window_s"] == {"gpu": 300}
+      and over["drain"]["guard_stale_after_s"] == 180)
 
 print()
 if fails:
