@@ -64,20 +64,113 @@ class SnapshotShape(unittest.TestCase):
             self.assertTrue({"key", "program", "lane"} <= set(w))
 
     def test_optional_fields_pass_through(self):
-        self.job("p-job", priority=5, priority_source="operator",
-                 held=True)
+        self.job("p-job", priority=5, priority_source="human")
         snap = fleet_status.build_snapshot(self.dir)
         w = snap["waiting"][0]
         self.assertEqual(w["priority"], 5)
-        self.assertEqual(w["priority_source"], "operator")
-        self.assertEqual(w["held"], True)
+        self.assertEqual(w["priority_source"], "human")
+        # No pause in force: nothing is held, and the flag is
+        # always present (the tray keys on its presence).
+        self.assertEqual(w["held"], False)
+
+    def test_focused_full_selectors_and_legacy_merge(self):
+        write(os.path.join(self.dir, "PAUSED.json"),
+              {"reason": "focus run",
+               "except_keys": ["leg5", "hot-fix"],
+               "except_key": "leg5",
+               "except_programs": ["chronoc"],
+               "except_chats": ["chat-1"]})
+        snap = fleet_status.build_snapshot(self.dir)
+        self.assertEqual(snap["mode"], "focused")
+        # The legacy singular merges without duplicating.
+        self.assertEqual(snap["focus"]["keys"], ["leg5", "hot-fix"])
+        self.assertEqual(snap["focus"]["programs"], ["chronoc"])
+        self.assertEqual(snap["focus"]["chats"], ["chat-1"])
+
+    def test_drain_from_pause_record(self):
+        write(os.path.join(self.dir, "PAUSED.json"),
+              {"reason": "winding down", "drain": True})
+        snap = fleet_status.build_snapshot(self.dir)
+        self.assertEqual(snap["mode"], "paused")
+        self.assertEqual(snap["draining"], True)
+
+    def test_drain_from_host_hold(self):
+        write(os.path.join(self.dir, "hosts.json"),
+              {"desktop": {"hold": True, "going_down": None},
+               "desktop-wsl": {"hold": False, "going_down": None}})
+        snap = fleet_status.build_snapshot(self.dir)
+        self.assertEqual(snap["mode"], "running")
+        self.assertEqual(snap["draining"], True)
+
+    def test_going_down_history_alone_does_not_drain(self):
+        write(os.path.join(self.dir, "hosts.json"),
+              {"desktop": {"hold": False,
+                           "going_down": {"ts": "2026-11-03T00:00:00Z"}}})
+        snap = fleet_status.build_snapshot(self.dir)
+        self.assertEqual(snap["draining"], False)
+
+    def test_held_matrix(self):
+        write(os.path.join(self.dir, "PAUSED.json"),
+              {"except_keys": ["leg5"],
+               "except_programs": ["chronoc"],
+               "except_chats": ["chat-9"]})
+        self.job("leg5j2", program="other")
+        self.job("leg6x", program="other")
+        self.job("anykey", program="chronoc")
+        self.job("anykey2", program="other", notify_chat="chat-9")
+        self.job("maint", program="other", maintenance=True)
+        snap = fleet_status.build_snapshot(self.dir)
+        held = {w["key"]: w["held"] for w in snap["waiting"]}
+        self.assertEqual(held, {"leg5j2": False, "leg6x": True,
+                                "anykey": False, "anykey2": False,
+                                "maint": False})
+
+    def test_stopped_holds_everything(self):
+        write(os.path.join(self.dir, "STOPPED.json"), {})
+        self.job("j1", maintenance=True)
+        snap = fleet_status.build_snapshot(self.dir)
+        self.assertEqual(snap["waiting"][0]["held"], True)
+
+    def test_stopped_shows_stop_reason_not_pause_reason(self):
+        write(os.path.join(self.dir, "PAUSED.json"),
+              {"reason": "old pause reason"})
+        write(os.path.join(self.dir, "STOPPED.json"),
+              {"ts": "2026-11-03T00:00:00Z",
+               "reason": "owner stop order"})
+        snap = fleet_status.build_snapshot(self.dir)
+        self.assertEqual(snap["mode"], "stopped")
+        self.assertEqual(snap["reason"], "owner stop order")
+
+    def test_stopped_corrupt_record_still_stopped(self):
+        with open(os.path.join(self.dir, "STOPPED.json"), "w") as f:
+            f.write("not json{{{")
+        snap = fleet_status.build_snapshot(self.dir)
+        self.assertEqual(snap["mode"], "stopped")
+        self.assertEqual(snap["reason"], "")
+
+    def test_free_lane_jobs_sort_before_busy_lane_jobs(self):
+        # A normal-lane job submitted first still sorts behind
+        # a quick-lane job when normal is busy and quick is
+        # free: the quick job is the one that can go next.
+        self.job("busy-job", lane="normal",
+                 created_at="2026-11-03T02:00:00Z", state="watching")
+        self.job("old-waiting", lane="normal",
+                 created_at="2026-11-03T00:00:00Z")
+        self.job("new-waiting", lane="quick",
+                 created_at="2026-11-03T01:00:00Z")
+        snap = fleet_status.build_snapshot(self.dir)
+        self.assertEqual([w["key"] for w in snap["waiting"]],
+                         ["new-waiting", "old-waiting"])
 
     def test_paused_with_reason_and_focus(self):
+        # A pause record carrying an exception selector is a
+        # FOCUS under spec 013 FR-001, not a plain pause; the
+        # legacy singular except_key merges into the key list.
         write(os.path.join(self.dir, "PAUSED.json"),
               {"ts": "2026-11-03T00:00:00Z", "reason": "owner hold",
                "except_key": "hot-fix"})
         snap = fleet_status.build_snapshot(self.dir)
-        self.assertEqual(snap["mode"], "paused")
+        self.assertEqual(snap["mode"], "focused")
         self.assertEqual(snap["reason"], "owner hold")
         self.assertEqual(snap["focus"]["keys"], ["hot-fix"])
 
@@ -95,15 +188,27 @@ class SnapshotShape(unittest.TestCase):
 
 
 class FakeAPI:
-    def __init__(self):
+    def __init__(self, fail_first_put_with=None, remaining=5000,
+                 fail_all_puts_with=None):
         self.puts = []
         self.sha = "abc"
+        self.fail_first_put_with = fail_first_put_with
+        self.fail_all_puts_with = fail_all_puts_with
+        self.remaining = remaining
+
+    def core_remaining(self):
+        return self.remaining
 
     def get_sha(self, path):
         return self.sha
 
     def put_file(self, path, body, message, sha=None):
         self.puts.append((path, body, message, sha))
+        if self.fail_all_puts_with is not None:
+            raise self.fail_all_puts_with
+        if self.fail_first_put_with is not None \
+                and len(self.puts) == 1:
+            raise self.fail_first_put_with
         return {}
 
 
@@ -118,6 +223,39 @@ class Publish(unittest.TestCase):
         self.assertEqual(path, fleet_status.DEFAULT_PATH)
         self.assertEqual(sha, "abc")
         self.assertEqual(json.loads(body.decode("utf-8")), snap)
+
+    def test_publish_retries_once_on_sha_conflict(self):
+        import urllib.error
+        d = tempfile.mkdtemp()
+        os.mkdir(os.path.join(d, "queue"))
+        conflict = urllib.error.HTTPError(
+            "https://api.github.com", 409, "conflict", None, None)
+        api = FakeAPI(fail_first_put_with=conflict)
+        snap = fleet_status.publish(d, api=api)
+        self.assertEqual(len(api.puts), 2)
+        self.assertEqual(snap["mode"], "running")
+
+    def test_publish_double_conflict_raises_never_reports(self):
+        # A publish that never landed must surface as a
+        # failure, never as a printed PUBLISHED line: two
+        # consecutive conflicts exhaust the retry and raise.
+        import urllib.error
+        d = tempfile.mkdtemp()
+        os.mkdir(os.path.join(d, "queue"))
+        conflict = urllib.error.HTTPError(
+            "https://api.github.com", 409, "conflict", None, None)
+        api = FakeAPI(fail_all_puts_with=conflict)
+        with self.assertRaises(urllib.error.HTTPError):
+            fleet_status.publish(d, api=api)
+        self.assertEqual(len(api.puts), 2)
+
+    def test_publish_skips_under_budget_floor(self):
+        d = tempfile.mkdtemp()
+        os.mkdir(os.path.join(d, "queue"))
+        api = FakeAPI(remaining=fleet_status.BUDGET_FLOOR - 1)
+        with self.assertRaises(fleet_status.BudgetSkip):
+            fleet_status.publish(d, api=api)
+        self.assertEqual(api.puts, [])
 
 
 if __name__ == "__main__":
