@@ -42,6 +42,21 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
+
+// Assembly identity (2026-11-03, tray antivirus root-cause fix 1): the
+// compiled tray must carry its real name, maker, and version. Builds
+// before this shipped with version 0.0.0.0 and every identity field
+// empty, which is one of the four factors in the root-cause record
+// (TRAY-AV-ROOT-CAUSE-2026-11-03). Keep the versions in step with the
+// repo VERSION file on every release.
+[assembly: System.Reflection.AssemblyTitle("Syncyard Tray")]
+[assembly: System.Reflection.AssemblyDescription("Syncyard fleet tray: runner supervision, settings, and connection status")]
+[assembly: System.Reflection.AssemblyCompany("Axiovex Systems, LLC")]
+[assembly: System.Reflection.AssemblyProduct("Syncyard Tray")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright (c) Axiovex Systems, LLC")]
+[assembly: System.Reflection.AssemblyVersion("0.3.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.3.0.0")]
+
 namespace SyncyardTray
 {
     internal sealed class RunnerDef
