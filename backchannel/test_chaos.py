@@ -22,6 +22,13 @@ channel repo and subjects it to the failure cases:
      the wrapper must still bound (issue #36)
  11. a genuinely mismatched sha256 is still refused (exit
      65, nothing executed) and the loop carries on
+ 12. git stall: with the remote blackholed (every git network
+     call hangs until its timeout), the heartbeat keeps a
+     bounded cadence - it is written at the top of the cycle,
+     before any git operation - and the self-test refreshes
+     periodically instead of only at start (2026-11-03 field
+     lesson: stacked 120s timeouts stretched the beat to 904s
+     and the tray honestly reported DISCONNECTED)
 
 Everything lives in a temp dir; the agent is pointed at it via
 SYNCBC_BASE / SYNCBC_REPO_URL / SYNCBC_POLL_S=1. Stdlib only.
@@ -33,9 +40,11 @@ import json
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -407,6 +416,82 @@ def main():
         check("refusal: loop unharmed, next command executes",
               out is not None and out.get("exit_code") == 0
               and "CHAOS_AFTER_REFUSAL" in (out.get("stdout_tail") or ""))
+
+        # 12: git stall (2026-11-03 field lesson). Restart the
+        # agent with a 6s git timeout and a 3-cycle self-test
+        # refresh. First, against the healthy remote: the
+        # self-test must refresh on cadence, with no restart.
+        # Then blackhole the agent clone's remote: a listener
+        # that accepts TCP and never answers, so every git
+        # network operation hangs until its timeout kills it.
+        # The heartbeat is written at the top of the cycle, before
+        # any git operation, and again after execution - so even
+        # with pull + the whole push stack timing out, beats land
+        # at most (push stack + sleep) apart (~19s here). An agent
+        # that beats only at the end of the cycle gaps ~25s.
+        with open(AGENT) as fh:
+            agent_src = fh.read()
+        check("gitstall: shipped git timeout default is 45s",
+              "SYNCBC_GIT_TIMEOUT_S:-45" in agent_src)
+        rig.kill_agent(sig=signal.SIGTERM)
+        time.sleep(1)
+        for var in ("http_proxy", "https_proxy", "HTTP_PROXY",
+                    "HTTPS_PROXY"):
+            rig.agent_env.pop(var, None)
+        rig.agent_env["no_proxy"] = "127.0.0.1"
+        rig.agent_env["SYNCBC_GIT_TIMEOUT_S"] = "6"
+        rig.agent_env["SYNCBC_SELFTEST_EVERY"] = "3"
+        selftests_before = rig.agent_log_text().count("self-test written")
+        rig.start_agent()
+        refreshed = wait_for(
+            lambda: rig.agent_log_text().count("self-test written")
+            >= selftests_before + 3,  # start-up + two refreshes
+            60, "self-test refreshes")
+        check("gitstall: self-test refreshes without a restart",
+              refreshed is not None,
+              f"before={selftests_before} "
+              f"after={rig.agent_log_text().count('self-test written')}")
+        blackhole = socket.socket()
+        blackhole.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        blackhole.bind(("127.0.0.1", 0))
+        blackhole.listen(8)
+        bh_port = blackhole.getsockname()[1]
+        bh_socks = []
+
+        def bh_accept():
+            while True:
+                try:
+                    conn, _ = blackhole.accept()
+                    bh_socks.append(conn)
+                except OSError:
+                    return
+        bh_thread = threading.Thread(target=bh_accept, daemon=True)
+        bh_thread.start()
+        clone = os.path.join(rig.base, "repo")
+        run(["git", "-C", clone, "remote", "set-url", "origin",
+             f"http://127.0.0.1:{bh_port}/chan.git"], env=rig.env)
+        beats = []
+        last_ts = None
+        deadline = time.time() + 75
+        while time.time() < deadline and len(beats) < 5:
+            ts = (rig.read_chan_json("heartbeat.json") or {}).get("ts")
+            if ts and ts != last_ts:
+                beats.append((time.time(), ts))
+                last_ts = ts
+            time.sleep(0.4)
+        gaps = [round(beats[i + 1][0] - beats[i][0], 1)
+                for i in range(len(beats) - 1)]
+        check("gitstall: heartbeat keeps beating against a dead remote",
+              len(beats) >= 4, f"beats={len(beats)} gaps={gaps}")
+        check("gitstall: no beat gap reaches the stacked-timeout span",
+              bool(gaps) and max(gaps) <= 22,
+              f"gaps={gaps}")
+        blackhole.close()
+        for conn in bh_socks:
+            try:
+                conn.close()
+            except OSError:
+                pass
     finally:
         rig.cleanup()
 

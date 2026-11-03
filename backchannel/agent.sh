@@ -12,9 +12,14 @@
 # commit + push out.json and heartbeat.json. Sync is over the git
 # protocol only - this loop burns no GitHub REST quota. Every
 # network git operation is bounded by SYNCBC_GIT_TIMEOUT_S
-# (default 120s): a stalled pull/push fails the cycle, never the
-# heartbeat (field lesson, 2026-10-31: an unbounded pull froze
-# the heartbeat for ~13 minutes). Command execution is likewise
+# (default 45s), and the heartbeat is written at the TOP of every
+# cycle, before any git operation, as well as at the end: liveness
+# never waits on sync (field lessons: 2026-10-31, an unbounded pull
+# froze the heartbeat for ~13 minutes; 2026-11-03, four bounded
+# 120s git timeouts stacked in one post-reboot cycle and stretched
+# the beat to 904s, past the tray's 900s down threshold, while the
+# channel itself worked - the tray honestly reported a heartbeat
+# gap the agent had no business producing). Command execution is likewise
 # bounded: timeout_s from the envelope plus a SIGKILL escalation
 # SYNCBC_KILL_AFTER_S (default 10s) for bodies that ignore
 # SIGTERM, and the body is verified and executed byte-exactly
@@ -39,7 +44,8 @@ CHANNEL_REL="channels/syncyard-dev"
 POLL_S="${SYNCBC_POLL_S:-60}"
 DEFAULT_TIMEOUT_S="${SYNCBC_TIMEOUT_S:-600}"
 KILL_AFTER_S="${SYNCBC_KILL_AFTER_S:-10}"
-GIT_TIMEOUT_S="${SYNCBC_GIT_TIMEOUT_S:-120}"
+GIT_TIMEOUT_S="${SYNCBC_GIT_TIMEOUT_S:-45}"
+SELFTEST_EVERY="${SYNCBC_SELFTEST_EVERY:-15}"
 TAIL_BYTES="${SYNCBC_TAIL_BYTES:-8000}"
 LOG_FILE="$BASE/agent.log"
 LAST_ID_FILE="$BASE/.last_executed_id"
@@ -78,7 +84,7 @@ data = {
     "host": socket.gethostname(),
     "user": os.environ.get("USER", ""),
     "agent": "syncyard-backchannel",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "last_executed_id": last_id or None,
     "stopped": stopped,
 }
@@ -96,11 +102,15 @@ PY
 }
 
 run_self_test() {
-    # Start-up self-test (spec 010 T010): tools present, base and
-    # log writable, channel repo reachable, channel dir writable.
-    # The result is written to .self_test.json and rides every
-    # heartbeat until the next start. A failed check never stops
-    # the agent - it reports, so the failure is visible remotely.
+    # Self-test (spec 010 T010): tools present, base and log
+    # writable, channel repo reachable, channel dir writable. Runs
+    # at start-up and again every SELFTEST_EVERY cycles, so a
+    # transient failure read during a chaotic boot (2026-11-03:
+    # repo_reachable=0 while the network was still settling) clears
+    # itself instead of riding every heartbeat until the next
+    # start. The result is written to .self_test.json and rides
+    # every heartbeat. A failed check never stops the agent - it
+    # reports, so the failure is visible remotely.
     local git_ok=0 python_ok=0 base_ok=0 log_ok=0 repo_ok=0 channel_ok=0
     command -v git >/dev/null 2>&1 && git_ok=1
     command -v python3 >/dev/null 2>&1 && python_ok=1
@@ -266,6 +276,7 @@ main_loop() {
     log "agent starting (base=$BASE repo=$REPO_DIR poll_s=$POLL_S)"
     ensure_repo || log "initial clone failed; self-test will report repo unreachable"
     run_self_test
+    local cycle=0
     while true; do
         if ! ensure_repo; then
             log "clone failed; retrying next cycle"
@@ -273,9 +284,31 @@ main_loop() {
             continue
         fi
         mkdir -p "$REPO_DIR/$CHANNEL_REL"
-        timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" pull -q --ff-only >> "$LOG_FILE" 2>&1 || log "pull failed (continuing with local state)"
+        cycle=$((cycle + 1))
+        if [ "$cycle" -gt 1 ] && [ $(( (cycle - 1) % SELFTEST_EVERY )) -eq 0 ]; then
+            run_self_test
+        fi
 
         local stopped=0
+        if [ -f "$REPO_DIR/$CHANNEL_REL/STOP" ]; then
+            stopped=1
+        fi
+
+        # Heartbeat FIRST, before any git operation (2026-11-03
+        # field lesson in the header): a cycle whose sync calls
+        # all time out must not stretch the beat - the tray reads
+        # this file's ts as the host's connection signal. This
+        # beat's stopped flag is the pre-pull snapshot and can lag
+        # one cycle; the end-of-cycle beat corrects it.
+        write_heartbeat "$stopped"
+
+        timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" pull -q --ff-only >> "$LOG_FILE" 2>&1 || log "pull failed (continuing with local state)"
+
+        # The execution gate re-reads STOP on the POST-pull state:
+        # a STOP that lands in the same pull as a command must
+        # still halt that command (chaos scenario 5 pins this -
+        # the kill switch may never be snapshotted pre-pull).
+        stopped=0
         if [ -f "$REPO_DIR/$CHANNEL_REL/STOP" ]; then
             stopped=1
             log "STOP file present; execution halted, heartbeat continues"
