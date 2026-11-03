@@ -66,10 +66,15 @@ catch-and-log, and no new allocation churn may ride the
       section (mode, selectors, reason, queue list) with
       a note that fleet settings are managed from the
       `gk` commands.
-- [ ] T010 Publisher follow-up (FR-009): a gatekeeper-side
+- [x] T010 Publisher follow-up (FR-009): a gatekeeper-side
       or backchannel-side writer landing the snapshot at
       the contract path. NOT in this change — owner's
       gate on if/when, and through which transport.
+      GATE OPENED by the owner 2026-11-03; built as
+      gatekeeper/fleet_status.py publishing through the
+      backchannel (the transport FR-009 named the obvious
+      candidate); the tray reaches it via its
+      fleetStatusPath setting pointed at the agent clone.
 
 ## Phase 4 — Dynamism discipline (FR-010, FR-011)
 
