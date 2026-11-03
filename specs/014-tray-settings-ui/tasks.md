@@ -75,6 +75,17 @@ catch-and-log, and no new allocation churn may ride the
       backchannel (the transport FR-009 named the obvious
       candidate); the tray reaches it via its
       fleetStatusPath setting pointed at the agent clone.
+      v1.1 (2026-11-03, gap analysis + red team): the
+      snapshot now mirrors spec 013 FR-001 normalization
+      (selector lists + legacy merge, focused mode, drain
+      flag), reads the host dispatch holds (spec 011
+      FR-006) into draining, computes held per waiting job,
+      orders free lanes first, takes its reason from the
+      record in force (stop over pause), mirrors the
+      sweep's budget floor, and records its own failure
+      count. The canonical ordering fix is the gatekeeper
+      emitting this snapshot itself, planned with the
+      spec 013 fleet deploy.
 
 ## Phase 4 — Dynamism discipline (FR-010, FR-011)
 
