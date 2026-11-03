@@ -60,12 +60,23 @@ python3 gk.py adopt  --run-id ID --program NAME --workflow WF \
 python3 gk.py sweep
 python3 gk.py status
 python3 gk.py cancel <job-id-or-key>     # local only, pre-dispatch jobs
-python3 gk.py pause [--reason TEXT]    # hold program dispatch; watch continues
-python3 gk.py resume                   # clear a pause
+python3 gk.py pause [--reason TEXT] [--drain]  # hold program dispatch; watch continues
+python3 gk.py focus --except-key K|--except-program P|--except-chat C [--drain]
+                               # spec 013: dispatch only the selected jobs
+python3 gk.py resume [--job ID]        # clear a pause/focus, or release one job's hold
+python3 gk.py priority <job-id-or-key> N   # spec 013: live priority (waiting jobs)
+python3 gk.py hold <job-id-or-key>     # spec 013: request a checkpoint hold
+python3 gk.py lock --lane LANE --program P [--ttl-min N] [--reason T]
+                               # spec 015: acquire/renew a lane lock (--suspend/--resume, --list)
+python3 gk.py unlock --lane LANE [--program P] [--force]
+                               # spec 015: release a lane lock (holder, or operator override)
 python3 gk.py stop [--reason TEXT]     # hard halt: sweeps no-op until start
 python3 gk.py start                    # clear stop + pause: fully running
 python3 gk.py purge [--older-than-days N] [--ledger] [--yes]  # dry-run default
 python3 gk.py outbox [--ack]           # pushes owed to registered chats
+python3 gk.py drain --host H [--window S]  # spec 011: signal + hold + wait on one host
+python3 gk.py host-resume <host>       # spec 011: clear a host's holds (both kinds)
+python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host reboot
 ```
 
 - **submit** writes a job file in state `submitted` and records the
@@ -82,7 +93,10 @@ python3 gk.py outbox [--ack]           # pushes owed to registered chats
      `budget_standdown` event, and still do the watch pass with the one
      list call. **Below 500**: record `budget_critical` and exit — no
      list call at all.
-  2. Dispatch pass over `submitted` jobs in submission order. Gates:
+  2. Dispatch pass over `submitted` jobs in effective dispatch
+     order (spec 013: human-set priorities pinned first by value,
+     auto jobs ordered by the optimizer, arrival order as the
+     final tiebreak). Gates:
      same-lane serialization (one live gatekeeper job per lane), an
      identical in-flight dispatch check (same workflow + same script
      SHA-256 already holding → `dispatch_skipped_duplicate`), and a
@@ -137,6 +151,76 @@ python3 gk.py outbox [--ack]           # pushes owed to registered chats
   pause. `stop` is the hard halt: a sweep returns immediately — no
   budget spent, no watch, no dispatch — until `start` clears both
   stop and pause. `status` shows the control state in a banner.
+- **Focus, drain, priorities, checkpoint holds (spec 013)** —
+  `focus` generalizes the pause: while a focus record stands, only
+  jobs matching a selector (job key or key prefix, program, or
+  notify chat; selectors repeat and combine) dispatch, plus
+  maintenance as always. The pause record's schema is a superset
+  of the legacy shape — a record carrying a single `except_key`
+  string (the fleet's 2026-11-01 pause) normalizes to a one-key
+  focus. `--drain` on `pause`/`focus` lets executing work finish
+  and settles the record itself once no non-admitted,
+  non-maintenance job still holds a run (DRAINING shows in status
+  and the sweep line meanwhile). Every job carries a `priority`
+  and a `priority_source`: values set via `submit --priority` or
+  `gk priority` are human-set and pinned; all other waiting jobs
+  are ordered by a deterministic optimizer (declared expectation
+  base, lane-fit bonus, +1 per `dispatch.optimizer_aging_step_min`
+  minutes waited, capped at `dispatch.optimizer_ceiling`) that
+  never overrides a human value and never dispatches around an
+  admission hold. `gk hold` records a cooperative checkpoint
+  request on a job and delivers its hold-signal file to the venue
+  through an internal maintenance job; a job that polls the file
+  (its path arrives as the `hold_file` workflow input and
+  `$SYNCYARD_HOLD_FILE` in its environment), prints
+  `CHECKPOINT_PAUSED` and exits with `checkpoint.exit_code`
+  (default 86) is harvested into the terminal state
+  `held_at_checkpoint` — outbox reports HELD_AT_CHECKPOINT, never
+  a completion — and frees its key for the owning chat's
+  continuation submission. `gk resume --job` clears the request
+  and withdraws the signal. The signal file may also be
+  created directly by a host-local actor at the same per-job
+  path (the spec 011 host guard does exactly this when a
+  shutdown is imminent — no gatekeeper round-trip), and the
+  harvest does not distinguish which side raised it; the
+  gatekeeper cannot pause an arbitrary running script
+  mid-flight, so the hold is cooperative by design (spec 013
+  states the limits in full).
+- **Lane priority locks (spec 015)** — `gk lock --lane
+  <lane> --program <program>` gives one program exclusive
+  dispatch on a lane: while the lock is ACTIVE, only the
+  holder's submitted jobs are dispatch-eligible there.
+  Non-holder jobs are not refused, cancelled, or reordered —
+  they wait (their watermarks escalate), and priority never
+  trumps the lock: a non-holder's human priority of 200
+  waits while the holder's auto priority 0 dispatches. Lock
+  state lives in `LOCKS.json` beside `PAUSED.json`, written
+  only through the FR-013 verified-write path; no file means
+  no locks and pre-015 behavior exactly. One holder per
+  lane: a second acquire is refused (exit 3) naming the
+  holder, its state, and its expiry, in both the ACTIVE and
+  SUSPENDED states; re-acquire by the holder renews the TTL
+  (state preserved). `gk unlock` releases — by the holder,
+  or by the operator with `--force` (ledgered
+  `lock_released_override`, with an outbox notice to the
+  holder's registered chat); a non-holder release without
+  `--force` is refused. `gk lock --suspend` / `--resume`
+  pause and restore enforcement without surrendering the
+  claim. Every lock carries a TTL (config
+  `lock.default_ttl_min`, default 240; `lock.max_ttl_min`,
+  default 1440; `--ttl-min` outside [1, max] refused);
+  expiry is evaluated at dispatch time and behaves exactly
+  like a release (`lock_expired` ledgered, holder notified)
+  for suspended locks too. Maintenance jobs bypass locks
+  exactly as they bypass the pause, and every such dispatch
+  under an ACTIVE foreign lock is ledgered
+  `lock_bypassed`. Fleet pause/focus never mutate lock
+  state, and host drains neither block nor clear locks;
+  admission is a conjunction of all gates. `gk status`
+  renders a LOCKS section in all modes and marks lock-held
+  waiting jobs; `gk lock --list` prints the section
+  standalone. Running runs are never touched by any lock
+  transition.
   `purge` removes terminal (completed/cancelled) job records, dry-run
   unless `--yes`; `--older-than-days N` restricts it to records
   created more than N days ago, and `--ledger` also archives
@@ -154,6 +238,30 @@ python3 gk.py outbox [--ack]           # pushes owed to registered chats
   `outbox --ack` then advances the cursor. Programs register once
   and stop polling.
 
+- **Host drain, the guard, guard staleness (spec 011
+  Phases 2–3)** — `gk drain --host` is the host-scoped,
+  active drain: it signals the host's running
+  checkpoint-capable jobs through the same hold machinery,
+  sets the host's **drain hold** (a per-host field distinct
+  from the FR-006 going-down hold; `gk host-resume` clears
+  both), waits out each lane's window (`drain.window_s`,
+  default 120, `drain.per_lane_window_s` overrides), driving
+  the same `watch_pass` a sweep runs so the harvest is
+  identical, and prints CLEAN (exit 0) or INTERRUPTING
+  (exit 1) with every job classified. Spec 013's
+  `pause --drain` stays what it was — global and passive;
+  admission is the conjunction of both layers and neither
+  verb clears the other's state. The host guard
+  (`runner/guard/`) runs the same drain on the machine when
+  a shutdown is imminent and writes the going-down record
+  the Phase 1 ingest consumes (the backchannel agent merges
+  the guard's files into the heartbeat payload verbatim).
+  The guard's beat rides that payload as `guard`; the sweep
+  stores it on the host's liveness record and ledgers
+  `guard_stale` / `guard_recovered` on transitions
+  (`drain.guard_stale_after_s`, default 180), rendered in
+  `gk status` — a stopped guard is visible, never silent.
+
 One platform caveat, observed in the field: GitHub's run-level status
 for a run can lag or sit at `queued` while the job's log already holds
 the complete result. That is why the gatekeeper stores the log and the
@@ -164,8 +272,8 @@ API state and the log disagree, believe the log.
 
 | Workflow | Inputs | Notes |
 |---|---|---|
-| `run.yml` | `cmd_b64` (required), `cwd` | PowerShell, base64 of the script |
-| `wsl.yml` | `cmd_b64` (required), `cwd` | bash in WSL2, base64 of the script |
+| `run.yml` | `cmd_b64` (required), `cwd`, `hold_file` | PowerShell, base64 of the script; `hold_file` (spec 013) is the job's checkpoint hold-signal path, exposed as `$env:SYNCYARD_HOLD_FILE` |
+| `wsl.yml` | `cmd_b64` (required), `cwd`, `hold_file` | bash in WSL2, base64 of the script; `hold_file` (spec 013) exposed as `$SYNCYARD_HOLD_FILE` |
 | `grab.yml` | **`path` only** | Uploads one file from the machine as artifact `grabbed-file`. **No `cmd_b64`, no `cwd`, no script.** |
 
 The grab difference matters: a grab job is submitted with

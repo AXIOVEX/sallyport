@@ -26,6 +26,16 @@ Validation (load time, all named errors):
   - transport ceiling positive
   - liveness threshold (spec 011 FR-001) a positive number
   - reboot grace (spec 011 FR-015) a positive number
+  - checkpoint contract (spec 013 FR-007): exit code an integer
+    in 1..255, marker a valid marker token, env var a valid
+    name, holds_dir a mapping of declared workflows to
+    non-empty venue directories
+  - drain (spec 011 FR-005/FR-007): the host drain window a
+    positive number of seconds, per-lane overrides keyed by
+    declared lanes with positive values, and the guard
+    staleness bound a positive number of seconds
+  - lane lock TTLs (spec 015 FR-011): default and maximum TTL
+    integers, positive, with default <= maximum
 """
 import os
 import re
@@ -54,6 +64,13 @@ DEFAULTS = {
         "lock_stale_min": 10,
         "duplicate_policy": "refuse",
         "soft_cap_min": 30,
+        # Priority optimizer (spec 013 FR-012): auto-assigned
+        # effective priorities never exceed this ceiling (a
+        # human-set priority above it is unreachable by any
+        # auto job), and an auto job gains +1 per this many
+        # minutes waited.
+        "optimizer_ceiling": 100,
+        "optimizer_aging_step_min": 10,
     },
     "transport": {"max_script_bytes": 49152},
     "markers": {"pattern": r"^[A-Z][A-Z0-9_]{2,}([ :]|$)"},
@@ -67,6 +84,45 @@ DEFAULTS = {
     # --delay overrides it, so in-flight uploads and log
     # writes finish before the host goes down.
     "reboot": {"grace_s": 60},
+    # Checkpoint hold (spec 013 FR-007): the cooperative
+    # job-level pause contract. A dispatch passes each script
+    # job the venue path of its per-job hold file (holds_dir
+    # per workflow + "<job-id>.hold"); the transport workflow
+    # exports that path to the job's script as the env var
+    # named here. A job that polls the file stops at its next
+    # checkpoint, prints the marker, and exits with exit_code.
+    "checkpoint": {
+        "exit_code": 86,
+        "marker": "CHECKPOINT_PAUSED",
+        "env_var": "SYNCYARD_HOLD_FILE",
+        "holds_dir": {
+            "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
+            "wsl.yml": "/home/tpierson/.syncyard/holds",
+        },
+    },
+    # Host drain (spec 011 FR-005/FR-007): `gk drain --host`
+    # holds dispatch to one host, signals its running
+    # checkpoint-capable jobs, and waits out the window —
+    # per lane when a lane overrides — before printing its
+    # CLEAN / INTERRUPTING verdict. guard_stale_after_s bounds
+    # the guard heartbeat the backchannel agent merges into
+    # its heartbeat payload: a guard beat older than this
+    # (relative to the heartbeat carrying it) is stale and is
+    # ledgered + shown in status (spec 011 T007: a stopped
+    # guard is never a silent loss of protection).
+    "drain": {
+        "window_s": 120,
+        "per_lane_window_s": {},
+        "guard_stale_after_s": 180,
+    },
+    # Lane priority lock (spec 015 FR-007/FR-011): every lane
+    # lock carries a TTL so a forgotten claim cannot squat a
+    # lane forever. A lock taken without --ttl-min gets the
+    # default; no lock may exceed the maximum.
+    "lock": {
+        "default_ttl_min": 240,
+        "max_ttl_min": 1440,
+    },
     "hosts": {
         "desktop": {
             "type": "windows",
@@ -125,6 +181,8 @@ def _scalar(tok, lineno):
     tok = tok.strip()
     if tok == "":
         return None
+    if tok == "{}":
+        return {}
     if tok.startswith("[") and tok.endswith("]"):
         inner = tok[1:-1].strip()
         if not inner:
@@ -310,6 +368,49 @@ def validate(cfg):
             or grace <= 0):
         raise ConfigError(
             "reboot.grace_s must be a positive number of seconds")
+    ck = cfg.get("checkpoint") or {}
+    code = ck.get("exit_code")
+    if (isinstance(code, bool) or not isinstance(code, int)
+            or not 1 <= code <= 255):
+        raise ConfigError(
+            "checkpoint.exit_code must be an integer in 1..255")
+    marker = ck.get("marker")
+    if (not isinstance(marker, str)
+            or not re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", marker or "")):
+        raise ConfigError(
+            "checkpoint.marker must be a marker token "
+            "(ALL_CAPS, at least 3 characters)")
+    env_var = ck.get("env_var")
+    if (not isinstance(env_var, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_var or "")):
+        raise ConfigError(
+            "checkpoint.env_var must be a valid environment "
+            "variable name")
+    holds = ck.get("holds_dir")
+    if not isinstance(holds, dict):
+        raise ConfigError(
+            "checkpoint.holds_dir must be a mapping of workflow "
+            "to venue directory")
+    for wname, wdir in holds.items():
+        if wname not in (cfg.get("workflows") or []):
+            raise ConfigError(
+                f"checkpoint.holds_dir: workflow {wname!r} is not "
+                f"in the top-level workflows list")
+        if not (isinstance(wdir, str) and wdir):
+            raise ConfigError(
+                f"checkpoint.holds_dir.{wname} must be a non-empty "
+                f"venue directory path")
+    lk = cfg.get("lock") or {}
+    for lkey in ("default_ttl_min", "max_ttl_min"):
+        lval = lk.get(lkey)
+        if (isinstance(lval, bool) or not isinstance(lval, int)
+                or lval <= 0):
+            raise ConfigError(
+                f"lock.{lkey} must be a positive integer "
+                f"number of minutes")
+    if lk.get("default_ttl_min", 0) > lk.get("max_ttl_min", 0):
+        raise ConfigError(
+            "lock.default_ttl_min must be <= lock.max_ttl_min")
     hosts = cfg.get("hosts") or {}
     declared = cfg.get("workflows") or []
     served = set()
@@ -364,9 +465,47 @@ def validate(cfg):
             raise ConfigError(f"lanes.{name}.executing.mode must be fixed|expectation")
         if lane.get("concurrency", 1) < 1:
             raise ConfigError(f"lanes.{name}.concurrency must be >= 1")
+    dr = cfg.get("drain") or {}
+    win = dr.get("window_s")
+    if (isinstance(win, bool) or not isinstance(win, (int, float))
+            or win <= 0):
+        raise ConfigError(
+            "drain.window_s must be a positive number of seconds")
+    per_lane = dr.get("per_lane_window_s")
+    if not isinstance(per_lane, dict):
+        raise ConfigError(
+            "drain.per_lane_window_s must be a mapping of lane "
+            "to window seconds")
+    for lname, lwin in per_lane.items():
+        if lname not in (cfg.get("lanes") or {}):
+            raise ConfigError(
+                f"drain.per_lane_window_s: lane {lname!r} is not "
+                f"a declared lane")
+        if (isinstance(lwin, bool)
+                or not isinstance(lwin, (int, float)) or lwin <= 0):
+            raise ConfigError(
+                f"drain.per_lane_window_s.{lname} must be a "
+                f"positive number of seconds")
+    gstale = dr.get("guard_stale_after_s")
+    if (isinstance(gstale, bool)
+            or not isinstance(gstale, (int, float)) or gstale <= 0):
+        raise ConfigError(
+            "drain.guard_stale_after_s must be a positive "
+            "number of seconds")
     dp = (cfg.get("dispatch") or {}).get("duplicate_policy")
     if dp not in ("refuse", "allow"):
         raise ConfigError("dispatch.duplicate_policy must be refuse|allow")
+    ceil = (cfg.get("dispatch") or {}).get("optimizer_ceiling")
+    if (isinstance(ceil, bool) or not isinstance(ceil, int)
+            or ceil <= 0):
+        raise ConfigError(
+            "dispatch.optimizer_ceiling must be a positive integer")
+    step = (cfg.get("dispatch") or {}).get("optimizer_aging_step_min")
+    if (isinstance(step, bool)
+            or not isinstance(step, (int, float)) or step <= 0):
+        raise ConfigError(
+            "dispatch.optimizer_aging_step_min must be a positive "
+            "number of minutes")
     try:
         re.compile((cfg.get("markers") or {}).get("pattern", ""))
     except re.error as e:

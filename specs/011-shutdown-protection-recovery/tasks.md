@@ -72,30 +72,147 @@ behavior (spec 011 FR-014).
       (aging -> DOWN, ledger lines, annotations, hold,
       host-resume, single outbox group, duplicate suppression);
       `test_config.py` covers the new key valid/invalid.
+      **Phase 3 update (2026-11-02)**: the host-side writer
+      and the runbook message-set update named in gap (2)
+      shipped with the guard below — the agent now merges the
+      guard's `going_down` and `guard` files into the
+      heartbeat payload verbatim, the reader unchanged, and
+      `backchannel/RUNBOOK.md` carries the new message-set
+      section. Gap (1) stands.
 
 ## Phase 2 — The drain protocol (FR-005, FR-007)
-- [ ] T004 Drain signal + checkpoint window mechanics: guard →
+
+> **Numbering note (2026-11-02).** The build brief for this
+> phase pair spoke of "T004–T009" spanning drain + guard;
+> the repo's numbering — authoritative here — is Phase 2 =
+> T004–T005, Phase 3 = T006–T008, and the supervised vehicle
+> = T009–T010 (Phase 4, untouched by this build). The mapping
+> is by scope, and the PR body carries it too.
+
+- [x] T004 Drain signal + checkpoint window mechanics: guard →
       jobs/campaigns signal path, per-lane window from config,
       checkpointed / uncheckpointed accounting into the
       going-down record. Test-host battery with fixture units
       (cooperative, slow, and ignoring).
-- [ ] T005 `gk drain --host <host>`: pause-host, signal, wait,
+      **Built repo-side (2026-11-02, spec Amendment 2):** the
+      signal path is spec 013's FR-008 hold contract, consumed
+      two ways — `gk drain` raises holds through the sweep's
+      own signal-job machinery (the same `_request_checkpoint_hold`
+      `gk hold` uses, so the harvest is identical whoever
+      raised the file), and the guard raises them locally
+      (T006). The per-lane window is config `drain.window_s`
+      (default 120) + `drain.per_lane_window_s`, fail-closed
+      validated and mirrored in the example config. Accounting:
+      the drain's per-job verdict classifies from the SAME
+      `watch_pass` harvest a sweep runs, and the going-down
+      record's checkpoint accounting stays with that harvest —
+      the record itself is never rewritten (a same-(host, ts)
+      rewrite is deduped away by design; its `uncheckpointed`
+      at write time is the at-risk set). The fixture battery —
+      cooperative, slow/ignoring, finishing, no-venue — is
+      `gatekeeper/test_spec011.py` scenarios 5–8 against a
+      stubbed venue, ALL PASS. The live test-host battery
+      (fixture units on the real venue) rides T006's field
+      sequence; the repo-side battery is the evidence until
+      then, stated as such.
+- [x] T005 `gk drain --host <host>`: pause-host, signal, wait,
       plain-language CLEAN / INTERRUPTING verdict. Oracle pass
       by the owner in a quiet and a busy window before it is
       documented as the restart protocol.
+      **Built repo-side (2026-11-02):** `gk drain --host`
+      signals first, then sets the host's **drain hold** — a
+      distinct per-host field beside the FR-006 hold, so the
+      two holds never clear or impersonate each other — then
+      waits per lane and prints CLEAN (exit 0) or INTERRUPTING
+      (exit 1) with every job named; `gk host-resume` clears
+      both holds in one act (the golden battery's pinned
+      output prefix is unchanged). **Reconciliation with spec
+      013's `pause --drain`**: 013's drain is pipeline-scoped
+      and passive (it signals nothing; the sweep notices the
+      executing set empty and stamps the pause record
+      settled); 011's is host-scoped and active. Admission is
+      the conjunction of both layers, and each layer's verbs
+      clear only its own state — proven in the battery
+      (scenario 10: a host drain leaves the global pause
+      record untouched, and `gk resume` does not clear the
+      drain hold). One enabling fix rides along: the
+      gatekeeper's own `gk-hold-*` / `gk-unhold-*` signal
+      jobs now flow under a host hold exactly as its
+      `gk-reboot-*` job already did (spec 013's signal-job
+      docstring claimed that exemption; the dispatch code did
+      not implement it — without it, a drain could never
+      deliver the signals it exists to raise once its own
+      hold is set). **Still owed: the owner's oracle pass**
+      (quiet + busy window) before this is documented as the
+      restart protocol — the task's repo-side half is done;
+      the oracle half is a field step at the machine.
 
 ## Phase 3 — The shutdown guard (FR-002)
-- [ ] T006 Guard component on the test host: shutdown block
+- [x] T006 Guard component on the test host: shutdown block
       reason registration/release tied to active work,
       `WM_QUERYENDSESSION` veto bounded by the drain window.
       Oracle evidence: held restart with the reason visible in
       the Windows shutdown UI; unheld restart when idle.
-- [ ] T007 Guard hardening: the guard's lifecycle is harder to
+      **Built repo-side (2026-11-02):** `runner/guard/
+      SyncyardGuard.cs` — a sibling of the tray (FR-002's
+      sanctioned shape), single file, C# 5, in-box csc,
+      winexe, never shown. It discovers running
+      checkpoint-capable jobs from the running-job registry
+      the transport workflows now maintain (an entry written
+      before the job runs and removed when it ends —
+      `runner/test_workflow_contract.py` pins both sides),
+      pre-registers the OS shutdown block with a
+      count-naming reason while work runs, and on
+      `WM_QUERYENDSESSION`: writes the going-down record
+      FIRST (verified write; the exact Phase 1 shape; the
+      backchannel agent merges it into the heartbeat
+      payload — the fastest channel the shipped ingest
+      reads, per Amendment 2 FR-003-A), raises the running
+      jobs' hold files locally, vetoes, drains until the
+      registry empties or `window_s` (default 120) expires,
+      then releases the block, writes a drain-outcome record,
+      and re-issues the pending action (logoff via
+      ExitWindowsEx; otherwise a restart — the named design
+      decision in Amendment 2, FR-005-A). `WM_ENDSESSION` is
+      the last-chance record write. Evidence here is the
+      source battery (`runner/guard/test_guard_source.py`,
+      GUARD_SOURCE OK) plus the writer-contract scenarios in
+      `test_spec011.py`: this VM cannot compile Windows
+      targets, so the component is uncompiled until the
+      owner's install run — the same posture the tray shipped
+      under. **Still owed: the test-host oracle evidence**
+      (held restart with the reason visible; unheld restart
+      when idle) — a field step, sequenced with T008's
+      deploy discipline.
+- [x] T007 Guard hardening: the guard's lifecycle is harder to
       exit than the tray's (spec 007 tension, named in the
       spec); a stopped guard is a host-health ISSUES entry at
       the gatekeeper, never a silent loss of protection.
+      **Built repo-side (2026-11-02):** the guard has no UI
+      at all — no icon, no menu, no exit command; the one
+      form is never shown, a programmatic user-close is
+      refused and logged, and a duplicate instance exits
+      silently. The gatekeeper half: the guard beats every
+      ~10 s into `guard-heartbeat.json`; the agent merges the
+      beat as `guard` on the heartbeat; the sweep stores it
+      on the host's liveness record, judges staleness against
+      the carrying heartbeat's own timestamp
+      (`drain.guard_stale_after_s`, default 180), ledgers
+      `guard_stale` / `guard_recovered` exactly once per
+      transition, and `gk status` renders the beat plus
+      "STALE (protection not reporting)" — the ISSUES-surface
+      equivalent for a per-host protection signal, riding the
+      liveness lines every status reader already sees.
+      Battery: `test_spec011.py` scenarios 12–13 (fresh,
+      stale-once-across-repeat-sweeps, recovered).
 - [ ] T008 Production-host guard deploy, fleet shape: pause,
       snapshot, deploy, reconcile, one clean sweep.
+      **Explicitly NOT done by the 2026-11-02 repo-side
+      build**: deployment is a field act under the pause-first
+      discipline and the owner's at-machine sequence (install
+      via `runner/guard/install-guard.ps1`, T006's oracle
+      evidence, one clean sweep). The build ships everything
+      the deploy needs; the deploy itself stays open.
 
 ## Phase 4 — Supervised work vehicle (FR-008)
 - [ ] T009 Supervisor + ensure + heartbeat, generalized from
