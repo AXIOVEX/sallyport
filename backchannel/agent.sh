@@ -24,6 +24,21 @@
 # SYNCBC_KILL_AFTER_S (default 10s) for bodies that ignore
 # SIGTERM, and the body is verified and executed byte-exactly
 # from a file, never through a shell variable (issue #36).
+# 0.2.2 (2026-11-03, red team on the fleet-status publisher):
+# sync is its own step with its own recovery — an ff-only pull
+# that fails falls back to a rebase pull in the same cycle,
+# a failed rebase is ABORTED (a tree left mid-rebase wedges
+# every later sync behind confusing errors), and the outcome
+# rides the heartbeat as `sync` {ok, ts}, so a dead inbound
+# path is visible instead of silent. The envelope's timeout_s
+# is clamped agent-side to SYNCBC_MAX_TIMEOUT_S (default 600):
+# the sender's number is a request, not a bound — an unbounded
+# one stretches the heartbeat gap past every tray threshold
+# while the channel works (the 0.2.1 fix bounded git, not the
+# dominant term). The startup self-test and the periodic
+# refresh now run AFTER a heartbeat write, so the header's
+# "heartbeat before any git operation" holds on those cycles
+# too — the self-test's own ls-remote is a git operation.
 #
 # The agent NEVER writes gatekeeper queue records. Queue access from
 # here is read-only status unless a command explicitly directs
@@ -43,6 +58,7 @@ REPO_URL="${SYNCBC_REPO_URL:-https://github.com/tbitcs/syncyard-backchannel.git}
 CHANNEL_REL="channels/syncyard-dev"
 POLL_S="${SYNCBC_POLL_S:-60}"
 DEFAULT_TIMEOUT_S="${SYNCBC_TIMEOUT_S:-600}"
+MAX_TIMEOUT_S="${SYNCBC_MAX_TIMEOUT_S:-600}"
 KILL_AFTER_S="${SYNCBC_KILL_AFTER_S:-10}"
 GIT_TIMEOUT_S="${SYNCBC_GIT_TIMEOUT_S:-45}"
 SELFTEST_EVERY="${SYNCBC_SELFTEST_EVERY:-15}"
@@ -63,6 +79,7 @@ GUARD_FILE="${SYNCBC_GUARD_FILE:-/mnt/c/Users/trist/Development/Syncyard/guard-h
 LOG_FILE="$BASE/agent.log"
 LAST_ID_FILE="$BASE/.last_executed_id"
 SELFTEST_FILE="$BASE/.self_test.json"
+SYNC_FILE="$BASE/.sync_state.json"
 
 mkdir -p "$BASE"
 
@@ -89,22 +106,27 @@ write_heartbeat() {
     local stopped="$1"
     local last_id=""
     [ -f "$LAST_ID_FILE" ] && last_id="$(cat "$LAST_ID_FILE" 2>/dev/null)"
-    python3 - "$REPO_DIR/$CHANNEL_REL/heartbeat.json" "$last_id" "$stopped" "$SELFTEST_FILE" "$GOING_DOWN_FILE" "$GUARD_FILE" <<'PY' 2>/dev/null || true
+    python3 - "$REPO_DIR/$CHANNEL_REL/heartbeat.json" "$last_id" "$stopped" "$SELFTEST_FILE" "$GOING_DOWN_FILE" "$GUARD_FILE" "$SYNC_FILE" <<'PY' 2>/dev/null || true
 import json, os, socket, sys, datetime
 path, last_id, stopped, selftest_path = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
-going_down_path, guard_path = sys.argv[5], sys.argv[6]
+going_down_path, guard_path, sync_path = sys.argv[5], sys.argv[6], sys.argv[7]
 data = {
     "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "host": socket.gethostname(),
     "user": os.environ.get("USER", ""),
     "agent": "syncyard-backchannel",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "last_executed_id": last_id or None,
     "stopped": stopped,
 }
 try:
     with open(selftest_path, encoding="utf-8") as fh:
         data["self_test"] = json.load(fh)
+except Exception:
+    pass
+try:
+    with open(sync_path, encoding="utf-8") as fh:
+        data["sync"] = json.load(fh)
 except Exception:
     pass
 # Spec 011 Phase 3: merge the guard's records verbatim. A
@@ -204,6 +226,62 @@ os.replace(tmp, path)
 PY
 }
 
+note_sync() {
+    # note_sync <ok 0|1> — the sync step's outcome, merged into
+    # the heartbeat by write_heartbeat so a failing inbound
+    # path is visible on the tray's own surface.
+    local ok="$1"
+    python3 - "$SYNC_FILE" "$ok" <<'PY' 2>/dev/null || true
+import json, os, sys, datetime
+path, ok = sys.argv[1], sys.argv[2] == "1"
+data = {"ok": ok,
+        "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=1, sort_keys=True)
+    fh.write("\n")
+os.replace(tmp, path)
+PY
+}
+
+abort_rebase_if_any() {
+    # A failed rebase must never leave the tree mid-rebase —
+    # but aborting when none is in progress only adds fatal
+    # noise to the log, so check the state dirs first.
+    if [ -d "$REPO_DIR/.git/rebase-merge" ] \
+        || [ -d "$REPO_DIR/.git/rebase-apply" ]; then
+        git -C "$REPO_DIR" rebase --abort >> "$LOG_FILE" 2>&1 || true
+    fi
+}
+
+sync_repo() {
+    # One inbound sync step with its own recovery (0.2.2):
+    # ff-only first; on failure (the normal case once a local
+    # commit is unpushed and the remote has moved — the
+    # fleet-status publisher moves it every 2 minutes), fall
+    # back to a rebase pull in the same cycle; a failed rebase
+    # is aborted so the tree is never left mid-rebase. The
+    # outcome is noted for the heartbeat either way. The
+    # rebase needs --autostash: the top-of-cycle heartbeat
+    # write has always dirtied the tree by pull time, and a
+    # plain rebase pull refuses a dirty tree outright (found
+    # by chaos scenario 13, not by reading).
+    if timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" pull -q --ff-only >> "$LOG_FILE" 2>&1; then
+        note_sync 1
+        return 0
+    fi
+    log "pull ff-only failed; attempting rebase recovery"
+    if timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" pull -q --rebase --autostash >> "$LOG_FILE" 2>&1; then
+        log "pull recovered via rebase"
+        note_sync 1
+        return 0
+    fi
+    abort_rebase_if_any
+    log "pull failed (continuing with local state)"
+    note_sync 0
+    return 1
+}
+
 push_channel_files() {
     # Commit + push out.json / heartbeat.json if they changed.
     git -C "$REPO_DIR" add -- "$CHANNEL_REL/out.json" "$CHANNEL_REL/heartbeat.json" 2>/dev/null || return 0
@@ -213,7 +291,10 @@ push_channel_files() {
     git -C "$REPO_DIR" commit -q -m "backchannel: agent update $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$LOG_FILE" 2>&1 || return 0
     if ! timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" push -q origin HEAD >> "$LOG_FILE" 2>&1; then
         log "push failed; will retry next cycle"
-        timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" pull --rebase -q >> "$LOG_FILE" 2>&1 || true
+        if ! timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" pull --rebase -q >> "$LOG_FILE" 2>&1; then
+            # Never leave the tree mid-rebase (0.2.2).
+            abort_rebase_if_any
+        fi
         timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" push -q origin HEAD >> "$LOG_FILE" 2>&1 || log "push retry failed"
     fi
 }
@@ -235,6 +316,14 @@ execute_command() {
     timeout_s="$(json_get "$cmd_file" timeout_s)"
     [ -z "$timeout_s" ] && timeout_s="$DEFAULT_TIMEOUT_S"
     case "$timeout_s" in *[!0-9]*) timeout_s="$DEFAULT_TIMEOUT_S" ;; esac
+    # The envelope's timeout is a request, not a bound (0.2.2):
+    # clamp it agent-side so no sender can stretch the
+    # heartbeat gap past the tray's thresholds with one
+    # oversized value.
+    if [ "$timeout_s" -gt "$MAX_TIMEOUT_S" ]; then
+        log "timeout_s=$timeout_s clamped to SYNCBC_MAX_TIMEOUT_S=$MAX_TIMEOUT_S"
+        timeout_s="$MAX_TIMEOUT_S"
+    fi
 
     # Extract the body byte-exactly to the command file. The body
     # must never pass through a bash variable or $(...): command
@@ -303,6 +392,15 @@ PY
 main_loop() {
     log "agent starting (base=$BASE repo=$REPO_DIR poll_s=$POLL_S)"
     ensure_repo || log "initial clone failed; self-test will report repo unreachable"
+    # The first beat lands BEFORE the startup self-test (0.2.2):
+    # the self-test's own ls-remote is a git operation, and the
+    # header's rule is heartbeat before any git operation.
+    local stopped=0
+    if [ -f "$REPO_DIR/$CHANNEL_REL/STOP" ]; then
+        stopped=1
+    fi
+    mkdir -p "$REPO_DIR/$CHANNEL_REL" 2>/dev/null || true
+    write_heartbeat "$stopped"
     run_self_test
     local cycle=0
     while true; do
@@ -313,11 +411,8 @@ main_loop() {
         fi
         mkdir -p "$REPO_DIR/$CHANNEL_REL"
         cycle=$((cycle + 1))
-        if [ "$cycle" -gt 1 ] && [ $(( (cycle - 1) % SELFTEST_EVERY )) -eq 0 ]; then
-            run_self_test
-        fi
 
-        local stopped=0
+        stopped=0
         if [ -f "$REPO_DIR/$CHANNEL_REL/STOP" ]; then
             stopped=1
         fi
@@ -327,10 +422,17 @@ main_loop() {
         # all time out must not stretch the beat - the tray reads
         # this file's ts as the host's connection signal. This
         # beat's stopped flag is the pre-pull snapshot and can lag
-        # one cycle; the end-of-cycle beat corrects it.
+        # one cycle; the end-of-cycle beat corrects it. The
+        # periodic self-test refresh runs AFTER this beat for
+        # the same reason (0.2.2); its result rides the
+        # end-of-cycle beat.
         write_heartbeat "$stopped"
 
-        timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" pull -q --ff-only >> "$LOG_FILE" 2>&1 || log "pull failed (continuing with local state)"
+        if [ "$cycle" -gt 1 ] && [ $(( (cycle - 1) % SELFTEST_EVERY )) -eq 0 ]; then
+            run_self_test
+        fi
+
+        sync_repo || true
 
         # The execution gate re-reads STOP on the POST-pull state:
         # a STOP that lands in the same pull as a command must

@@ -29,6 +29,13 @@ channel repo and subjects it to the failure cases:
      periodically instead of only at start (2026-11-03 field
      lesson: stacked 120s timeouts stretched the beat to 904s
      and the tray honestly reported DISCONNECTED)
+ 13. sync recovery (0.2.2): with the clone diverged (an
+     unpushed local commit plus a moved remote - the standing
+     state once the fleet-status publisher commits every 2
+     minutes), the sync step recovers by rebase in the same
+     cycle, the remote file lands in the working tree, the
+     heartbeat reports sync ok, no rebase is left in progress,
+     and an oversized envelope timeout is clamped agent-side
 
 Everything lives in a temp dir; the agent is pointed at it via
 SYNCBC_BASE / SYNCBC_REPO_URL / SYNCBC_POLL_S=1. Stdlib only.
@@ -492,6 +499,69 @@ def main():
                 conn.close()
             except OSError:
                 pass
+
+        # 13: sync recovery (0.2.2). Restore the real remote,
+        # stop the agent, and diverge the clone by hand: one
+        # unpushed local commit in the agent clone, one new
+        # remote commit (a publisher-style file) from the
+        # driver. An ff-only pull can never land the remote
+        # file from this state; the sync step's rebase
+        # fallback must, in the same cycle, and the heartbeat
+        # must say sync is ok.
+        run(["git", "-C", clone, "remote", "set-url", "origin",
+             "file://" + rig.remote], env=rig.env)
+        rig.kill_agent(sig=signal.SIGTERM)
+        time.sleep(1)
+        with open(os.path.join(clone, CHANNEL, "local-only.txt"),
+                  "w") as fh:
+            fh.write("unpushed local commit\n")
+        run(["git", "-C", clone, "add", "-A"], env=rig.env)
+        run(["git", "-C", clone, "commit", "-q", "-m",
+             "local divergence"], env=rig.env)
+        rig.push({CHANNEL + "/fleet-status.json":
+                  '{\n "marker": "CHAOS13_REMOTE"\n}\n'})
+        rig.start_agent()
+
+        def landed():
+            try:
+                with open(os.path.join(clone, CHANNEL,
+                                       "fleet-status.json")) as fh:
+                    return "CHAOS13_REMOTE" in fh.read()
+            except OSError:
+                return False
+        got = wait_for(landed, 60, "fleet-status landing")
+        check("sync: diverged clone recovers, remote file lands",
+              got is True)
+        hb = wait_for(
+            lambda: (rig.read_chan_json("heartbeat.json") or {})
+            .get("sync", {}).get("ok") is True
+            and rig.read_chan_json("heartbeat.json"),
+            30, "sync ok heartbeat")
+        check("sync: heartbeat reports sync ok",
+              hb is not None, f"hb={hb}")
+        check("sync: recovery logged as a rebase",
+              "pull recovered via rebase" in rig.agent_log_text())
+        check("sync: no rebase left in progress",
+              not os.path.exists(os.path.join(clone, ".git",
+                                              "rebase-merge"))
+              and not os.path.exists(os.path.join(clone, ".git",
+                                                  "rebase-apply")))
+        with open(AGENT) as fh:
+            agent_src = fh.read()
+        check("clamp: shipped max-timeout default is 600",
+              "SYNCBC_MAX_TIMEOUT_S:-600" in agent_src)
+        rig.push_cmd("chaos-clamp", "echo CHAOS_CLAMP_OK",
+                     timeout_s=9999)
+        out = wait_for(
+            lambda: (rig.read_chan_json("out.json") or {}).get("id")
+            == "chaos-clamp" and rig.read_chan_json("out.json"),
+            45, "chaos-clamp out")
+        check("clamp: oversized envelope timeout clamped, "
+              "command still runs",
+              out is not None and out.get("exit_code") == 0
+              and "clamped to SYNCBC_MAX_TIMEOUT_S=600"
+              in rig.agent_log_text(),
+              f"out={out}")
     finally:
         rig.cleanup()
 
