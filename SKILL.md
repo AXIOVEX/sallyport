@@ -246,6 +246,26 @@ The runners run under the **Syncyard Tray** supervisor
   (spec 014 FR-009), so the section normally reads
   unavailable with its reason; the tray never edits fleet
   state and never invokes the gatekeeper.
+- The tray icon also answers "are we connected?" (spec 018):
+  a link mark in the icon's corner — solid when connected,
+  hollow amber when stale, broken with the mark desaturated
+  when disconnected — judged only from signals already on
+  the host: the backchannel agent's heartbeat file (default
+  `~/syncyard-backchannel/repo/channels/syncyard-dev/heartbeat.json`
+  in the owner's WSL distro, read through the `\\wsl.localhost`
+  share; the path is a tray setting) and, when a publisher
+  exists, the fleet snapshot's stamp. The runner slash is
+  unchanged: health and connection are separate dimensions.
+  Thresholds are tray settings (stale after 180 s, down
+  after 900 s — the down bound mirrors the gatekeeper's
+  host liveness limit), edited in the Settings dialog's
+  Connection section; every transition is written to
+  `tray.log` with the signal age that caused it. The
+  indicator is display-only: it never probes the network,
+  never writes the signal files, and never gates
+  supervision. Until the FR-009 publisher ships, the signal
+  set is the backchannel heartbeat only, and the menu and
+  dialog say exactly that.
 - Runners stay in the owner's interactive session on purpose: jobs
   need his WSL distro, GPU, audio, and bench devices, which a Windows
   service in session 0 cannot reliably reach. Do not register the
