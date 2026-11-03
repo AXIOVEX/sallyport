@@ -292,16 +292,27 @@ main_loop() {
         local stopped=0
         if [ -f "$REPO_DIR/$CHANNEL_REL/STOP" ]; then
             stopped=1
-            log "STOP file present; execution halted, heartbeat continues"
         fi
 
         # Heartbeat FIRST, before any git operation (2026-11-03
         # field lesson in the header): a cycle whose sync calls
         # all time out must not stretch the beat - the tray reads
-        # this file's ts as the host's connection signal.
+        # this file's ts as the host's connection signal. This
+        # beat's stopped flag is the pre-pull snapshot and can lag
+        # one cycle; the end-of-cycle beat corrects it.
         write_heartbeat "$stopped"
 
         timeout "$GIT_TIMEOUT_S" git -C "$REPO_DIR" pull -q --ff-only >> "$LOG_FILE" 2>&1 || log "pull failed (continuing with local state)"
+
+        # The execution gate re-reads STOP on the POST-pull state:
+        # a STOP that lands in the same pull as a command must
+        # still halt that command (chaos scenario 5 pins this -
+        # the kill switch may never be snapshotted pre-pull).
+        stopped=0
+        if [ -f "$REPO_DIR/$CHANNEL_REL/STOP" ]; then
+            stopped=1
+            log "STOP file present; execution halted, heartbeat continues"
+        fi
 
         if [ "$stopped" -eq 0 ] && [ -f "$REPO_DIR/$CHANNEL_REL/cmd.json" ]; then
             local cid last_id=""
