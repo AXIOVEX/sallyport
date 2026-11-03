@@ -1452,7 +1452,18 @@ namespace SyncyardTray
                     _fleet.Waiting.Count + " waiting";
                 if (_fleet.Stale) s += " - STALE";
             }
-            if (s.Length > 120) s = s.Substring(0, 120);
+            // The cap is 63, not the shell's larger buffer:
+            // .NET Framework's NotifyIcon.Text setter throws
+            // ArgumentOutOfRangeException above 63 characters.
+            // With the connection line appended (spec 018) the
+            // tooltip routinely exceeds 63, and RebuildMenu runs
+            // in the constructor, before the message loop's
+            // exception guard applies - the 120 cap shipped in
+            // specs 014/018 crashed the tray at startup on
+            // 2026-11-03 (event 1026: ArgumentOutOfRangeException
+            // at NotifyIcon.set_Text, from RebuildMenu, from the
+            // TrayApp constructor).
+            if (s.Length > 63) s = s.Substring(0, 63);
             return s;
         }
 

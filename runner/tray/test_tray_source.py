@@ -291,6 +291,15 @@ def main():
               and "ConnectionDetailText()" in SRC),
         check("tooltip carries the connection line",
               "_conn.Line()" in tooltip),
+        # .NET Framework's NotifyIcon.Text setter throws
+        # ArgumentOutOfRangeException above 63 characters; the
+        # tooltip clamp must be that limit, not the shell's larger
+        # buffer (the 120 cap shipped in specs 014/018 crashed the
+        # tray in its constructor on 2026-11-03, before the message
+        # loop's exception guard could apply).
+        check("tooltip is clamped to the NotifyIcon.Text limit (63)",
+              "if (s.Length > 63) s = s.Substring(0, 63);" in tooltip
+              and "Substring(0, 120)" not in tooltip),
         check("dialog states the signal set in both sections",
               "_connDetail.Text = sig;" in form
               and "_fleetSignal.Text = sig;" in form),
