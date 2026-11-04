@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Fixed
+- Per-host default cwd: the gatekeeper built its default
+  working directory by merging every host's cwd map into one
+  global dict, so the last host in the config set the default
+  for all of them. The day TRISTEN-LAPTOP enrolled as a
+  second Windows host, desktop run.yml jobs submitted without
+  --cwd inherited the laptop's directory and their payloads
+  never ran. default_cwd() now resolves per machine (the
+  lane's host, then its `via` hosts, then the built-in
+  table); --lane auto submits defer the resolution to the
+  routing pass. Battery: gatekeeper/test_per_host_cwd.py.
 - Dispatch isolation: a job whose script file is missing or
   unreadable at dispatch time (classically staged in /tmp and
   wiped by a VM replacement between submit and dispatch) no
