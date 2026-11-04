@@ -1613,8 +1613,8 @@ namespace SyncyardTray
             string url = _updateUrl;
             string sha = _updateSha256;
             string version = _updateVersion;
-            var t = new Thread(
-                delegate { ApplyUpdateWorker(url, sha, version); });
+            var t = new Thread(new ThreadStart(
+                delegate { ApplyUpdateWorker(url, sha, version); }));
             t.IsBackground = true;
             t.Start();
         }
