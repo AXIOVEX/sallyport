@@ -830,6 +830,30 @@ namespace SyncyardTray
                         ProgramLog("unhandled UI exception (caught): " +
                             e.Exception);
                     };
+                // Exit forensics (2026-11-04, after three silent
+                // tray deaths with no log line and no Windows
+                // crash event): a fatal fault on any non-UI
+                // thread is logged before the process dies, and
+                // every orderly end of the message loop is logged
+                // as it happens. A death that leaves NEITHER line
+                // behind was an external termination, and the
+                // per-minute "tray alive" line bounds when it
+                // happened. Nothing here can log a TerminateProcess
+                // kill; the watchdog's relaunch record covers that
+                // case from the other side.
+                AppDomain.CurrentDomain.UnhandledException +=
+                    delegate(object sender,
+                        UnhandledExceptionEventArgs e)
+                    {
+                        ProgramLog("unhandled appdomain exception " +
+                            "(fatal): " + e.ExceptionObject);
+                    };
+                Application.ApplicationExit +=
+                    delegate(object sender, EventArgs e)
+                    {
+                        ProgramLog("tray process exiting " +
+                            "(ApplicationExit)");
+                    };
                 Application.Run(new TrayApp());
             }
         }
@@ -970,6 +994,9 @@ namespace SyncyardTray
             bool wasFaulted = AnyFaulted();
             RefreshStates();
             StartMissing(false);
+            if (_tick % 12 == 0)
+                Log("tray alive");     // every ~60 s: bounds any
+                                       // silent death to a minute
             if (_tick % 6 == 0 && _settings.HideStrayConsoles)
                 HideStrayConsoles();   // every ~30 s
             if (!wasFaulted && AnyFaulted())
