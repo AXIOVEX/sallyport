@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Fixed
+- Tray tooltip no longer reads as cut off: the old composition concatenated the full connection and fleet lines and chopped the result at the 63-character NotifyIcon limit mid-word. The tooltip is now composed short (runner count, the connection as one word, the waiting count, the stale flag) and a segment that would cross the limit is dropped whole; nothing is truncated. Tray build stamp moves to 0.4.1.0.
+- Tray menu header trimmed (owner ruling): the per-job "Next:" line and the connection signal-detail line are removed from the menu's grayed header, which is now the build line, the fleet summary, and the connection line. The signal detail remains in the Settings dialog.
 - Tray updater: the apply-update thread start is now wrapped in an explicit ThreadStart. The in-box .NET Framework csc (C# 5) rejects the bare anonymous method as ambiguous between ThreadStart and ParameterizedThreadStart (CS0121), which failed the r13 tray build on both fleet machines; the method-group start used by the update check was unaffected.
 - Per-host default cwd: the gatekeeper built its default
   working directory by merging every host's cwd map into one
