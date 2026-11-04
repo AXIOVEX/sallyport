@@ -3985,6 +3985,9 @@ def cmd_profile(args):
     switching the active profile is an operator config edit
     (lanes.active_profile) that takes effect at the next
     sweep; there is deliberately no runtime verb for it."""
+    if getattr(args, "suggest", False) \
+            or getattr(args, "name", None) == "suggest":
+        return cmd_profile_suggest(args)
     profiles = _CFG.get("lane_profiles") or {}
     if getattr(args, "list", False):
         for name in sorted(profiles):
@@ -4018,6 +4021,371 @@ def cmd_profile(args):
                  lane.get("enabled", True), lane.get("queued"),
                  (" pin=" + str(lane["workflow"]))
                  if lane.get("workflow") else ""))
+    return 0
+
+
+# --- Profile suggest (spec 016 follow-on) ---------------------------
+# `gk profile suggest` drafts a lane profile for one host from
+# its recorded capability snapshot (FR-005) and prints the
+# reasoning beside every choice. It is a drafting aid only:
+# it never edits the config, never writes hosts.json, and
+# never switches the active profile. The one file it may write
+# is an explicit --out path, refused when the path already
+# exists or is the live config file. FR-001's rule stands:
+# a profile takes effect only when an operator merges it into
+# the config and the next process loads it.
+
+# The suggestion thresholds. Deterministic, stated policy:
+# a normal lane is suggested only when the snapshot measures
+# at least this many cores and at least this much RAM.
+SUGGEST_NORMAL_MIN_CORES = 8
+SUGGEST_NORMAL_MIN_RAM_MB = 16 * 1024
+
+# Lane templates when the configured fleet-default profile
+# does not carry a same-named lane: these mirror the
+# fleet-default lanes in config.py's DEFAULTS verbatim
+# (host and concurrency are set by the suggestion itself).
+_SUGGEST_FALLBACK = {
+    "quick": {"runner_label": "lane-quick", "resource_class": "cpu",
+              "duration_band": [0, 10], "queued": [10, 30],
+              "executing": {"mode": "fixed", "values": [5, 15]}},
+    "normal": {"runner_label": "lane-normal", "resource_class": "cpu",
+               "duration_band": [0, 45], "queued": [20, 45],
+               "executing": {"mode": "fixed", "values": [45, 90]}},
+    "long": {"runner_label": "lane-long", "resource_class": "cpu",
+             "duration_band": [30, None], "queued": [45, 120],
+             "executing": {"mode": "expectation", "floor": [90, 180]}},
+    "gpu": {"runner_label": "lane-gpu", "resource_class": "gpu",
+            "duration_band": [0, None], "queued": [30, 90],
+            "executing": {"mode": "expectation", "floor": [120, 240]}},
+}
+
+
+def _suggest_template(lane_name):
+    """The fleet-default profile's lane of this name, or the
+    mirrored fallback when the profile does not carry it."""
+    prof = (_CFG.get("lane_profiles") or {}).get("fleet-default") or {}
+    lane = prof.get(lane_name)
+    if isinstance(lane, dict):
+        return lane
+    return _SUGGEST_FALLBACK[lane_name]
+
+
+def _suggested_lane(lane_name, host):
+    """One suggested lane: the fleet-default template's class,
+    band, and watermarks, bound to the suggested host, with
+    concurrency always 1 (raising it is a human edit)."""
+    t = _suggest_template(lane_name)
+    ex = t.get("executing") or {}
+    return {
+        "host": host,
+        "runner_label": t.get("runner_label") or ("lane-" + lane_name),
+        "concurrency": 1,
+        "resource_class": t.get("resource_class", "any"),
+        "duration_band": list(t.get("duration_band") or [None, None]),
+        "queued": list(t.get("queued") or [20, 45]),
+        "executing": dict(ex) if ex else {"mode": "fixed",
+                                          "values": [45, 90]},
+    }
+
+
+def _fmt_measured(value, suffix=""):
+    """A measured value rendered for reasoning, or 'unknown'.
+    Unknown is a stated fact in this system, never a zero."""
+    return "unknown" if value is None else "%s%s" % (value, suffix)
+
+
+def _suggest_yaml_value(v):
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
+
+
+def _suggest_lane_yaml(lane_name, lane, indent):
+    pad = " " * indent
+    ex = lane["executing"]
+    lines = [
+        "%s%s:" % (pad, lane_name),
+        "%s  host: %s" % (pad, lane["host"]),
+        "%s  runner_label: %s" % (pad, lane["runner_label"]),
+        "%s  concurrency: %d" % (pad, lane["concurrency"]),
+        "%s  resource_class: %s" % (pad, lane["resource_class"]),
+        "%s  duration_band: [%s, %s]"
+        % (pad, _suggest_yaml_value(lane["duration_band"][0]),
+           _suggest_yaml_value(lane["duration_band"][1])),
+        "%s  queued: [%s, %s]"
+        % (pad, lane["queued"][0], lane["queued"][1]),
+        "%s  executing:" % pad,
+        "%s    mode: %s" % (pad, ex.get("mode")),
+    ]
+    if ex.get("mode") == "expectation":
+        lines.append("%s    floor: [%s, %s]"
+                     % (pad, ex["floor"][0], ex["floor"][1]))
+    else:
+        lines.append("%s    values: [%s, %s]"
+                     % (pad, ex["values"][0], ex["values"][1]))
+    return lines
+
+
+def build_profile_suggestion(host, snap):
+    """(lanes, reasoning) for one host's fresh snapshot.
+
+    lanes is an ordered dict of suggested lane name to lane
+    mapping; reasoning is a list of plain sentences, one per
+    decision, each naming the measured values it rests on.
+    Pure function of the snapshot: the same snapshot always
+    drafts the same profile. Unknown fields justify nothing:
+    a lane whose bar cannot be proven from measured values is
+    not suggested, and the reasoning says so."""
+    cores = snap.get("cpu_cores")
+    ram_mb = snap.get("ram_total_mb")
+    gpus = snap.get("gpus")
+    measured_gpus = [g for g in (gpus or []) if isinstance(g, dict)
+                     and (g.get("name")
+                          or g.get("vram_mb") is not None)]
+    lanes = {}
+    reasoning = []
+
+    lanes["quick"] = _suggested_lane("quick", host)
+    reasoning.append(
+        "quick: suggested. Every host gets a quick lane for "
+        "short work; this one does not depend on measured values.")
+
+    if cores is not None and ram_mb is not None \
+            and cores >= SUGGEST_NORMAL_MIN_CORES \
+            and ram_mb >= SUGGEST_NORMAL_MIN_RAM_MB:
+        lanes["normal"] = _suggested_lane("normal", host)
+        reasoning.append(
+            "normal: suggested. The snapshot measures cpu_cores=%d "
+            "(>= %d) and ram_total_mb=%d (%d GiB, >= %d GiB), so "
+            "the host can carry a mid-size lane beside quick."
+            % (cores, SUGGEST_NORMAL_MIN_CORES, ram_mb,
+               ram_mb // 1024, SUGGEST_NORMAL_MIN_RAM_MB // 1024))
+    else:
+        why = []
+        if cores is None:
+            why.append("cpu_cores is unknown, and unknown never "
+                       "counts as meeting the bar")
+        elif cores < SUGGEST_NORMAL_MIN_CORES:
+            why.append("cpu_cores=%d is below %d"
+                       % (cores, SUGGEST_NORMAL_MIN_CORES))
+        if ram_mb is None:
+            why.append("ram_total_mb is unknown, and unknown never "
+                       "counts as meeting the bar")
+        elif ram_mb < SUGGEST_NORMAL_MIN_RAM_MB:
+            why.append("ram_total_mb=%d (%d GiB) is below %d GiB"
+                       % (ram_mb, ram_mb // 1024,
+                          SUGGEST_NORMAL_MIN_RAM_MB // 1024))
+        reasoning.append("normal: not suggested. " + "; ".join(why)
+                         + ".")
+
+    lanes["long"] = _suggested_lane("long", host)
+    reasoning.append(
+        "long: suggested. Every host gets a long lane with "
+        "expectation-mode watermarks for work that outgrows the "
+        "other bands.")
+
+    if measured_gpus:
+        lanes["gpu"] = _suggested_lane("gpu", host)
+        big = max(measured_gpus,
+                  key=lambda g: g.get("vram_mb") or 0)
+        vram = ("vram_mb=%d" % big["vram_mb"]
+                if big.get("vram_mb") is not None
+                else "VRAM unknown")
+        shared = (" The GPU is unified memory, so that VRAM is "
+                  "the shared memory pool, not a discrete budget."
+                  if big.get("class") == "unified" else "")
+        reasoning.append(
+            "gpu: suggested. The snapshot measures %d GPU(s); the "
+            "largest is %s with %s (class=%s).%s"
+            % (len(measured_gpus), big.get("name") or "an unnamed "
+               "GPU", vram, big.get("class") or "unknown", shared))
+    elif gpus is None:
+        reasoning.append(
+            "gpu: not suggested. The snapshot records no GPU "
+            "information at all, so GPU presence is unknown; "
+            "unknown is never treated as a GPU (and never as "
+            "zero either). Probe again with a GPU-aware tool if "
+            "this host has one.")
+    elif len(gpus) == 0:
+        reasoning.append(
+            "gpu: not suggested. The probe measured no GPU on "
+            "this host.")
+    else:
+        reasoning.append(
+            "gpu: not suggested. The snapshot's GPU entries carry "
+            "no measured name or VRAM, so GPU presence is "
+            "unknown; unknown is never treated as a GPU.")
+
+    reasoning.append(
+        "concurrency: 1 on every suggested lane. A suggestion is "
+        "a starting draft; raising concurrency is a human edit.")
+    return lanes, reasoning
+
+
+def render_profile_suggestion(host, name, snap, age_min):
+    """The draft as one text: the reasoning as YAML comments
+    over a lanes.profiles fragment an operator can merge into
+    syncyard.yaml by hand. Also returns nothing else; the
+    caller decides where the text goes."""
+    lanes, reasoning = build_profile_suggestion(host, snap)
+    gpus = snap.get("gpus") or []
+    gpu_desc = "; ".join(
+        "%s vram_mb=%s class=%s"
+        % (g.get("name") or "unnamed",
+           _fmt_measured(g.get("vram_mb")),
+           g.get("class") or "unknown")
+        for g in gpus if isinstance(g, dict)) or "none measured"
+    header = [
+        "# gk profile suggest: a DRAFT lane profile for host "
+        "'%s'." % host,
+        "# Nothing was applied. This command never edits the "
+        "config, never",
+        "# writes hosts.json, and never switches the active "
+        "profile. To use",
+        "# the draft, merge the fragment below into syncyard.yaml "
+        "under",
+        "# lanes.profiles and set lanes.active_profile to '%s'."
+        % name,
+        "#",
+        "# Source: the capability snapshot for host '%s' recorded "
+        "in" % host,
+        "# hosts.json, probed at %s (age %s min; the freshness "
+        "bound is"
+        % (snap.get("probed_at"),
+           ("%d" % age_min) if age_min is not None else "unknown"),
+        "# lanes.capability_max_age_min = %d min, and this snapshot "
+        "is" % CAPABILITY_MAX_AGE_MIN,
+        "# inside it).",
+        "# Measured: platform=%s hostname=%s"
+        % (snap.get("platform"), snap.get("hostname")),
+        "#   cpu_cores=%s cpu_model=%s cpu_load_1m=%s"
+        % (_fmt_measured(snap.get("cpu_cores")),
+           snap.get("cpu_model") or "unknown",
+           _fmt_measured(snap.get("cpu_load_1m"))),
+        "#   ram_total_mb=%s ram_free_mb=%s"
+        % (_fmt_measured(snap.get("ram_total_mb")),
+           _fmt_measured(snap.get("ram_free_mb"))),
+        "#   storage_free_gb=%s storage_root=%s"
+        % (_fmt_measured(snap.get("storage_free_gb")),
+           snap.get("storage_root") or "unknown"),
+        "#   gpus: %s" % gpu_desc,
+        "#   venues: %s"
+        % (", ".join(snap.get("venues") or []) or "unknown"),
+        "#",
+        "# Reasoning (deterministic rules; the same snapshot "
+        "always drafts",
+        "# the same profile):",
+    ]
+    for line in reasoning:
+        header.append("#   " + line)
+    if name in (_CFG.get("lane_profiles") or {}):
+        header.append("#")
+        header.append("# Note: a profile named '%s' already exists "
+                      "in the" % name)
+        header.append("# config; rename this draft before merging "
+                      "if both are kept.")
+    header.append("# Watermarks and duration bands are copied from "
+                  "the")
+    header.append("# fleet-default profile's same-named lanes.")
+    body = ["lanes:", "  profiles:", "    %s:" % name]
+    for lane_name in ("quick", "normal", "long", "gpu"):
+        if lane_name in lanes:
+            body.extend(_suggest_lane_yaml(lane_name,
+                                           lanes[lane_name], 6))
+    return "\n".join(header + body) + "\n"
+
+
+def _live_config_path():
+    """The config file this process loaded (or would load):
+    $SYNCYARD_CONFIG, else $SYNCARD_CONFIG, else the file
+    beside this script. --out must never overwrite it."""
+    for var in ("SYNCYARD_CONFIG", "SYNCARD_CONFIG"):
+        path = os.environ.get(var)
+        if path:
+            return os.path.abspath(path)
+    return os.path.join(BASE, _cfg_mod.CONFIG_FILENAME)
+
+
+def cmd_profile_suggest(args):
+    """Spec 016 follow-on: draft a lane profile for one host
+    from its capability snapshot, with the reasoning printed
+    beside every choice. Read-only against the config and
+    hosts.json; the only write anywhere is an explicit --out
+    file, refused when it already exists or is the live
+    config. Refusals are exit 2, fail closed like the config
+    loader: a suggestion is never drafted from a snapshot the
+    routing rules would already call unusable."""
+    host = getattr(args, "host", None)
+    if host is None:
+        hosts = sorted({lane["host"] for lane in _CFG["lanes"].values()})
+        if len(hosts) == 1:
+            host = hosts[0]
+        else:
+            print("ERROR: the active profile '%s' spans hosts %s; "
+                  "name one with --host"
+                  % (ACTIVE_PROFILE, ", ".join(hosts)))
+            return 2
+    if host not in HOST_TYPE:
+        print("ERROR: unknown host '%s' (configured: %s)"
+              % (host, ", ".join(sorted(HOST_TYPE))))
+        return 2
+    name = getattr(args, "profile_name", None)
+    if name is None:
+        candidate = "%s-suggested" % host
+        name = candidate if re.fullmatch(r"[a-z][a-z0-9-]*",
+                                         candidate) else "suggested"
+    if not re.fullmatch(r"[a-z][a-z0-9-]*", name or ""):
+        print("ERROR: profile name '%s' must match [a-z][a-z0-9-]* "
+              "(the config loader's rule)" % name)
+        return 2
+    state = load_hosts_state()
+    snap, stale = capability_view(host, state)
+    if snap is None:
+        print("ERROR: no capability snapshot recorded for host "
+              "'%s'; run `gk probe-host --host %s` first. A "
+              "suggestion is never drafted from no evidence."
+              % (host, host))
+        return 2
+    if stale:
+        age = minutes_between(parse_iso(snap.get("probed_at")),
+                              now_dt())
+        print("ERROR: the capability snapshot for host '%s' is "
+              "stale (probed at %s, age %s min, bound %d min); "
+              "refresh it with `gk probe-host --host %s` and "
+              "suggest again. A suggestion is never drafted from "
+              "a snapshot routing would call degraded."
+              % (host, snap.get("probed_at"),
+                 ("%d" % age) if age is not None else "unknown",
+                 CAPABILITY_MAX_AGE_MIN, host))
+        return 2
+    age = minutes_between(parse_iso(snap.get("probed_at")), now_dt())
+    text = render_profile_suggestion(host, name, snap, age)
+    out = getattr(args, "out", None)
+    if out:
+        target = os.path.abspath(out)
+        if target == _live_config_path():
+            print("ERROR: --out %s is the live config file; a "
+                  "suggestion never overwrites the config. Pick "
+                  "another path." % out)
+            return 2
+        if os.path.exists(target):
+            print("ERROR: --out %s already exists; a suggestion "
+                  "never overwrites a file. Pick another path or "
+                  "remove it first." % out)
+            return 2
+        try:
+            with open(target, "x", encoding="utf-8") as f:
+                f.write(text)
+        except OSError as e:
+            print("ERROR: cannot write --out %s: %s" % (out, e))
+            return 2
+        print("WROTE suggested profile '%s' for host '%s' to %s "
+              "(a draft; nothing was applied)" % (name, host, out))
+        return 0
+    sys.stdout.write(text)
     return 0
 
 
@@ -4440,13 +4808,37 @@ def main(argv=None):
     p = sub.add_parser("profile",
                        help="render the lane profiles (spec 016 "
                             "FR-001); switching the active profile "
-                            "is a config edit, not a runtime verb")
+                            "is a config edit, not a runtime verb. "
+                            "'gk profile suggest' drafts a new "
+                            "profile from a host capability "
+                            "snapshot (spec 016 follow-on) and "
+                            "applies nothing")
     p.add_argument("--list", action="store_true",
                    help="list every profile with its lane count")
     p.add_argument("--show", action="store_true",
                    help="show one profile's lanes in detail")
+    p.add_argument("--suggest", action="store_true",
+                   help="draft a lane profile for one host from "
+                        "its capability snapshot, with the "
+                        "reasoning printed as comments; same as "
+                        "'gk profile suggest'. Never applied")
+    p.add_argument("--host", default=None,
+                   help="suggest: the host whose capability "
+                        "snapshot to draft from (default: the "
+                        "active profile's host, when it has "
+                        "exactly one)")
+    p.add_argument("--name", "--profile-name", dest="profile_name",
+                   default=None,
+                   help="suggest: name for the drafted profile "
+                        "(default: <host>-suggested)")
+    p.add_argument("--out", default=None,
+                   help="suggest: write the draft to this path "
+                        "instead of stdout; refused when the "
+                        "path exists or is the live config file")
     p.add_argument("name", nargs="?", default=None,
-                   help="profile to show (default: the active one)")
+                   help="profile to show (default: the active "
+                        "one); the word 'suggest' drafts a new "
+                        "profile instead (see --suggest)")
     p.set_defaults(fn=cmd_profile)
 
     p = sub.add_parser("probe-host",
