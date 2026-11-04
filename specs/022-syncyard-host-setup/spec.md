@@ -46,7 +46,15 @@ it calls itself done:
    fleet-status pointer at this machine's backchannel channel
    copy when the agent is installed).
 2. **The backchannel agent** in the machine's WSL, following
-   `backchannel/INSTALL.md` exactly: the machine's own channel
+   `backchannel/INSTALL.md` exactly. The backchannel is not an
+   optional extra or a satellite of Syncyard; it is bundled
+   with the product as one piece and is its most critical
+   component (owner ruling, 2026-11-04): a host without its
+   agent is an incomplete install by definition, and the
+   setup's summary must say so in those terms when the agent
+   could not be installed or verified. The agent ships in this
+   repo, versioned with the product, and its install is the
+   setup's second step, not an appendix: the machine's own channel
    (`syncyard-<hostname>`, lowercased; `syncyard-dev` remains
    TRISTEN-DESKTOP's and is refused for any other host), a
    repo-scoped deploy key generated on the machine (the public
