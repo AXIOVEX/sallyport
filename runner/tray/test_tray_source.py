@@ -295,20 +295,28 @@ def main():
               and '"signals: backchannel heartbeat + fleet snapshot"'
               in conn
               and '"signal: fleet snapshot only"' in conn),
-        check("menu carries the connection line and its detail",
-              "ConnectionText()" in SRC
-              and "ConnectionDetailText()" in SRC),
-        check("tooltip carries the connection line",
-              "_conn.Line()" in tooltip),
+        check("menu carries the connection line",
+              "ConnectionText()" in SRC),
+        # Owner trim (2026-11-04): the menu header is the build
+        # line, the fleet line, and the connection line. The
+        # per-job Next line and the signal detail line are gone
+        # from the menu (the detail lives in the settings dialog).
+        check("menu header is trimmed (no Next line, no detail line)",
+              "FleetNextText" not in SRC
+              and "ConnectionDetailText" not in SRC),
+        check("tooltip carries the connection as one word",
+              '"linked"' in tooltip and '"link stale"' in tooltip
+              and '"unlinked"' in tooltip),
         # .NET Framework's NotifyIcon.Text setter throws
-        # ArgumentOutOfRangeException above 63 characters; the
-        # tooltip clamp must be that limit, not the shell's larger
-        # buffer (the 120 cap shipped in specs 014/018 crashed the
-        # tray in its constructor on 2026-11-03, before the message
-        # loop's exception guard could apply).
-        check("tooltip is clamped to the NotifyIcon.Text limit (63)",
-              "if (s.Length > 63) s = s.Substring(0, 63);" in tooltip
-              and "Substring(0, 120)" not in tooltip),
+        # ArgumentOutOfRangeException above 63 characters (the
+        # 120 cap shipped in specs 014/018 crashed the tray in
+        # its constructor on 2026-11-03). The tooltip must fit
+        # by composition, never by truncation: an earlier build
+        # chopped the composed string at 63 mid-word, which is
+        # the cut-off hover text the owner rejected 2026-11-04.
+        check("tooltip fits 63 by composition, never truncation",
+              "Substring" not in tooltip
+              and 'if ((s + " - " + p).Length > 63) break;' in tooltip),
         check("dialog states the signal set in both sections",
               "_connDetail.Text = sig;" in form
               and "_fleetSignal.Text = sig;" in form),
@@ -376,11 +384,11 @@ def main():
               and 'Log("tray alive")' in SRC),
 
         # ---- spec 021: build stamp and self-update ----------------
-        check("assembly version is the 0.4.0.0 build stamp",
-              'AssemblyVersion("0.4.0.0")' in SRC
-              and 'AssemblyFileVersion("0.4.0.0")' in SRC),
+        check("assembly version is the 0.4.1.0 build stamp",
+              'AssemblyVersion("0.4.1.0")' in SRC
+              and 'AssemblyFileVersion("0.4.1.0")' in SRC),
         check("BuildId constant carries the stamp",
-              'BuildId = "0.4.0.0"' in SRC),
+              'BuildId = "0.4.1.0"' in SRC),
         check("menu header shows the build stamp",
               '"Syncyard Tray v" + BuildId' in SRC),
         check("startup log carries the build stamp",
