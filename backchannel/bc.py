@@ -48,6 +48,13 @@ STOP_PATH = CHANNEL + "/STOP"
 
 API_BASE = "https://api.github.com"
 STALE_HEARTBEAT_S = 300  # FR-005: >5 min is stale
+SKEW_TOLERANCE_S = 30  # a heartbeat ts this far in the FUTURE is
+# clock skew, not freshness: the host's WSL clock and the VM clock
+# are different clocks, and WSL clocks are known to drift across
+# host sleep. Judging a future-dated heartbeat "fresh" would let
+# a dead agent hide behind a skewed clock for skew + the whole
+# stale window, so past this tolerance the age is reported as
+# unjudgeable instead.
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +219,13 @@ def cmd_heartbeat(api, args):
     if hb is None:
         print("BC_HEARTBEAT ABSENT (no heartbeat.json on the channel)")
         return 2
+    if not isinstance(hb, dict):
+        # get_file returns raw text when the content does not
+        # parse as JSON: a corrupt or half-written heartbeat is
+        # unreadable, not a traceback.
+        print("BC_HEARTBEAT UNREADABLE (heartbeat.json did not parse "
+              "as a JSON object)")
+        return 2
     age = heartbeat_age_s(hb)
     print("BC_HEARTBEAT ts=%s host=%s user=%s last_executed=%s stopped=%s" % (
         hb.get("ts"), hb.get("host"), hb.get("user"),
@@ -229,6 +243,11 @@ def cmd_heartbeat(api, args):
         print("BC_HEARTBEAT_AGE UNKNOWN (unparseable ts)")
         return 2
     print("BC_HEARTBEAT_AGE_S %d" % age)
+    if age < -SKEW_TOLERANCE_S:
+        print("BC_HEARTBEAT_SKEW age_s=%d - the host clock is ahead "
+              "of this clock; freshness cannot be judged from this "
+              "heartbeat (spec 009 FR-005)" % age)
+        return 2
     if age > STALE_HEARTBEAT_S:
         print("BC_HEARTBEAT_STALE age_s=%d limit_s=%d - report to the "
               "Desktop Access chat (spec 009 FR-005)" % (
@@ -243,13 +262,20 @@ def cmd_status(api, args):
     cmd, _ = api.get_file(CMD_PATH)
     out, _ = api.get_file(OUT_PATH)
     stop, _ = api.get_file(STOP_PATH)
-    if cmd:
-        state = "acknowledged" if is_acknowledged(cmd, out) else "pending"
+    if cmd is not None and not isinstance(cmd, dict):
+        print("BC_LAST_CMD unreadable (cmd.json did not parse as a "
+              "JSON object)")
+    elif cmd:
+        state = "acknowledged" if is_acknowledged(
+            cmd, out if isinstance(out, dict) else None) else "pending"
         print("BC_LAST_CMD id=%s state=%s created_at=%s" % (
             cmd.get("id"), state, cmd.get("created_at")))
     else:
         print("BC_LAST_CMD none")
-    if out:
+    if out is not None and not isinstance(out, dict):
+        print("BC_LAST_OUT unreadable (out.json did not parse as a "
+              "JSON object)")
+    elif out:
         print("BC_LAST_OUT id=%s exit_code=%s finished_at=%s" % (
             out.get("id"), out.get("exit_code"), out.get("finished_at")))
     else:
@@ -267,6 +293,15 @@ def do_send(api, cmd_dict, force=False):
     """
     existing_cmd, existing_sha = api.get_file(CMD_PATH)
     existing_out, _ = api.get_file(OUT_PATH)
+    if not isinstance(existing_cmd, dict):
+        # A cmd.json that does not parse as a JSON object names
+        # no pending command the agent could execute (the agent
+        # skips it too); treat it as no command. A corrupt
+        # out.json proves no acknowledgement, so it stays None
+        # and the refusal rule remains conservative.
+        existing_cmd = None
+    if not isinstance(existing_out, dict):
+        existing_out = None
     if should_refuse_overwrite(existing_cmd, existing_out, force):
         raise RuntimeError(
             "refusing to overwrite unacknowledged pending command %s "
@@ -277,7 +312,7 @@ def do_send(api, cmd_dict, force=False):
                  "backchannel: command %s" % cmd_dict["id"],
                  sha=existing_sha)
     back, _ = api.get_file(CMD_PATH)
-    if (not back or back.get("id") != cmd_dict["id"]
+    if (not isinstance(back, dict) or back.get("id") != cmd_dict["id"]
             or back.get("sha256") != cmd_dict["sha256"]):
         raise RuntimeError(
             "read-back verification FAILED for command %s - treat as "
@@ -307,7 +342,7 @@ def cmd_wait(api, args):
     deadline = time.time() + args.timeout_s
     while True:
         out, _ = api.get_file(OUT_PATH)
-        if out and out.get("id") == args.id:
+        if isinstance(out, dict) and out.get("id") == args.id:
             print("BC_DONE id=%s exit_code=%s" % (
                 out.get("id"), out.get("exit_code")))
             if out.get("stdout_tail"):

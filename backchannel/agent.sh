@@ -316,6 +316,25 @@ execute_command() {
     timeout_s="$(json_get "$cmd_file" timeout_s)"
     [ -z "$timeout_s" ] && timeout_s="$DEFAULT_TIMEOUT_S"
     case "$timeout_s" in *[!0-9]*) timeout_s="$DEFAULT_TIMEOUT_S" ;; esac
+    # A digit string too long for bash arithmetic defeats the
+    # clamp below outright: [ -gt ] errors "integer expression
+    # expected" (rc 2, read as false) on a 19+ digit value, and
+    # GNU timeout parses the same string as an effectively
+    # unbounded double. Any timeout with 10+ digits is beyond
+    # every sane bound by construction, so clamp it on length
+    # before any arithmetic touches it.
+    if [ "${#timeout_s}" -gt 9 ]; then
+        log "timeout_s=$timeout_s clamped to SYNCBC_MAX_TIMEOUT_S=$MAX_TIMEOUT_S"
+        timeout_s="$MAX_TIMEOUT_S"
+    fi
+    # Zero is not a bound either: GNU timeout treats a duration
+    # of 0 as "no timeout", so a 0 envelope would run unbounded
+    # and stall this loop (and its heartbeat) behind one body.
+    # Fall back to the default timeout instead.
+    if [ "$timeout_s" -eq 0 ]; then
+        log "timeout_s=0 is not a bound (GNU timeout disables a 0 duration); using SYNCBC_TIMEOUT_S=$DEFAULT_TIMEOUT_S"
+        timeout_s="$DEFAULT_TIMEOUT_S"
+    fi
     # The envelope's timeout is a request, not a bound (0.2.2):
     # clamp it agent-side so no sender can stretch the
     # heartbeat gap past the tray's thresholds with one
@@ -448,6 +467,21 @@ main_loop() {
             local cid last_id=""
             cid="$(json_get "$REPO_DIR/$CHANNEL_REL/cmd.json" id)"
             [ -f "$LAST_ID_FILE" ] && last_id="$(cat "$LAST_ID_FILE" 2>/dev/null)"
+            if [ -z "$last_id" ] && [ -f "$REPO_DIR/$CHANNEL_REL/out.json" ]; then
+                # The replay guard file is gone (base wiped, a
+                # reinstall that kept the clone) but the channel
+                # still carries the last result: seed the guard
+                # from out.json, whose id only ever names a
+                # command that already ran or was refused, so
+                # FR-004(b) - a re-pushed old command never
+                # re-runs - survives the guard file's loss.
+                # Restoring the file makes the repair durable.
+                last_id="$(json_get "$REPO_DIR/$CHANNEL_REL/out.json" id)"
+                if [ -n "$last_id" ]; then
+                    printf '%s' "$last_id" > "$LAST_ID_FILE"
+                    log "replay guard restored from out.json (last_executed_id=$last_id)"
+                fi
+            fi
             if [ -n "$cid" ] && [ "$cid" != "$last_id" ]; then
                 execute_command "$REPO_DIR/$CHANNEL_REL/cmd.json" || log "execute_command error (continuing)"
             fi
