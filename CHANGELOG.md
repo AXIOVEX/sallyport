@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Backchannel, one channel per machine: the agent's channel is now selected by the SYNCBC_CHANNEL environment variable (agent.sh) and the client's by --channel or SYNCBC_CHANNEL (bc.py), defaulting to the original syncyard-dev channel so TRISTEN-DESKTOP's install is unchanged. A second host (TRISTEN-LAPTOP, channels/syncyard-laptop) can now run its own agent against the same private backchannel repo without sharing cmd/out/heartbeat state. Install procedure for additional machines: backchannel/INSTALL.md (deploy key per machine, systemd user unit with the channel set, four-step verification from records).
 ### Fixed
 - Tray updater: the apply-update thread start is now wrapped in an explicit ThreadStart. The in-box .NET Framework csc (C# 5) rejects the bare anonymous method as ambiguous between ThreadStart and ParameterizedThreadStart (CS0121), which failed the r13 tray build on both fleet machines; the method-group start used by the update check was unaffected.
 - Per-host default cwd: the gatekeeper built its default
