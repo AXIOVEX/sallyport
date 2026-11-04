@@ -354,6 +354,17 @@ def main():
         check("a deferred rebuild runs once when the menu closes",
               "if (_menuDirty) { _menuDirty = false; RebuildMenu(); }"
               in SRC),
+
+        # ---- exit forensics (owner order 2026-11-04) --------------
+        check("fatal non-UI thread faults are logged before death",
+              "AppDomain.CurrentDomain.UnhandledException +=" in SRC
+              and "unhandled appdomain exception" in SRC),
+        check("orderly message-loop exits are logged",
+              "Application.ApplicationExit +=" in SRC
+              and "tray process exiting" in SRC),
+        check("a per-minute alive line bounds any silent death",
+              'if (_tick % 12 == 0)' in SRC
+              and 'Log("tray alive")' in SRC),
     ]
     print("TRAY_SOURCE %s" % ("OK" if all(results) else "FAILURES"))
     return 0 if all(results) else 1
