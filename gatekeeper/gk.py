@@ -1799,8 +1799,28 @@ def dispatch_one(job, jobs):
                    "-f", "path=" + job["grab_path"],
                    "-f", "lane=" + lane_label]
     else:
-        with open(job["script_path"], "rb") as f:
-            payload = base64.b64encode(f.read()).decode("ascii")
+        try:
+            with open(job["script_path"], "rb") as f:
+                payload = base64.b64encode(f.read()).decode("ascii")
+        except OSError as e:
+            # A missing or unreadable script file must fail THIS job
+            # only, never the sweep. The classic cause is a script
+            # staged in /tmp and wiped by a VM replacement between
+            # submit and dispatch (field case 2026-11-04:
+            # spec053-f0-build-repair-2026-11-04, whose FileNotFoundError
+            # killed the sweep and left the record wedged in
+            # dispatching). Return the job to submitted with the
+            # error on the record: a restaged script revives it on a
+            # later sweep with no operator surgery, and the pass
+            # continues to the next waiting job in the same call.
+            job["state"] = "submitted"
+            job["last_dispatch_error"] = (
+                "script unreadable: %s" % e)[:300]
+            job.pop("dispatching_at", None)
+            save_job_safe(job, "dispatch_failed_retryable")
+            ledger("dispatch_failed_retryable", job_id=job["id"],
+                   key=job["key"], error=job["last_dispatch_error"])
+            return False
         gh_args = ["workflow", "run", job["workflow"], "-R", REPO,
                    "-f", "cmd_b64=" + payload,
                    "-f", "lane=" + lane_label]
