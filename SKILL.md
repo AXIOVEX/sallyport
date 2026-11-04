@@ -112,6 +112,38 @@ $GK lock --lane gpu --program <your-program> --resume
 $GK unlock --lane gpu --program <your-program>
 $GK lock --list
 
+# Lane profiles (spec 016): lanes live in named profiles in
+# config (lanes.profiles.<name>); exactly one is active.
+# fleet-default is today's four lanes unchanged; a profile may
+# also define lanes from scratch (host, resource class
+# cpu|gpu|any, duration band, optional workflow pin). Render
+# them here; switching the active profile is a config edit
+# (lanes.active_profile) that takes effect at the next sweep.
+$GK profile --list
+$GK profile --show [name]
+
+# Auto routing (spec 016): let the sweep pick the lane. Declare
+# what the job needs; the sweep scores the active profile's
+# lanes from your hints, your program's recorded history
+# (median actual duration of its last ten completed jobs),
+# queue load, and the host's capability snapshot. The decision
+# and every input are written onto the job record (auto_routed
+# in the ledger). A hard hint no lane can meet waits with the
+# reason on the record — never a silent downgrade.
+$GK submit ... --lane auto --needs-gpu 8192 --key <unique-key>
+$GK submit ... --lane auto --needs-ram-mb 16384 --venue docker --image <img> --key <unique-key>
+
+# Host capability (spec 016): record what a machine actually
+# has (CPUs, RAM, storage, GPUs, venues) for auto routing.
+# Dispatched through the door where a transport exists
+# (Windows, WSL2); for macOS/Linux hosts run
+# gatekeeper/probes/probe-<platform>.sh on the host and ingest
+# the report. Snapshots older than lanes.capability_max_age_min
+# (default 60) stop informing routing (band routing remains,
+# the degradation is ledgered).
+$GK probe-host --host <host>
+$GK probe-host --host <host> --ingest <report-file>
+
 # The hard halt: sweeps no-op entirely (no budget spent, no watch)
 # until started again. Start clears both a stop and a pause.
 $GK stop --reason "fleet maintenance"
@@ -224,6 +256,23 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   the holder's. `gk status` shows a LOCKS section in all modes,
   and waiting jobs held by a lock are marked
   `[lock-held by <program>]`.
+- **Auto routing is a placement convenience, never an override
+  (spec 016).** `--lane auto` asks the sweep to choose among the
+  active profile's lanes; an explicitly named lane is never
+  re-routed, and auto composes with every gate — a locked lane
+  is a candidate only for the holder's jobs, focus and host
+  holds bind auto jobs exactly as they bind explicit ones, and
+  the budget stand-down suppresses resolution with the rest of
+  the pass. The scorer is deterministic: same records, same
+  landscape, same lane, and the full input snapshot rides on
+  the job record, so any placement can be re-derived later.
+  Estimates are advisory forever — an auto-routed job that
+  overruns is never killed, cancelled, or moved; its actuals
+  join your program's history and sharpen the next estimate.
+  If you need placement certainty, name the lane (or hold its
+  lock); if you declare hints, declare them honestly — a job
+  that needs a GPU but does not say so is misdeclared, and no
+  mechanism here can detect that.
 - `gk cancel <id-or-key>` is local bookkeeping for jobs that were never
   dispatched. It never cancels a GitHub run. There is no command in this
   system that cancels a running job on a timer — see escalation below.

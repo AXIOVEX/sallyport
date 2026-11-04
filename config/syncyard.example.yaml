@@ -195,40 +195,119 @@ workflows:
 #     cwd:
 #       docker.yml: /
 
-# Lanes (spec 010 FR-002). Count and names are configuration.
-# concurrency is 1 (serial) unless a lane says otherwise.
-# Watermarks are minutes: queued/executing (warn, escalate);
-# executing mode is `fixed` (table values) or `expectation`
-# (the job's declared expectation scaled, floored by `floor`).
+# Lanes (spec 010 FR-002; spec 016 FR-001/FR-002). Lanes live
+# in named PROFILES; exactly one profile is active. A profile
+# is a lane table: each lane names its host, runner label,
+# concurrency (1 = serial unless a lane says otherwise),
+# resource class (cpu|gpu|any) and expected-duration band in
+# minutes ([lo, hi], either end null = open) for auto routing,
+# an optional workflow pin, and an enabled flag. Watermarks
+# are minutes: queued/executing (warn, escalate); executing
+# mode is `fixed` (table values) or `expectation` (the job's
+# declared expectation scaled, floored by `floor`). Switching
+# the active profile is a config edit; it takes effect at the
+# next sweep. `auto_default: true` makes a lane-less submit
+# mean --lane auto (default false: a lane is required).
+# `capability_max_age_min` is how old a host capability probe
+# may be before auto routing treats it as unknown.
 lanes:
-  quick:
-    host: desktop
-    runner_label: lane-quick
-    queued: [10, 30]
-    executing:
-      mode: fixed
-      values: [5, 15]
-  normal:
-    host: desktop
-    runner_label: lane-normal
-    queued: [20, 45]
-    executing:
-      mode: fixed
-      values: [45, 90]
-  long:
-    host: desktop
-    runner_label: lane-long
-    queued: [45, 120]
-    executing:
-      mode: expectation
-      floor: [90, 180]
-  gpu:
-    host: desktop
-    runner_label: lane-gpu
-    queued: [30, 90]
-    executing:
-      mode: expectation
-      floor: [120, 240]
+  active_profile: fleet-default
+  auto_default: false
+  capability_max_age_min: 60
+  profiles:
+    fleet-default:
+      quick:
+        host: desktop
+        runner_label: lane-quick
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [0, 10]
+        queued: [10, 30]
+        executing:
+          mode: fixed
+          values: [5, 15]
+      normal:
+        host: desktop
+        runner_label: lane-normal
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [0, 45]
+        queued: [20, 45]
+        executing:
+          mode: fixed
+          values: [45, 90]
+      long:
+        host: desktop
+        runner_label: lane-long
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [30, null]
+        queued: [45, 120]
+        executing:
+          mode: expectation
+          floor: [90, 180]
+      gpu:
+        host: desktop
+        runner_label: lane-gpu
+        concurrency: 1
+        resource_class: gpu
+        duration_band: [0, null]
+        queued: [30, 90]
+        executing:
+          mode: expectation
+          floor: [120, 240]
+    single-host-light:
+      quick:
+        host: desktop
+        runner_label: lane-quick
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [0, 10]
+        queued: [10, 30]
+        executing:
+          mode: fixed
+          values: [5, 15]
+      long:
+        host: desktop
+        runner_label: lane-long
+        concurrency: 1
+        resource_class: any
+        duration_band: [10, null]
+        queued: [45, 120]
+        executing:
+          mode: expectation
+          floor: [90, 180]
+    gpu-farm:
+      quick:
+        host: desktop
+        runner_label: lane-quick
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [0, 10]
+        queued: [10, 30]
+        executing:
+          mode: fixed
+          values: [5, 15]
+      gpu:
+        host: desktop
+        runner_label: lane-gpu
+        concurrency: 2
+        resource_class: gpu
+        duration_band: [0, 120]
+        queued: [30, 90]
+        executing:
+          mode: expectation
+          floor: [120, 240]
+      gpu-long:
+        host: desktop
+        runner_label: lane-gpu-long
+        concurrency: 1
+        resource_class: gpu
+        duration_band: [60, null]
+        queued: [30, 90]
+        executing:
+          mode: expectation
+          floor: [240, 360]
 
 # Notification endpoints (spec 010 FR-007). Programs register
 # an endpoint name on submit; the outbox delivers per type.
