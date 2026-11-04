@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Gatekeeper-emitted fleet snapshot + publisher v2 (spec
+  014 FR-008/FR-009, the spec 013 fleet deploy's step 2).
+  New `gk snapshot` command: the FR-008 snapshot as one
+  JSON object on stdout, derived by the gatekeeper's own
+  code paths — the FR-001-normalized pause record, the
+  FR-012 dispatch order the sweep itself uses, the sweep's
+  admission rule for the held marks (stop / pause / focus
+  with the maintenance exemption, plus host dispatch holds
+  with the FR-015 signal-job exemption), and the
+  host-state file for draining. One derivation, two
+  surfaces: `gk status` at the terminal, the tray panel
+  via the publisher. fleet_status.py becomes the
+  transporter: it runs the snapshot command
+  ($SYNCYARD_GK_SNAPSHOT_CMD, else the gk.py beside it)
+  under a bounded timeout, validates the JSON against the
+  contract, and publishes it verbatim with a top-level
+  `source: "gatekeeper"` label; on any failure it falls
+  back to the v1.1 state-file derivation, labeled
+  `source: "fallback"`, with all v1.1 behavior (budget
+  preflight, failure counters, lockfile, contents-API
+  publish) unchanged. The PUBLISHED line now carries the
+  source. VERSION is deliberately not bumped (the spec
+  013 stack owns 0.4.0).
 - Spec 018: tray connection indicator. The tray icon gains a
   second dimension beside runner health: a link mark in the
   icon's corner (solid when connected, hollow amber when

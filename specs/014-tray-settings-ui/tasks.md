@@ -86,6 +86,22 @@ catch-and-log, and no new allocation churn may ride the
       count. The canonical ordering fix is the gatekeeper
       emitting this snapshot itself, planned with the
       spec 013 fleet deploy.
+      v2 (the spec 013 fleet deploy's step-2 PR): the
+      canonical fix lands. `gk snapshot` emits this shape
+      from the gatekeeper's own code (pause_record /
+      dispatch_sort_key / the sweep's admission rule /
+      load_hosts_state), and the publisher is its
+      transporter: it runs the snapshot command
+      ($SYNCYARD_GK_SNAPSHOT_CMD, else the gk.py beside
+      it), validates the JSON against the contract, and
+      publishes it verbatim plus a top-level `source`
+      label ("gatekeeper"). Any failure of that path
+      falls back to the v1.1 state-file derivation,
+      labeled "source": "fallback" — a dead gatekeeper
+      is exactly when the panel matters, and the label
+      keeps the two semantics from ever being silently
+      mixed. Publisher-side fleet wiring of the snapshot
+      command belongs to the deploy's swap steps.
 
 ## Phase 4 — Dynamism discipline (FR-010, FR-011)
 
