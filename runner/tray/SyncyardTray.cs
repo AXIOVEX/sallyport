@@ -871,6 +871,8 @@ namespace SyncyardTray
         private int _iconState = -1;
         private int _iconConnState = -1;
         private ContextMenuStrip _menu;
+        private bool _menuOpen;
+        private bool _menuDirty;
         private int _tick;
         private TraySettings _settings;
         private FleetStatus _fleet;
@@ -1330,7 +1332,19 @@ namespace SyncyardTray
 
         private void RebuildMenu()
         {
+            // Never replace the menu while the owner has it open:
+            // the 5 s supervision tick calls this every tick, and
+            // swapping + disposing the strip under an open menu is
+            // what dismissed it mid-use (owner report 2026-11-04).
+            // Defer; the Closed handler rebuilds once on close.
+            if (_menuOpen) { _menuDirty = true; return; }
             var menu = new ContextMenuStrip();
+            menu.Opened += delegate { _menuOpen = true; };
+            menu.Closed += delegate
+            {
+                _menuOpen = false;
+                if (_menuDirty) { _menuDirty = false; RebuildMenu(); }
+            };
             var fleetLine = new ToolStripMenuItem(FleetMenuText());
             fleetLine.Enabled = false;
             menu.Items.Add(fleetLine);
