@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static battery for the Syncyard tray source (specs 007 + 014 + 018).
+"""Static battery for the Syncyard tray source (specs 007 + 014 + 018 + 021).
 
 Guards the 2026-11-01 field crash: the tray re-rendered its icon on
 every 5 s supervision tick and leaked the bitmap and the icon handle
@@ -28,6 +28,11 @@ Two spec 014 checks were widened, not weakened, when the icon
 gained its second dimension: the render cache key is now the
 (runner, connection) pair, and the SetIcon call site passes both
 states - the runner-state value it always carried is unchanged.
+
+The spec 021 section guards the self-update: the build stamp, the
+manifest check, the hash verified before the swap is armed, and
+the helper mode running before the singleton mutex with no UI in
+its code path.
 
 These are source-shape checks: they fail if the leak patterns, the
 missing exception guards, or a settings/fleet regression ever come
@@ -100,6 +105,10 @@ def main():
                           "private void StartRunner")
     restart = region("private void RestartRunner(RunnerDef r)",
                      "// --- settings surface")
+    helper = region("private static int ApplyUpdateHelper",
+                    "private static void Main")
+    updworker = region("private void ApplyUpdateWorker",
+                       "private void EndUpdateBusy")
     written, read = settings_keys()
     results = [
         # ---- spec 007: the GDI leak and exception guards ----------
@@ -365,6 +374,76 @@ def main():
         check("a per-minute alive line bounds any silent death",
               'if (_tick % 12 == 0)' in SRC
               and 'Log("tray alive")' in SRC),
+
+        # ---- spec 021: build stamp and self-update ----------------
+        check("assembly version is the 0.4.0.0 build stamp",
+              'AssemblyVersion("0.4.0.0")' in SRC
+              and 'AssemblyFileVersion("0.4.0.0")' in SRC),
+        check("BuildId constant carries the stamp",
+              'BuildId = "0.4.0.0"' in SRC),
+        check("menu header shows the build stamp",
+              '"Syncyard Tray v" + BuildId' in SRC),
+        check("startup log carries the build stamp",
+              'Log("tray build " + BuildId)' in SRC),
+        check("update check reads the published manifest",
+              '"https://github.com/AXIOVEX/syncyard/releases/'
+              'latest/download/tray-update.json"' in SRC),
+        check("update menu item texts exist",
+              '"Check for updates"' in SRC
+              and '"Update to v" + _updateVersion' in SRC),
+        # The download's hash must be computed and compared
+        # before the verified path is handed to the launcher;
+        # a mismatch deletes the download and arms nothing.
+        check("hash is verified before the swap is armed",
+              updworker.find("Sha256Hex(newPath)") >= 0
+              and updworker.find("Sha256Hex(newPath)")
+              < updworker.find("_pendingUpdatePath = newPath;")),
+        check("a hash mismatch aborts and deletes the download",
+              '"update aborted: hash mismatch"' in updworker
+              and "File.Delete(newPath)" in updworker),
+        # The helper branch must be reached before the singleton
+        # mutex exists, or the helper could never replace the
+        # exe of a running tray.
+        check("apply-update runs before the singleton mutex",
+              SRC.find('args[0] == "--apply-update"') >= 0
+              and SRC.find('args[0] == "--apply-update"')
+              < SRC.find('"SyncyardTraySingleton"')),
+        # The helper's own code path (from its entry to Main)
+        # may hold no UI tokens at all.
+        check("helper mode is UI-free (no icon, no message box)",
+              bool(helper)
+              and "NotifyIcon" not in helper
+              and "MessageBox" not in helper),
+        check("helper waits, swaps with a .bak, and relaunches",
+              "OtherInstanceRunning(exePath)" in helper
+              and 'exePath + ".bak"' in helper
+              and "File.Move(newPath, exePath)" in helper
+              and "Process.Start(exePath)" in helper),
+        check("tray hands off and exits for the update",
+              "--apply-update " in SRC
+              and '"tray exiting for update"' in SRC),
+        # ---- spec 021 FR-007: per-machine runner root ------------
+        # The lane dirs come from the settings runner root so a
+        # second machine (the laptop) supervises its own lanes;
+        # the hardcoded desktop lane paths must not come back.
+        check("runner root is a setting with the desktop default",
+              "public string RunnerRoot" in SRC
+              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners"'
+              in SRC
+              and '"runnerRoot"' in SRC),
+        check("lane dirs are built from the settings runner root",
+              'Path.Combine(_settings.RunnerRoot, "long")' in SRC
+              and 'Path.Combine(_settings.RunnerRoot, "quick")' in SRC
+              and 'Path.Combine(_settings.RunnerRoot, "normal")' in SRC
+              and 'Path.Combine(_settings.RunnerRoot, "gpu")' in SRC
+              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\long"'
+              not in SRC
+              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\gpu"'
+              not in SRC),
+        check("settings load before the runner table is built",
+              SRC.find("_settings = TraySettings.Load();") >= 0
+              and SRC.find("_settings = TraySettings.Load();")
+              < SRC.find("_runners.Add")),
     ]
     print("TRAY_SOURCE %s" % ("OK" if all(results) else "FAILURES"))
     return 0 if all(results) else 1

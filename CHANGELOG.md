@@ -19,6 +19,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record wedged in dispatching, repaired by hand). Battery:
   gatekeeper/test_dispatch_isolation.py.
 ### Added
+- Spec 021 (2026-11-04): tray self-update. The tray now
+  carries a build stamp (assembly version 0.4.0.0, shown as
+  a disabled header item in the menu and written to the
+  tray log at startup) and a "Check for updates" menu item:
+  on the owner's click it reads the `tray-update.json`
+  manifest published with the project's GitHub releases,
+  and when a newer build is published the item becomes
+  "Update to v<version>". Applying an update downloads the
+  exe, verifies its SHA-256 against the manifest before
+  anything is swapped (a mismatch deletes the download and
+  aborts), then hands off to a UI-free `--apply-update`
+  helper mode of the same exe, which waits for the old tray
+  to exit, renames the installed exe to `.bak`, renames the
+  verified download into place, and relaunches, with
+  rollback to the `.bak` if the swap fails. Checks happen
+  only on an explicit click; the tray never polls for
+  updates, and the spec 018 connection indicator is
+  unchanged. The runner root the tray supervises is now a
+  per-machine setting (`runnerRoot`, defaulting to the
+  original desktop layout) so the same build runs on a
+  second machine whose lanes live elsewhere.
 - Spec 016 (2026-11-02): adaptive lanes. Lanes now live in
   named **profiles** (`lanes.profiles.<name>` in config, one
   `lanes.active_profile`): a profile is a lane table, and a
