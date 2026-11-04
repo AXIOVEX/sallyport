@@ -121,9 +121,41 @@ EXEC_WM_FIXED = {n: tuple(l["executing"]["values"])
 EXEC_WM_FLOOR = {n: tuple(l["executing"]["floor"])
                  for n, l in _CFG["lanes"].items()
                  if l["executing"]["mode"] == "expectation"}
-DEFAULT_CWD = {}
-for _h in _CFG["hosts"].values():
-    DEFAULT_CWD.update(_h.get("cwd") or {})
+HOST_CWD = {name: dict(h.get("cwd") or {})
+            for name, h in _CFG["hosts"].items()}
+
+
+def default_cwd(lane, workflow):
+    """The default working directory for a job on `lane`.
+
+    Resolution is per machine, never global: the lane's own
+    host first, then the hosts that hang off it (a WSL host
+    declared `via` its Windows host is the same machine's
+    other half), then the built-in DEFAULT_CWD table. A host
+    that declares a workflow's cwd explicitly, including
+    null, wins over every fallback.
+
+    History: until 2026-11-04 this was one merged dict built
+    by updating a global with every host's cwd map in file
+    order, so the LAST host in the config silently set the
+    default for all of them. With one machine that was
+    invisible; the day the laptop enrolled as a second
+    Windows host, its run.yml directory (D:\\Development\\
+    Inductoheat) overwrote the desktop's and every desktop
+    run.yml job submitted without --cwd was dispatched into
+    a directory that does not exist there, so its payload
+    never ran (field case: bc-dnsfix-peek-2026-11-04).
+    """
+    host = LANE_HOST.get(lane) if lane else None
+    if host is not None:
+        chain = [host] + sorted(
+            name for name, h in _CFG["hosts"].items()
+            if h.get("via") == host)
+        for name in chain:
+            cwd_map = HOST_CWD.get(name) or {}
+            if workflow in cwd_map:
+                return cwd_map[workflow]
+    return DEFAULT_CWD.get(workflow)
 MARKER_RE = re.compile(_CFG["markers"]["pattern"])
 LIVENESS_DOWN_AFTER_S = _CFG["liveness"]["down_after_s"]
 REBOOT_GRACE_S = _CFG["reboot"]["grace_s"]
@@ -1463,7 +1495,8 @@ def cmd_submit(args):
         "program": args.program,
         "workflow": args.workflow,
         "lane": None if auto else lane_arg,
-        "cwd": args.cwd if args.cwd is not None else DEFAULT_CWD[args.workflow],
+        "cwd": args.cwd if args.cwd is not None else (
+            None if auto else default_cwd(lane_arg, args.workflow)),
         "expected_min": args.expected_min,
         "state": "submitted",
         "created_at": now_iso(),
@@ -1492,6 +1525,11 @@ def cmd_submit(args):
     }
     if auto:
         job["lane_request"] = "auto"
+        if args.cwd is None:
+            # No lane yet, so no per-host cwd can be resolved;
+            # the auto-routing pass resolves it against the
+            # lane it assigns (see cwd_auto in the sweep).
+            job["cwd_auto"] = True
     if needs:
         job["needs"] = needs
     if args.workflow == "grab.yml":
@@ -1734,7 +1772,7 @@ def _submit_signal_job(target, hold):
         "program": "syncyard",
         "workflow": workflow,
         "lane": lane,
-        "cwd": DEFAULT_CWD[workflow],
+        "cwd": default_cwd(lane, workflow),
         "expected_min": 2,
         "state": "submitted",
         "created_at": now_iso(),
@@ -2216,6 +2254,8 @@ def _resolve_auto_jobs(jobs, locks, held_hosts):
         chosen, snapshot = resolve_auto_lane(job, ctx)
         if chosen is not None:
             job["lane"] = chosen
+            if job.pop("cwd_auto", None):
+                job["cwd"] = default_cwd(chosen, job["workflow"])
             job["auto_route"] = snapshot
             save_job_safe(job, "auto_routed")
             ledger("auto_routed", job_id=job["id"], key=job["key"],
