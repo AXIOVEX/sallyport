@@ -328,6 +328,16 @@ The runners run under a supervisor (the Syncyard Tray on Windows;
 systemd units on Linux/WSL targets), never as hand-started console
 windows:
 
+- The Windows tray icon also shows whether the host is
+  connected to the fleet (spec 018): a link mark — solid when
+  connected, hollow amber when stale, broken and desaturated
+  when disconnected — judged only from host-local signals
+  (the backchannel agent's heartbeat file, and the fleet
+  snapshot's stamp when a publisher exists). Runner health
+  (the slash) and connection (the link) are separate
+  dimensions. The indicator is display-only: no network
+  probe, no writes to the signal files, no gating of
+  supervision; transitions are logged with their signal age.
 - Runners stay in the owner's interactive session on purpose: jobs
   need the owner's WSL distro, GPU, audio, and bench devices, which
   a Windows service in session 0 cannot reliably reach. Do not
