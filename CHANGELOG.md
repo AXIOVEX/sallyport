@@ -29,6 +29,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record wedged in dispatching, repaired by hand). Battery:
   gatekeeper/test_dispatch_isolation.py.
 ### Added
+- Spec 016 follow-on (2026-11-04): `gk profile suggest
+  [--host H] [--name P] [--out FILE]` drafts a lane profile
+  for one host from its recorded capability snapshot, with
+  the reasoning printed as YAML comments in the fragment.
+  Deterministic rules: quick and long always; normal only
+  when the snapshot measures cpu_cores >= 8 and
+  ram_total_mb >= 16384; gpu only when a GPU is actually
+  measured present (name or VRAM), with the largest VRAM
+  named; concurrency 1 everywhere, a starting draft an
+  operator merges by hand. Unknown fields justify nothing.
+  A missing or stale snapshot is refused (exit 2) with the
+  probe refresh named. The command never applies anything:
+  it writes only to an explicit --out path, refused when
+  the path exists or is the live config file. Note:
+  specs/016-adaptive-lanes/profile-suggest.md. Battery:
+  gatekeeper/test_profile_suggest.py.
 - Spec 021 (2026-11-04): tray self-update. The tray now
   carries a build stamp (assembly version 0.4.0.0, shown as
   a disabled header item in the menu and written to the

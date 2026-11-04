@@ -80,6 +80,9 @@ python3 gk.py unlock --lane LANE [--program P] [--force]
                                # spec 015: release a lane lock (holder, or operator override)
 python3 gk.py profile --list|--show [NAME]
                                # spec 016: render the lane profiles (switching = config edit)
+python3 gk.py profile suggest [--host H] [--name P] [--out FILE]
+                               # spec 016 follow-on: draft a lane profile for one host from its
+                               # capability snapshot, reasoning printed as comments; applies nothing
 python3 gk.py probe-host --host H [--ingest REPORT]
                                # spec 016: record a host capability snapshot for auto routing
 python3 gk.py stop [--reason TEXT]     # hard halt: sweeps no-op until start
