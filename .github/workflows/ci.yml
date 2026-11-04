@@ -30,6 +30,7 @@ jobs:
           python3 gatekeeper/test_spec013.py
           python3 gatekeeper/test_spec011.py
           python3 gatekeeper/test_spec015.py
+          python3 gatekeeper/test_spec016.py
           python3 gatekeeper/test_fleet_status.py
 
       - name: Transport workflow contract battery
