@@ -23,12 +23,14 @@ import argparse
 import base64
 import hashlib
 import json
+import statistics
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
+import types
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -151,6 +153,18 @@ OPTIMIZER_AGING_STEP_MIN = _CFG["dispatch"]["optimizer_aging_step_min"]
 # squatting a lane forever.
 LOCK_DEFAULT_TTL_MIN = int(_CFG["lock"]["default_ttl_min"])
 LOCK_MAX_TTL_MIN = int(_CFG["lock"]["max_ttl_min"])
+# Adaptive lanes (spec 016): the resolved profile surface —
+# per-lane resource class and duration band for auto routing,
+# and the routing knobs. _CFG["lanes"] is already the ACTIVE
+# profile's enabled lanes (config resolution, FR-001).
+LANE_CLASS = {n: l.get("resource_class", "any")
+              for n, l in _CFG["lanes"].items()}
+LANE_BAND = {n: tuple(l.get("duration_band") or (None, None))
+             for n, l in _CFG["lanes"].items()}
+LANE_PIN = {n: l.get("workflow") for n, l in _CFG["lanes"].items()}
+ACTIVE_PROFILE = _CFG.get("active_lane_profile", "fleet-default")
+LANES_AUTO_DEFAULT = bool(_CFG.get("lanes_auto_default", False))
+CAPABILITY_MAX_AGE_MIN = int(_CFG.get("lanes_capability_max_age_min", 60))
 
 # Host routing (spec 010 FR-003/FR-004): a job names a lane; the
 # lane's host is the venue. A workflow the host does not serve is
@@ -168,9 +182,17 @@ HOST_IMAGE = {n: h.get("image") for n, h in _CFG["hosts"].items()}
 
 
 def route_check(lane, workflow):
-    """(host, kind) if the lane's host serves this workflow, else None."""
+    """(host, kind) if the lane's host serves this workflow, else None.
+
+    Spec 016: a lane may pin itself to one workflow
+    (lanes.profiles.<p>.<lane>.workflow); a pinned lane serves
+    no other workflow, exactly like a host that does not serve
+    it — the job is refused, never silently rerouted."""
     host = LANE_HOST.get(lane)
     if host is None:
+        return None
+    pin = LANE_PIN.get(lane)
+    if pin is not None and pin != workflow:
         return None
     kind = HOST_WORKFLOWS.get(host, {}).get(workflow)
     return (host, kind) if kind else None
@@ -1393,16 +1415,54 @@ def cmd_submit(args):
         print("REFUSED duplicate key '%s': active job %s (state=%s, run_id=%s)"
               % (args.key, dup["id"], dup["state"], dup.get("run_id")))
         return 3
-    refusal = route_refusal(args.lane, args.workflow)
-    if refusal:
-        print(refusal)
-        return 3
+    # Spec 016 (FR-003/FR-004): --lane auto (or a lane-less
+    # submit under lanes.auto_default) records the job
+    # lane-less; the sweep resolves its lane at dispatch time.
+    # An explicit lane is never touched by auto routing.
+    lane_arg = getattr(args, "lane", None)
+    auto = lane_arg == "auto"
+    if lane_arg is None:
+        if LANES_AUTO_DEFAULT:
+            auto = True
+        else:
+            print("ERROR: --lane is required (pass a lane name, or "
+                  "--lane auto; or set lanes.auto_default: true to "
+                  "make lane-less submits mean auto)")
+            return 2
+    needs = {}
+    for attr, field in (("needs_cpu", "cpu_cores"),
+                        ("needs_ram_mb", "ram_mb"),
+                        ("needs_storage_mb", "storage_mb")):
+        val = getattr(args, attr, None)
+        if val is not None:
+            if int(val) < 0:
+                print("ERROR: --%s must be non-negative"
+                      % attr.replace("_", "-"))
+                return 2
+            needs[field] = int(val)
+    gpu_hint = getattr(args, "needs_gpu", None)
+    if gpu_hint is not None:
+        needs["gpu"] = True
+        if gpu_hint is not True:
+            if int(gpu_hint) < 0:
+                print("ERROR: --needs-gpu VRAM must be non-negative")
+                return 2
+            needs["gpu_vram_mb"] = int(gpu_hint)
+    venue = getattr(args, "venue", None) or "auto"
+    if venue not in ("auto", "native", "wsl", "docker"):
+        print("ERROR: --venue must be auto|native|wsl|docker")
+        return 2
+    if not auto:
+        refusal = route_refusal(lane_arg, args.workflow)
+        if refusal:
+            print(refusal)
+            return 3
     job = {
         "id": new_job_id(args.key),
         "key": args.key,
         "program": args.program,
         "workflow": args.workflow,
-        "lane": args.lane,
+        "lane": None if auto else lane_arg,
         "cwd": args.cwd if args.cwd is not None else DEFAULT_CWD[args.workflow],
         "expected_min": args.expected_min,
         "state": "submitted",
@@ -1424,7 +1484,16 @@ def cmd_submit(args):
         "priority_source": ("human"
                             if getattr(args, "priority", None)
                             is not None else "auto"),
+        # Spec 016 (FR-003): declared resource hints and the
+        # venue preference ride on every record; on an auto
+        # job they are the scorer's declared inputs, on an
+        # explicit-lane job they are informational only.
+        "venue": venue,
     }
+    if auto:
+        job["lane_request"] = "auto"
+    if needs:
+        job["needs"] = needs
     if args.workflow == "grab.yml":
         if not args.grab_path:
             print("ERROR: grab.yml jobs require --grab-path "
@@ -1443,7 +1512,7 @@ def cmd_submit(args):
         job["script_path"] = os.path.abspath(args.script)
         job["script_sha256"] = hashlib.sha256(data).hexdigest()
         image = getattr(args, "image", None) \
-            or HOST_IMAGE.get(LANE_HOST.get(args.lane))
+            or (None if auto else HOST_IMAGE.get(LANE_HOST.get(lane_arg)))
         if image:
             job["image"] = image
         if getattr(args, "mounts", None):
@@ -1462,7 +1531,7 @@ def cmd_submit(args):
         return 4
     print("SUBMITTED %s key=%s program=%s workflow=%s lane=%s"
           % (job["id"], job["key"], job["program"], job["workflow"],
-             job["lane"]))
+             "auto" if auto else job["lane"]))
     return 0
 
 
@@ -1853,6 +1922,304 @@ def dispatch_one(job, jobs):
     return False
 
 
+# --- Adaptive lanes: capability, history, auto routing (spec 016) -----------
+
+def _run_duration_min(job):
+    """A completed job's actual run duration in minutes:
+    first-seen-in-progress to completion, falling back to
+    dispatch-to-completion. None when the record cannot say."""
+    end = parse_iso(job.get("completed_at"))
+    start = parse_iso(job.get("first_seen_in_progress_at")
+                      or job.get("dispatched_at"))
+    if start is None or end is None:
+        return None
+    mins = minutes_between(start, end)
+    return mins if mins is not None and mins >= 0 else None
+
+
+def program_history(jobs, program):
+    """The program's recent actuals (FR-006): its ten most
+    recent completed jobs — median run duration, the dominant
+    resource class of the lanes they ran on, and the last lane.
+    Computed from the queue records themselves; nothing is
+    cached, so the estimate can never drift from the record."""
+    done = [j for j in jobs
+            if j.get("program") == program and j.get("lane")
+            and j.get("completed_at")]
+    done.sort(key=lambda j: j.get("completed_at") or "", reverse=True)
+    recent = done[:10]
+    durs = [d for d in (_run_duration_min(j) for j in recent)
+            if d is not None]
+    classes = {}
+    for j in recent:
+        cls = LANE_CLASS.get(j["lane"], "any")
+        classes[cls] = classes.get(cls, 0) + 1
+    dominant = None
+    if classes:
+        dominant = max(sorted(classes), key=lambda c: classes[c])
+    return {
+        "samples": len(recent),
+        "median_min": (round(statistics.median(durs), 1) if durs
+                       else None),
+        "dominant_class": dominant,
+        "last_lane": recent[0]["lane"] if recent else None,
+        "durations_min": [round(d, 1) for d in durs],
+    }
+
+
+def capability_view(host, hosts_state=None, now=None):
+    """(snapshot, stale) for a host (FR-005). The snapshot is
+    the record stored by `gk probe-host`; a missing snapshot
+    reads as (None, True). Staleness is judged against
+    lanes.capability_max_age_min; an unparseable probed_at is
+    stale — unknown age is never treated as fresh."""
+    if hosts_state is None:
+        hosts_state = load_hosts_state()
+    rec = (hosts_state.get(host) or {}).get("capability")
+    if not isinstance(rec, dict):
+        return None, True
+    age = minutes_between(parse_iso(rec.get("probed_at")), now or now_dt())
+    return rec, (age is None or age > CAPABILITY_MAX_AGE_MIN)
+
+
+def _venue_match(job, lane_name):
+    """Does the lane's venue match the job's venue preference?
+    A scoring term only — eligibility is resolve_auto_lane's."""
+    venue = job.get("venue") or "auto"
+    if venue == "auto":
+        return False
+    host = LANE_HOST.get(lane_name)
+    htype = HOST_TYPE.get(host)
+    if venue == "docker":
+        return htype == "docker"
+    if venue == "wsl":
+        return htype == "wsl2" or job.get("workflow") == "wsl.yml"
+    if venue == "native":
+        return htype not in ("wsl2", "docker")
+    return False
+
+
+def resolve_auto_lane(job, ctx):
+    """The auto scorer (FR-006): a deterministic pure function
+    of its recorded inputs. ctx carries the lane table
+    (LANES order), per-lane load, the locks map, the held-host
+    set, per-host capability views, the program history, and
+    the evaluation instant. Returns (lane_name | None,
+    snapshot) — the snapshot is the audit record: every input
+    and every per-lane verdict, eligible or not."""
+    needs = job.get("needs") or {}
+    venue = job.get("venue") or "auto"
+    history = ctx["history"]
+    expected = job.get("expected_min")
+    if expected is None:
+        expected = history.get("median_min")
+    want_kind = "grab" if job.get("workflow") == "grab.yml" else "execute"
+    lanes_eval = {}
+    cap_facts = {}
+    degraded = False
+    best = None
+    for name in sorted(ctx["lanes"]):
+        lane = ctx["lanes"][name]
+        host = lane["host"]
+        cap, stale = ctx["capabilities"].get(host, (None, True))
+        usable = cap if (cap is not None and not stale) else None
+        if usable is None:
+            degraded = True
+        elif host not in cap_facts:
+            cap_facts[host] = {
+                "probed_at": cap.get("probed_at"), "stale": stale,
+                "cpu_cores": cap.get("cpu_cores"),
+                "ram_total_mb": cap.get("ram_total_mb"),
+                "ram_free_mb": cap.get("ram_free_mb"),
+                "storage_free_gb": cap.get("storage_free_gb"),
+                "gpus": cap.get("gpus"), "venues": cap.get("venues"),
+            }
+        load = ctx["load"].get(name, {"executing": 0, "waiting": 0})
+        reasons = []
+        route = route_check(name, job.get("workflow"))
+        if route is None or route[1] != want_kind:
+            reasons.append("lane does not serve workflow %s as %s"
+                           % (job.get("workflow"), want_kind))
+        if host in ctx["held_hosts"]:
+            reasons.append("host %s held (going down)" % host)
+        lock_rec = ctx["locks"].get(name)
+        if (lock_rec and lock_rec.get("state") == "active"
+                and lock_rec.get("program") != job.get("program")
+                and not job.get("maintenance")):
+            reasons.append("lane locked by %s (spec 015)"
+                           % lock_rec.get("program"))
+        # Hard resource hints (FR-006): a hard hint is never
+        # guessed at — a GPU need requires an affirmative lane
+        # class or affirmative fresh probe evidence.
+        if needs.get("gpu"):
+            cls = lane.get("resource_class", "any")
+            if cls == "cpu":
+                reasons.append("gpu need unmet: lane class is cpu")
+            elif cls == "any" and not (usable and usable.get("gpus")):
+                reasons.append(
+                    "gpu need unmet: no GPU evidenced for this lane's "
+                    "host (class 'any' needs a fresh probe listing one)")
+            vram = needs.get("gpu_vram_mb")
+            if vram is not None:
+                biggest = max([g.get("vram_mb") or 0
+                               for g in (usable or {}).get("gpus") or []],
+                              default=0)
+                if not usable or biggest < vram:
+                    reasons.append(
+                        "gpu vram need %d MB unmet (largest evidenced "
+                        "GPU: %s)" % (vram, biggest if usable else "none"))
+        if needs.get("ram_mb") is not None and usable is not None \
+                and usable.get("ram_total_mb") is not None \
+                and usable["ram_total_mb"] < needs["ram_mb"]:
+            reasons.append("ram need %d MB exceeds host total %d MB"
+                           % (needs["ram_mb"], usable["ram_total_mb"]))
+        if needs.get("cpu_cores") is not None and usable is not None \
+                and usable.get("cpu_cores") is not None \
+                and usable["cpu_cores"] < needs["cpu_cores"]:
+            reasons.append("cpu need %d cores exceeds host cores %d"
+                           % (needs["cpu_cores"], usable["cpu_cores"]))
+        if needs.get("storage_mb") is not None and usable is not None \
+                and usable.get("storage_free_gb") is not None \
+                and usable["storage_free_gb"] * 1024 < needs["storage_mb"]:
+            reasons.append("storage need %d MB exceeds host free %d MB"
+                           % (needs["storage_mb"],
+                              int(usable["storage_free_gb"] * 1024)))
+        # Venue eligibility (FR-006): eligibility plus the
+        # _venue_match scoring bonus — never a translation.
+        if venue == "docker":
+            if not job.get("image"):
+                reasons.append("docker venue requires --image")
+            elif usable is not None \
+                    and "docker" not in (usable.get("venues") or []):
+                reasons.append("docker venue not probed on host %s" % host)
+        elif venue == "wsl":
+            serves_wsl = "wsl.yml" in HOST_WORKFLOWS.get(host, {})
+            if HOST_TYPE.get(host) != "wsl2" and not serves_wsl:
+                reasons.append("wsl venue: host %s serves no wsl.yml"
+                               % host)
+            elif usable is not None and HOST_TYPE.get(host) == "windows" \
+                    and "wsl" not in (usable.get("venues") or []):
+                reasons.append("wsl venue not probed on host %s" % host)
+        elif venue == "native":
+            if HOST_TYPE.get(host) in ("wsl2", "docker"):
+                reasons.append("native venue excludes %s hosts"
+                               % HOST_TYPE.get(host))
+        if reasons:
+            lanes_eval[name] = {"host": host, "eligible": False,
+                                "reasons": reasons, "score": None,
+                                "load": load}
+            continue
+        score = 100
+        score -= 15 * load["executing"] + 5 * load["waiting"]
+        if expected is not None:
+            lo, hi = lane.get("duration_band") or (None, None)
+            if lo is not None and expected < lo:
+                score -= 40
+            elif hi is not None and expected > hi:
+                score -= 10
+            else:
+                score += 20
+        if history.get("dominant_class") is not None \
+                and history["dominant_class"] == lane.get(
+                    "resource_class", "any"):
+            score += 10
+        if history.get("last_lane") == name:
+            score += 5
+        if _venue_match(job, name):
+            score += 10
+        if needs.get("ram_mb") is not None and usable is not None \
+                and usable.get("ram_free_mb") is not None \
+                and usable["ram_free_mb"] >= 2 * needs["ram_mb"]:
+            score += 5
+        lanes_eval[name] = {"host": host, "eligible": True,
+                            "reasons": [], "score": score, "load": load}
+        if best is None or score > lanes_eval[best]["score"]:
+            best = name
+    snapshot = {
+        "evaluated_at": ctx["now_iso"],
+        "program": job.get("program"),
+        "workflow": job.get("workflow"),
+        "needs": needs,
+        "venue": venue,
+        "expected_min_used": expected,
+        "expected_source": ("declared" if job.get("expected_min")
+                            is not None else
+                            "history" if history.get("median_min")
+                            is not None else None),
+        "history": history,
+        "degraded": degraded,
+        "capability": cap_facts,
+        "lanes": lanes_eval,
+        "chosen": best,
+        "score": lanes_eval[best]["score"] if best else None,
+    }
+    return best, snapshot
+
+
+def _resolve_auto_jobs(jobs, locks, held_hosts):
+    """The impure shell (FR-004/FR-006): evaluate every
+    lane-less submitted job once, persist the outcome through
+    the verified-write path, ledger it. Placement writes the
+    lane — from then on the job is an ordinary explicit-lane
+    job and is never re-resolved. Non-placement records the
+    evaluation and ledgers auto_no_fit once per distinct
+    unmet-reason set, so a waiting job does not spam the
+    ledger every sweep."""
+    pending = [j for j in jobs
+               if j.get("state") == "submitted" and j.get("lane") is None]
+    if not pending:
+        return
+    hosts_state = load_hosts_state()
+    now = now_dt()
+    load = {}
+    for j in jobs:
+        lane = j.get("lane")
+        if not lane:
+            continue
+        entry = load.setdefault(lane, {"executing": 0, "waiting": 0})
+        if j["state"] in RUN_HOLDING_STATES:
+            entry["executing"] += 1
+        elif j["state"] == "submitted":
+            entry["waiting"] += 1
+    lane_ctx = {n: {"host": LANE_HOST[n],
+                    "resource_class": LANE_CLASS.get(n, "any"),
+                    "duration_band": LANE_BAND.get(n, (None, None))}
+                for n in LANES}
+    capabilities = {}
+    for host in {LANE_HOST[n] for n in LANES}:
+        capabilities[host] = capability_view(host, hosts_state, now)
+    for job in pending:
+        ctx = {"lanes": lane_ctx, "load": load, "locks": locks,
+               "held_hosts": held_hosts, "capabilities": capabilities,
+               "history": program_history(jobs, job.get("program")),
+               "now_iso": now_iso()}
+        chosen, snapshot = resolve_auto_lane(job, ctx)
+        if chosen is not None:
+            job["lane"] = chosen
+            job["auto_route"] = snapshot
+            save_job_safe(job, "auto_routed")
+            ledger("auto_routed", job_id=job["id"], key=job["key"],
+                   program=job["program"], lane=chosen,
+                   score=snapshot["score"], degraded=snapshot["degraded"])
+            if snapshot["degraded"]:
+                ledger("auto_degraded", job_id=job["id"],
+                       key=job["key"], lane=chosen,
+                       reason="capability snapshot missing or stale; "
+                              "routed on bands, load and history")
+        else:
+            reasons = sorted({r for e in snapshot["lanes"].values()
+                              for r in e["reasons"]})
+            snapshot["unmet"] = reasons
+            job["auto_wait"] = snapshot
+            save_job_safe(job, "auto_wait")
+            prev = (job.get("auto_no_fit_reasons") or [])
+            if reasons != prev:
+                job["auto_no_fit_reasons"] = reasons
+                save_job_safe(job, "auto_no_fit")
+                ledger("auto_no_fit", job_id=job["id"], key=job["key"],
+                       program=job["program"], reasons=reasons)
+
+
 def dispatch_pass(jobs, runs_by_id):
     """Returns number of jobs dispatched this sweep."""
     dispatched = 0
@@ -1860,6 +2227,19 @@ def dispatch_pass(jobs, runs_by_id):
     # dispatch time, at the head of the pass — an expired lock
     # behaves exactly like a release from this pass on.
     locks = expire_locks(jobs=jobs)
+    # Host dispatch holds (spec 011 FR-006 + FR-007: down holds
+    # and drain holds alike) are computed here, ahead of their
+    # use in the loop below, because auto routing must treat a
+    # held host's lanes as ineligible too.
+    held_hosts = {h for h, r in load_hosts_state().items()
+                  if r.get("hold") or r.get("drain_hold")}
+    # Auto routing (spec 016 FR-004/FR-006): lane-less
+    # submitted jobs are resolved against this landscape —
+    # locks and holds already applied — before ordering. A
+    # resolved job then faces every gate below exactly as an
+    # explicit submission does; an unresolved one is skipped
+    # by the loop and re-evaluated next pass.
+    _resolve_auto_jobs(jobs, locks, held_hosts)
     # Stale dispatching states: flag for a human, never auto-redispatch.
     for j in jobs:
         if j["state"] == "dispatching" and not j.get("run_id"):
@@ -1900,8 +2280,9 @@ def dispatch_pass(jobs, runs_by_id):
     # the host is going away — until the hold is cleared
     # (Phase 1: `gk host-resume`; the FR-010 recovery handshake
     # replaces it in Phase 5). Queued jobs wait; nothing reroutes.
-    held_hosts = {h for h, r in load_hosts_state().items()
-                  if r.get("hold") or r.get("drain_hold")}
+    # (held_hosts itself is computed at the head of the pass —
+    # spec 016: auto routing must exclude the same held set,
+    # drain holds included.)
     # FR-015 route 2 exception: the gatekeeper's own signal jobs
     # (maintenance jobs keyed gk-reboot-*, gk-hold-* or
     # gk-unhold-*) are exempt from the host hold. The hold exists
@@ -1916,6 +2297,8 @@ def dispatch_pass(jobs, runs_by_id):
                 (REBOOT_KEY_PREFIX, "gk-hold-", "gk-unhold-"))
     lanes_live = os.path.isfile(LANES_LIVE_FILE)
     for job in waiting:
+        if job.get("lane") is None:
+            continue  # auto job with no fit yet (spec 016): waits
         maint = bool(job.get("maintenance"))
         if gate_active and not maint:
             if prec is None or focus_match(job, prec) is None:
@@ -2170,6 +2553,10 @@ def watch_pass(jobs, runs_by_id):
                 job["state"] = "completed"
                 job["completed_at"] = (job.get("completed_at")
                                         or now_iso())
+                # Spec 016 FR-005: a completed probe job's
+                # harvested log becomes the host's capability
+                # snapshot (its flags persist with this save).
+                _maybe_ingest_probe(job)
                 save_job_safe(job, "completed")
         else:
             breaches += eval_watermarks(job, run)
@@ -2730,6 +3117,434 @@ def cmd_host_resume(args):
     return 0
 
 
+# --- Host capability probes (spec 016 FR-005) -------------------------------
+#
+# `gk probe-host --host <host>` records a normalized capability
+# snapshot for a host — the facts auto routing (FR-006) reads.
+# The probe scripts only PRINT their platform's own tool output
+# under section headers; all interpretation lives in the three
+# parsers here, so a report produced anywhere parses the same
+# way everywhere. Two recording routes, one parser:
+#   dispatch: where this door has a transport for the host
+#     (windows via run.yml, wsl2 via its via host's wsl.yml),
+#     the probe rides as a maintenance job and the watch pass
+#     files the completed job's harvested log;
+#   ingest: `--ingest <file>` records a report produced by
+#     running the shipped script on the host by any other
+#     means — the route for macOS and Linux hosts.
+# The script bodies below are the same bytes as the files in
+# gatekeeper/probes/ (a battery check pins them equal).
+
+PROBE_KEY_PREFIX = "gk-probe-"
+
+PROBE_SCRIPT_WINDOWS = r"""Write-Output "SYNCYARD_PROBE 1 platform=windows"
+Write-Output "## hostname"
+hostname
+Write-Output "## cpu"
+Get-CimInstance Win32_Processor | Select-Object -First 1 | Format-List Name,NumberOfCores,NumberOfLogicalProcessors
+Write-Output "## os"
+Get-CimInstance Win32_OperatingSystem | Format-List TotalVisibleMemorySize,FreePhysicalMemory
+Write-Output "## disk"
+Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Format-List DeviceID,FreeSpace,Size
+Write-Output "## nvidia"
+if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) { nvidia-smi --query-gpu=name,memory.total --format=csv,noheader } else { Write-Output "nvidia-smi: not found" }
+Write-Output "## venues"
+if (Get-Command wsl -ErrorAction SilentlyContinue) { Write-Output "venue wsl" }
+if (Get-Command docker -ErrorAction SilentlyContinue) { Write-Output "venue docker" }
+Write-Output "PROBE_END"
+"""
+
+PROBE_SCRIPT_LINUX = """#!/bin/sh
+echo "SYNCYARD_PROBE 1 platform=linux"
+echo "## hostname"
+hostname
+echo "## cpuinfo"
+grep -m1 "model name" /proc/cpuinfo
+grep -c "^processor" /proc/cpuinfo | sed 's/^/processors: /'
+echo "## meminfo"
+grep -E "^(MemTotal|MemAvailable):" /proc/meminfo
+echo "## loadavg"
+cat /proc/loadavg
+echo "## df"
+df -kP / | tail -1
+echo "## nvidia"
+if command -v nvidia-smi >/dev/null 2>&1; then nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; else echo "nvidia-smi: not found"; fi
+echo "## venues"
+if command -v docker >/dev/null 2>&1; then echo "venue docker"; fi
+echo "PROBE_END"
+"""
+
+PROBE_SCRIPT_DARWIN = """#!/bin/sh
+echo "SYNCYARD_PROBE 1 platform=darwin"
+echo "## hostname"
+hostname
+echo "## sysctl"
+sysctl -n machdep.cpu.brand_string
+echo "cores: $(sysctl -n hw.ncpu)"
+echo "memsize: $(sysctl -n hw.memsize)"
+echo "## vm_stat"
+vm_stat | head -5
+echo "## loadavg"
+sysctl -n vm.loadavg
+echo "## df"
+df -k / | tail -1
+echo "## gpu"
+system_profiler SPDisplaysDataType | grep -E "Chipset Model|VRAM|Metal"
+echo "## venues"
+if command -v docker >/dev/null 2>&1; then echo "venue docker"; fi
+echo "PROBE_END"
+"""
+
+PROBE_SCRIPTS = {"windows": ("probe-windows.ps1", PROBE_SCRIPT_WINDOWS),
+                 "linux": ("probe-linux.sh", PROBE_SCRIPT_LINUX),
+                 "darwin": ("probe-darwin.sh", PROBE_SCRIPT_DARWIN)}
+
+
+def _probe_sections(text):
+    """Split a probe report into (platform, {section: [lines]}).
+    (None, {}) when the report header is absent."""
+    platform = None
+    sections = {}
+    current = None
+    for line in (text or "").splitlines():
+        m = re.match(r"SYNCYARD_PROBE\s+1\s+platform=(\w+)", line.strip())
+        if m:
+            platform = m.group(1)
+            continue
+        if line.startswith("## "):
+            current = line[3:].strip()
+            sections[current] = []
+            continue
+        if current is not None:
+            sections[current].append(line)
+    return platform, sections
+
+
+def _probe_hostname(sections):
+    for line in sections.get("hostname") or []:
+        if line.strip():
+            return line.strip()
+    return None
+
+
+def _probe_nvidia(lines):
+    """nvidia-smi CSV rows -> discrete GPU records."""
+    gpus = []
+    for line in lines or []:
+        m = re.match(r"\s*(.+?),\s*(\d+)\s*MiB\s*$", line)
+        if m:
+            gpus.append({"name": m.group(1), "vram_mb": int(m.group(2)),
+                         "class": "discrete"})
+    return gpus
+
+
+def _probe_venues(lines):
+    venues = ["native"]
+    for line in lines or []:
+        m = re.match(r"\s*venue\s+(\w+)", line)
+        if m and m.group(1) not in venues:
+            venues.append(m.group(1))
+    return venues
+
+
+def _cim_pairs(lines):
+    out = {}
+    for line in lines or []:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            out[k.strip()] = v.strip()
+    return out
+
+
+def _to_int(s):
+    try:
+        return int(str(s).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_probe_windows(sections):
+    if "cpu" not in sections and "os" not in sections:
+        return None
+    snap = {"platform": "windows", "hostname": _probe_hostname(sections),
+            "cpu_cores": None, "cpu_model": None, "cpu_load_1m": None,
+            "ram_total_mb": None, "ram_free_mb": None,
+            "storage_free_gb": None, "gpus": [], "venues": ["native"]}
+    cpu = _cim_pairs(sections.get("cpu"))
+    snap["cpu_model"] = cpu.get("Name") or None
+    snap["cpu_cores"] = _to_int(cpu.get("NumberOfCores"))
+    osinfo = _cim_pairs(sections.get("os"))
+    total_kb = _to_int(osinfo.get("TotalVisibleMemorySize"))
+    free_kb = _to_int(osinfo.get("FreePhysicalMemory"))
+    snap["ram_total_mb"] = total_kb // 1024 if total_kb else None
+    snap["ram_free_mb"] = free_kb // 1024 if free_kb else None
+    disks = sections.get("disk") or []
+    blocks, cur = [], {}
+    for line in disks + [""]:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            cur[k.strip()] = v.strip()
+        elif cur:
+            blocks.append(cur)
+            cur = {}
+    chosen = next((b for b in blocks if b.get("DeviceID") == "C:"),
+                  blocks[0] if blocks else None)
+    if chosen:
+        free_b = _to_int(chosen.get("FreeSpace"))
+        snap["storage_free_gb"] = (round(free_b / (1024 ** 3), 1)
+                                   if free_b is not None else None)
+        snap["storage_root"] = chosen.get("DeviceID")
+    snap["gpus"] = _probe_nvidia(sections.get("nvidia"))
+    snap["venues"] = _probe_venues(sections.get("venues"))
+    return snap
+
+
+def parse_probe_linux(sections):
+    if "meminfo" not in sections and "cpuinfo" not in sections:
+        return None
+    snap = {"platform": "linux", "hostname": _probe_hostname(sections),
+            "cpu_cores": None, "cpu_model": None, "cpu_load_1m": None,
+            "ram_total_mb": None, "ram_free_mb": None,
+            "storage_free_gb": None, "gpus": [], "venues": ["native"]}
+    for line in sections.get("cpuinfo") or []:
+        if ":" in line:
+            k, v = line.split(":", 1)
+            if k.strip() == "model name":
+                snap["cpu_model"] = v.strip()
+            elif k.strip() == "processors":
+                snap["cpu_cores"] = _to_int(v)
+    for line in sections.get("meminfo") or []:
+        m = re.match(r"(MemTotal|MemAvailable):\s+(\d+)\s*kB", line)
+        if m:
+            key = "ram_total_mb" if m.group(1) == "MemTotal" \
+                else "ram_free_mb"
+            snap[key] = int(m.group(2)) // 1024
+    for line in sections.get("loadavg") or []:
+        parts = line.split()
+        if parts:
+            try:
+                snap["cpu_load_1m"] = float(parts[0])
+            except ValueError:
+                pass
+        break
+    for line in sections.get("df") or []:
+        parts = line.split()
+        if len(parts) >= 6:
+            avail_kb = _to_int(parts[3])
+            snap["storage_free_gb"] = (round(avail_kb / 1048576, 1)
+                                       if avail_kb is not None else None)
+            snap["storage_root"] = parts[5]
+    snap["gpus"] = _probe_nvidia(sections.get("nvidia"))
+    snap["venues"] = _probe_venues(sections.get("venues"))
+    return snap
+
+
+def parse_probe_darwin(sections):
+    if "sysctl" not in sections:
+        return None
+    snap = {"platform": "darwin", "hostname": _probe_hostname(sections),
+            "cpu_cores": None, "cpu_model": None, "cpu_load_1m": None,
+            "ram_total_mb": None, "ram_free_mb": None,
+            "storage_free_gb": None, "gpus": [], "venues": ["native"]}
+    sysctl = [l.strip() for l in (sections.get("sysctl") or []) if l.strip()]
+    if sysctl:
+        snap["cpu_model"] = sysctl[0]
+    for line in sysctl:
+        if line.startswith("cores:"):
+            snap["cpu_cores"] = _to_int(line.split(":", 1)[1])
+        elif line.startswith("memsize:"):
+            size = _to_int(line.split(":", 1)[1])
+            snap["ram_total_mb"] = size // 1048576 if size else None
+    page_size, free_pages = None, None
+    for line in sections.get("vm_stat") or []:
+        m = re.search(r"page size of (\d+) bytes", line)
+        if m:
+            page_size = int(m.group(1))
+        m = re.match(r"\s*Pages free:\s+(\d+)\.", line)
+        if m:
+            free_pages = int(m.group(1))
+    if page_size and free_pages is not None:
+        snap["ram_free_mb"] = free_pages * page_size // 1048576
+    for line in sections.get("loadavg") or []:
+        m = re.search(r"\{\s*([0-9.]+)", line)
+        if m:
+            snap["cpu_load_1m"] = float(m.group(1))
+        break
+    for line in sections.get("df") or []:
+        parts = line.split()
+        if len(parts) >= 6:
+            avail_kb = _to_int(parts[3])
+            snap["storage_free_gb"] = (round(avail_kb / 1048576, 1)
+                                       if avail_kb is not None else None)
+            snap["storage_root"] = parts[5]
+    # GPUs: a `VRAM (Total)` line after a chipset makes it
+    # discrete; an Apple chipset is unified memory (vram = the
+    # machine's RAM pool, flagged shared — never a discrete
+    # budget); anything else is recorded honestly as none.
+    pending = None
+    for line in sections.get("gpu") or []:
+        m = re.search(r"Chipset Model:\s*(.+)$", line)
+        if m:
+            if pending:
+                snap["gpus"].append(pending)
+            name = m.group(1).strip()
+            if "Apple" in name:
+                pending = {"name": name,
+                           "vram_mb": snap["ram_total_mb"],
+                           "class": "unified", "vram_shared": True}
+            else:
+                pending = {"name": name, "vram_mb": None, "class": "none"}
+            continue
+        m = re.search(r"VRAM \(Total\):\s*(\d+)\s*GB", line)
+        if m and pending is not None:
+            pending["vram_mb"] = int(m.group(1)) * 1024
+            pending["class"] = "discrete"
+            pending.pop("vram_shared", None)
+    if pending:
+        snap["gpus"].append(pending)
+    snap["venues"] = _probe_venues(sections.get("venues"))
+    if "wsl" in snap["venues"]:
+        snap["venues"].remove("wsl")  # WSL does not exist on macOS
+    return snap
+
+
+_PROBE_PARSERS = {"windows": parse_probe_windows,
+                  "linux": parse_probe_linux,
+                  "darwin": parse_probe_darwin}
+
+
+def parse_probe_report(text):
+    """One interface for all three platforms (FR-005): a probe
+    report (any route) -> the normalized snapshot, or None
+    when the report is not a probe report we can read."""
+    platform, sections = _probe_sections(text)
+    parser = _PROBE_PARSERS.get(platform or "")
+    if parser is None:
+        return None
+    return parser(sections)
+
+
+def store_capability(host, snapshot):
+    """File a snapshot under the host's record in hosts.json,
+    through the same verified-write discipline as liveness."""
+    snap = dict(snapshot)
+    snap["host"] = host
+    snap["probed_at"] = now_iso()
+    state = load_hosts_state()
+    rec = _host_record(state, host)
+    rec["capability"] = snap
+    save_hosts_state(state)
+    return snap
+
+
+def cmd_probe_host(args):
+    host = args.host
+    if host not in HOST_TYPE:
+        print("ERROR: unknown host '%s' (configured: %s)"
+              % (host, ", ".join(sorted(HOST_TYPE))))
+        return 2
+    if getattr(args, "ingest", None):
+        try:
+            with open(args.ingest, "r", encoding="utf-8",
+                      errors="replace") as f:
+                text = f.read()
+        except OSError as e:
+            print("ERROR: cannot read probe report %s: %s"
+                  % (args.ingest, e))
+            return 2
+        snap = parse_probe_report(text)
+        if snap is None:
+            print("ERROR: %s is not a readable SYNCYARD_PROBE report; "
+                  "nothing stored" % args.ingest)
+            return 3
+        stored = store_capability(host, snap)
+        ledger("capability_probed", host=host, route="ingest",
+               platform=stored.get("platform"))
+        hlog("PROBED %s (%s via ingest) at %s"
+             % (host, stored.get("platform"), stored["probed_at"]))
+        print("PROBED %s platform=%s cpus=%s ram_mb=%s gpus=%d "
+              "venues=%s probed_at=%s"
+              % (host, stored.get("platform"), stored.get("cpu_cores"),
+                 stored.get("ram_total_mb"), len(stored.get("gpus") or []),
+                 ",".join(stored.get("venues") or []),
+                 stored["probed_at"]))
+        return 0
+    htype = HOST_TYPE[host]
+    plat = {"windows": "windows", "wsl2": "linux"}.get(htype)
+    if plat is None:
+        fname = {"linux": "probe-linux.sh",
+                 "macos": "probe-darwin.sh"}.get(htype, "probe script")
+        print("REFUSED: this door has no transport workflow for "
+              "%s hosts, so the probe cannot be dispatched. Run "
+              "gatekeeper/probes/%s on the host and record it "
+              "with: gk probe-host --host %s --ingest <report-file>"
+              % (htype, fname, host))
+        return 3
+    fname, body = PROBE_SCRIPTS[plat]
+    probes_dir = os.path.join(BASE, "probes")
+    os.makedirs(probes_dir, exist_ok=True)
+    script_path = os.path.join(probes_dir, "%s-%s" % (host, fname))
+    _write_text_file(script_path, body)
+    if htype == "windows":
+        workflow = "run.yml"
+        lane = next((n for n in sorted(LANES)
+                     if LANE_HOST.get(n) == host
+                     and route_check(n, workflow)), None)
+    else:  # wsl2: the probe rides the via host's wsl.yml lane
+        workflow = "wsl.yml"
+        via = HOST_VIA.get(host)
+        lane = next((n for n in sorted(LANES)
+                     if LANE_HOST.get(n) == via
+                     and route_check(n, workflow)), None)
+    if lane is None:
+        print("REFUSED: no lane serves %s for host '%s'; the probe "
+              "cannot ride" % (workflow, host))
+        return 3
+    key = "%s%s-%s" % (PROBE_KEY_PREFIX, host,
+                       now_dt().strftime("%Y%m%d%H%M%S"))
+    ns = types.SimpleNamespace(
+        program="syncyard", lane=lane, workflow=workflow,
+        script=script_path, cwd=None, expected_min=5, key=key,
+        grab_path=None, maintenance=True, image=None, mounts=None,
+        notify_chat=None, priority=None)
+    rc = cmd_submit(ns)
+    if rc != 0:
+        return rc
+    job = find_active(load_jobs(), key=key)
+    if job is not None:
+        job["probe_host"] = host
+        save_job(job)
+    ledger("capability_probe_dispatched", host=host, key=key,
+           job_id=job["id"] if job else None, lane=lane,
+           workflow=workflow)
+    print("PROBE QUEUED %s key=%s lane=%s workflow=%s — the snapshot "
+          "lands when the probe job completes"
+          % (host, key, lane, workflow))
+    return 0
+
+
+def _maybe_ingest_probe(job):
+    """Watch-pass hook (FR-005): a completed probe job's
+    harvested log is parsed and filed under its probed host.
+    Mutates the job's ingest flags only; the caller's save
+    persists them."""
+    if not str(job.get("key") or "").startswith(PROBE_KEY_PREFIX):
+        return
+    if job.get("capability_ingested") or job.get("capability_ingest_failed"):
+        return
+    host = job.get("probe_host") or LANE_HOST.get(job.get("lane"))
+    snap = parse_probe_report("\n".join(job.get("log_tail") or []))
+    if snap is None or host is None:
+        job["capability_ingest_failed"] = True
+        ledger("capability_probe_unparseable", job_id=job["id"],
+               key=job["key"], host=host)
+        return
+    stored = store_capability(host, snap)
+    job["capability_ingested"] = True
+    ledger("capability_probed", host=host, route="probe-job",
+           job_id=job["id"], platform=stored.get("platform"))
+
+
 # --- Controlled reboot (spec 011 FR-015) ------------------------------------
 #
 # `gk reboot --host <host>` requests a controlled reboot of a fleet
@@ -3145,6 +3960,70 @@ def cmd_drain(args):
           "`gk host-resume %s`." % (host, len(uncp), host))
     return 1
 
+def cmd_profile(args):
+    """Spec 016 FR-001: render the profile table. Read-only —
+    switching the active profile is an operator config edit
+    (lanes.active_profile) that takes effect at the next
+    sweep; there is deliberately no runtime verb for it."""
+    profiles = _CFG.get("lane_profiles") or {}
+    if getattr(args, "list", False):
+        for name in sorted(profiles):
+            prof = profiles[name] or {}
+            enabled = sum(1 for l in prof.values()
+                          if isinstance(l, dict) and l.get("enabled", True))
+            print("%s%s — %d lanes (%d enabled)"
+                  % (name, " (active)" if name == ACTIVE_PROFILE else "",
+                     len(prof), enabled))
+        return 0
+    name = getattr(args, "name", None) or ACTIVE_PROFILE
+    prof = profiles.get(name)
+    if prof is None:
+        print("ERROR: unknown profile '%s' (configured: %s)"
+              % (name, ", ".join(sorted(profiles))))
+        return 2
+    print("profile %s%s — %d lanes"
+          % (name, " (active)" if name == ACTIVE_PROFILE else "",
+             len(prof)))
+    print("  (switching profiles is a config edit: "
+          "lanes.active_profile; it takes effect at the next sweep, "
+          "running runs untouched)")
+    for lname in sorted(prof):
+        lane = prof[lname] or {}
+        band = lane.get("duration_band") or [None, None]
+        print("  %-12s host=%-16s class=%-4s conc=%d band=[%s, %s] "
+              "enabled=%s queued=%s%s"
+              % (lname, lane.get("host"),
+                 lane.get("resource_class", "any"),
+                 lane.get("concurrency", 1), band[0], band[1],
+                 lane.get("enabled", True), lane.get("queued"),
+                 (" pin=" + str(lane["workflow"]))
+                 if lane.get("workflow") else ""))
+    return 0
+
+
+def capability_status_lines(hosts_state=None):
+    """Spec 016 FR-008: one line per configured host — the
+    recorded capability snapshot and its freshness, or the
+    honest unknown."""
+    if hosts_state is None:
+        hosts_state = load_hosts_state()
+    lines = []
+    for host in sorted(HOST_TYPE):
+        snap, stale = capability_view(host, hosts_state)
+        if snap is None:
+            lines.append("  %s: unknown (no probe recorded — "
+                         "`gk probe-host --host %s`)" % (host, host))
+        else:
+            lines.append(
+                "  %s: platform=%s cpus=%s ram_total_mb=%s gpus=%d "
+                "venues=%s probed_at=%s (%s)"
+                % (host, snap.get("platform"), snap.get("cpu_cores"),
+                   snap.get("ram_total_mb"),
+                   len(snap.get("gpus") or []),
+                   ",".join(snap.get("venues") or []),
+                   snap.get("probed_at"), "STALE" if stale else "fresh"))
+    return lines
+
 
 def cmd_status(args):
     jobs = load_jobs()
@@ -3181,6 +4060,15 @@ def cmd_status(args):
     locks_map = load_locks()
     for line in locks_section_lines(locks_map):
         print(line)
+    # Adaptive lanes (spec 016 FR-008): the active profile and
+    # every host's capability standing.
+    print("profile: %s (%d lanes resolved%s)"
+          % (ACTIVE_PROFILE, len(LANES),
+             "; lane-less submits mean auto"
+             if LANES_AUTO_DEFAULT else "; --lane auto opts in"))
+    print("capability:")
+    for line in capability_status_lines():
+        print(line)
     print("jobs by state: %s" % (", ".join(
         "%s=%d" % (k, by_state[k]) for k in sorted(by_state)) or "none"))
     queued = [j for j in jobs if j.get("run_status") == "queued"
@@ -3195,7 +4083,8 @@ def cmd_status(args):
         if j["state"] in ("completed", "cancelled") and not j.get("run_id"):
             continue
         print("%-46s %-16s %-7s %-11s %-12s %s%s"
-              % (j["key"][:46], j["program"][:16], j["lane"], j["state"],
+              % (j["key"][:46], j["program"][:16],
+                 j.get("lane") or "auto", j["state"],
                  str(j.get("run_status")), str(j.get("run_id") or "-"),
                  ("  flags=" + ",".join(j["flags"])) if j["flags"] else ""))
     done = [j for j in jobs if j["state"] == "completed"]
@@ -3229,8 +4118,21 @@ def cmd_status(args):
                     and not j.get("maintenance") \
                     and j.get("program") != lock_rec.get("program"):
                 mark += " [lock-held by %s]" % lock_rec.get("program")
+            # Spec 016 FR-008: an auto job's standing — still
+            # unplaced (with its last unmet reasons) or resolved
+            # (with the recorded score and any degradation).
+            if j.get("lane") is None:
+                unmet = (j.get("auto_wait") or {}).get("unmet") or []
+                mark += " [auto: no fit yet%s]" % (
+                    (" — " + "; ".join(unmet[:2])) if unmet else "")
+            elif j.get("auto_route"):
+                snap = j["auto_route"]
+                mark += " [auto→%s score=%s%s]" % (
+                    j["lane"], snap.get("score"),
+                    " degraded" if snap.get("degraded") else "")
             print("  pri=%-4s (%s) lane=%-7s key=%s%s"
-                  % (value, source, j["lane"], j["key"], mark))
+                  % (value, source, j.get("lane") or "auto",
+                     j["key"], mark))
     held_cp = [j for j in jobs if j["state"] == "held_at_checkpoint"]
     if held_cp:
         print("\nheld at checkpoint:")
@@ -3271,7 +4173,14 @@ def main(argv=None):
     p = sub.add_parser("submit")
     p.add_argument("--program", required=True)
     p.add_argument("--workflow", required=True, choices=WORKFLOWS)
-    p.add_argument("--lane", required=True, choices=LANES)
+    p.add_argument("--lane", choices=tuple(LANES) + ("auto",),
+                   default=None,
+                   help="lane to run on, or 'auto' (spec 016 FR-004): "
+                        "the sweep picks the lane from the job's "
+                        "resource hints, program history, queue load "
+                        "and host capability. Omit only when "
+                        "lanes.auto_default is true (then it means "
+                        "auto)")
     p.add_argument("--script")
     p.add_argument("--grab-path")
     p.add_argument("--cwd")
@@ -3281,6 +4190,26 @@ def main(argv=None):
     p.add_argument("--mounts",
                    help="comma-separated host:container mount pairs "
                         "for a docker-transport job")
+    p.add_argument("--needs-cpu", type=int, default=None,
+                   help="resource hint (spec 016 FR-003): minimum "
+                        "CPU cores the job needs")
+    p.add_argument("--needs-ram-mb", type=int, default=None,
+                   help="resource hint (spec 016 FR-003): minimum "
+                        "RAM in MB the job needs")
+    p.add_argument("--needs-storage-mb", type=int, default=None,
+                   help="resource hint (spec 016 FR-003): minimum "
+                        "free storage in MB the job needs")
+    p.add_argument("--needs-gpu", nargs="?", const=True, default=None,
+                   type=int, metavar="VRAM_MB",
+                   help="resource hint (spec 016 FR-003): the job "
+                        "needs a GPU; optionally with a minimum "
+                        "VRAM in MB")
+    p.add_argument("--venue", choices=("auto", "native", "wsl", "docker"),
+                   default="auto",
+                   help="venue preference (spec 016 FR-003): "
+                        "eligibility for auto routing; docker "
+                        "requires --image, wsl requires a Windows "
+                        "host serving wsl.yml")
     p.add_argument("--expected-min", type=float)
     p.add_argument("--key", required=True)
     p.add_argument("--maintenance", action="store_true",
@@ -3487,6 +4416,30 @@ def main(argv=None):
     p.add_argument("--repo", action="store_true",
                    help="also show project-repo CI + Dependabot health")
     p.set_defaults(fn=cmd_status)
+
+    p = sub.add_parser("profile",
+                       help="render the lane profiles (spec 016 "
+                            "FR-001); switching the active profile "
+                            "is a config edit, not a runtime verb")
+    p.add_argument("--list", action="store_true",
+                   help="list every profile with its lane count")
+    p.add_argument("--show", action="store_true",
+                   help="show one profile's lanes in detail")
+    p.add_argument("name", nargs="?", default=None,
+                   help="profile to show (default: the active one)")
+    p.set_defaults(fn=cmd_profile)
+
+    p = sub.add_parser("probe-host",
+                       help="record a host capability snapshot "
+                            "(spec 016 FR-005) for auto routing: "
+                            "dispatch the probe through the door "
+                            "where a transport exists, or --ingest "
+                            "a probe report produced on the host")
+    p.add_argument("--host", required=True)
+    p.add_argument("--ingest", default=None,
+                   help="path to a SYNCYARD_PROBE report file to "
+                        "parse and store")
+    p.set_defaults(fn=cmd_probe_host)
 
     args = ap.parse_args(argv)
     os.makedirs(QUEUE_DIR, exist_ok=True)

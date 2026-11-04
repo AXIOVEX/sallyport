@@ -141,19 +141,75 @@ DEFAULTS = {
         },
     },
     "workflows": ["run.yml", "wsl.yml", "grab.yml"],
+    # Spec 016: lanes live in named profiles; exactly one is
+    # active. load_config() resolves the active profile's
+    # enabled lanes into cfg["lanes"] (the flat mapping every
+    # consumer has always read) and exposes the table as
+    # cfg["lane_profiles"]. fleet-default reproduces the
+    # pre-016 lane table exactly.
     "lanes": {
-        "quick": {"host": "desktop", "runner_label": "lane-quick",
-                  "concurrency": 1, "queued": [10, 30],
-                  "executing": {"mode": "fixed", "values": [5, 15]}},
-        "normal": {"host": "desktop", "runner_label": "lane-normal",
-                   "concurrency": 1, "queued": [20, 45],
-                   "executing": {"mode": "fixed", "values": [45, 90]}},
-        "long": {"host": "desktop", "runner_label": "lane-long",
-                 "concurrency": 1, "queued": [45, 120],
-                 "executing": {"mode": "expectation", "floor": [90, 180]}},
-        "gpu": {"host": "desktop", "runner_label": "lane-gpu",
-                "concurrency": 1, "queued": [30, 90],
-                "executing": {"mode": "expectation", "floor": [120, 240]}},
+        "active_profile": "fleet-default",
+        "auto_default": False,
+        "capability_max_age_min": 60,
+        "profiles": {
+            "fleet-default": {
+                "quick": {"host": "desktop", "runner_label": "lane-quick",
+                          "concurrency": 1, "resource_class": "cpu",
+                          "duration_band": [0, 10],
+                          "queued": [10, 30],
+                          "executing": {"mode": "fixed", "values": [5, 15]}},
+                "normal": {"host": "desktop", "runner_label": "lane-normal",
+                           "concurrency": 1, "resource_class": "cpu",
+                           "duration_band": [0, 45],
+                           "queued": [20, 45],
+                           "executing": {"mode": "fixed", "values": [45, 90]}},
+                "long": {"host": "desktop", "runner_label": "lane-long",
+                         "concurrency": 1, "resource_class": "cpu",
+                         "duration_band": [30, None],
+                         "queued": [45, 120],
+                         "executing": {"mode": "expectation",
+                                       "floor": [90, 180]}},
+                "gpu": {"host": "desktop", "runner_label": "lane-gpu",
+                        "concurrency": 1, "resource_class": "gpu",
+                        "duration_band": [0, None],
+                        "queued": [30, 90],
+                        "executing": {"mode": "expectation",
+                                      "floor": [120, 240]}},
+            },
+            "single-host-light": {
+                "quick": {"host": "desktop", "runner_label": "lane-quick",
+                          "concurrency": 1, "resource_class": "cpu",
+                          "duration_band": [0, 10],
+                          "queued": [10, 30],
+                          "executing": {"mode": "fixed", "values": [5, 15]}},
+                "long": {"host": "desktop", "runner_label": "lane-long",
+                         "concurrency": 1, "resource_class": "any",
+                         "duration_band": [10, None],
+                         "queued": [45, 120],
+                         "executing": {"mode": "expectation",
+                                       "floor": [90, 180]}},
+            },
+            "gpu-farm": {
+                "quick": {"host": "desktop", "runner_label": "lane-quick",
+                          "concurrency": 1, "resource_class": "cpu",
+                          "duration_band": [0, 10],
+                          "queued": [10, 30],
+                          "executing": {"mode": "fixed", "values": [5, 15]}},
+                "gpu": {"host": "desktop", "runner_label": "lane-gpu",
+                        "concurrency": 2, "resource_class": "gpu",
+                        "duration_band": [0, 120],
+                        "queued": [30, 90],
+                        "executing": {"mode": "expectation",
+                                      "floor": [120, 240]}},
+                "gpu-long": {"host": "desktop",
+                             "runner_label": "lane-gpu-long",
+                             "concurrency": 1, "resource_class": "gpu",
+                             "duration_band": [60, None],
+                             "queued": [30, 90],
+                             "executing": {"mode": "expectation",
+                                           "floor": [240, 360]}},
+            },
+        },
     },
     "endpoints": {},
     "retention": {"human_log_max_bytes": 1000000},
@@ -173,6 +229,9 @@ IDENTITY_BY_TYPE = {
 }
 
 WORKFLOW_KINDS = ("execute", "grab")
+
+# Spec 016: the resource class a lane declares for auto routing.
+RESOURCE_CLASSES = ("cpu", "gpu", "any")
 
 
 # --- Restricted YAML-subset parser --------------------------------
@@ -446,25 +505,105 @@ def validate(cfg):
     for wname in declared:
         if wname not in served:
             raise ConfigError(f"workflows: {wname!r} is served by no host")
+    # Spec 016: lanes live in named profiles (FR-001/FR-002).
+    # Validation is fail-closed over the whole table — every
+    # profile, active or not — and the pre-016 flat shape
+    # (lane names directly under `lanes`) fails here with the
+    # migration named.
     lanes = cfg.get("lanes") or {}
-    if not lanes:
-        raise ConfigError("at least one lane is required")
-    for name, lane in lanes.items():
-        if not isinstance(lane, dict):
-            raise ConfigError(f"lanes.{name}: must be a mapping")
-        if lane.get("host") not in hosts:
-            raise ConfigError(f"lanes.{name}: unknown host {lane.get('host')!r}")
-        _check_pair(lane.get("queued"), f"lanes.{name}.queued")
-        ex = lane.get("executing") or {}
-        mode = ex.get("mode")
-        if mode == "fixed":
-            _check_pair(ex.get("values"), f"lanes.{name}.executing.values")
-        elif mode == "expectation":
-            _check_pair(ex.get("floor"), f"lanes.{name}.executing.floor")
-        else:
-            raise ConfigError(f"lanes.{name}.executing.mode must be fixed|expectation")
-        if lane.get("concurrency", 1) < 1:
-            raise ConfigError(f"lanes.{name}.concurrency must be >= 1")
+    if not isinstance(lanes, dict):
+        raise ConfigError("lanes must be a mapping")
+    for key in lanes:
+        if key not in ("active_profile", "auto_default",
+                       "capability_max_age_min", "profiles"):
+            raise ConfigError(
+                f"lanes.{key}: unknown lanes key — spec 016 moved "
+                f"lanes into named profiles; use lanes.profiles."
+                f"<name>.<lane> (see config/syncyard.example.yaml)")
+    if not isinstance(lanes.get("auto_default", False), bool):
+        raise ConfigError("lanes.auto_default must be a boolean")
+    max_age = lanes.get("capability_max_age_min", 60)
+    if (isinstance(max_age, bool) or not isinstance(max_age, int)
+            or max_age <= 0):
+        raise ConfigError(
+            "lanes.capability_max_age_min must be a positive integer "
+            "number of minutes")
+    profiles = lanes.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        raise ConfigError("lanes.profiles must name at least one profile")
+    active = lanes.get("active_profile")
+    if active not in profiles:
+        raise ConfigError(
+            f"lanes.active_profile {active!r} names no profile in "
+            f"lanes.profiles")
+    for pname, profile in profiles.items():
+        where = f"lanes.profiles.{pname}"
+        if not re.fullmatch(r"[a-z][a-z0-9-]*", pname or ""):
+            raise ConfigError(
+                f"{where}: profile name must match [a-z][a-z0-9-]*")
+        if not isinstance(profile, dict) or not profile:
+            raise ConfigError(f"{where}: must be a non-empty lane mapping")
+        enabled = 0
+        for name, lane in profile.items():
+            lwhere = f"{where}.{name}"
+            if not re.fullmatch(r"[a-z][a-z0-9-]*", name or ""):
+                raise ConfigError(
+                    f"{lwhere}: lane name must match [a-z][a-z0-9-]*")
+            if not isinstance(lane, dict):
+                raise ConfigError(f"{lwhere}: must be a mapping")
+            if lane.get("host") not in hosts:
+                raise ConfigError(
+                    f"{lwhere}: unknown host {lane.get('host')!r}")
+            pin = lane.get("workflow")
+            if pin is not None and pin not in declared:
+                raise ConfigError(
+                    f"{lwhere}: workflow pin {pin!r} is not in the "
+                    f"top-level workflows list")
+            _check_pair(lane.get("queued"), f"{lwhere}.queued")
+            ex = lane.get("executing") or {}
+            mode = ex.get("mode")
+            if mode == "fixed":
+                _check_pair(ex.get("values"), f"{lwhere}.executing.values")
+            elif mode == "expectation":
+                _check_pair(ex.get("floor"), f"{lwhere}.executing.floor")
+            else:
+                raise ConfigError(
+                    f"{lwhere}.executing.mode must be fixed|expectation")
+            conc = lane.get("concurrency", 1)
+            if (isinstance(conc, bool) or not isinstance(conc, int)
+                    or conc < 1):
+                raise ConfigError(
+                    f"{lwhere}.concurrency must be a positive integer")
+            rclass = lane.get("resource_class", "any")
+            if rclass not in RESOURCE_CLASSES:
+                raise ConfigError(
+                    f"{lwhere}.resource_class must be one of "
+                    f"{RESOURCE_CLASSES}")
+            band = lane.get("duration_band", [None, None])
+            if (not isinstance(band, list) or len(band) != 2
+                    or not all(x is None or (isinstance(x, (int, float))
+                                             and not isinstance(x, bool)
+                                             and x >= 0)
+                               for x in band)):
+                raise ConfigError(
+                    f"{lwhere}.duration_band must be [lo, hi] in "
+                    f"minutes, either end null or a non-negative number")
+            if (band[0] is not None and band[1] is not None
+                    and band[0] > band[1]):
+                raise ConfigError(
+                    f"{lwhere}.duration_band: lo ({band[0]}) must be "
+                    f"<= hi ({band[1]})")
+            if not isinstance(lane.get("enabled", True), bool):
+                raise ConfigError(f"{lwhere}.enabled must be a boolean")
+            if lane.get("enabled", True):
+                enabled += 1
+        if enabled == 0:
+            raise ConfigError(
+                f"{where}: profile has no enabled lanes")
+    # Host drain (spec 011 phases 2–3): the drain windows are
+    # validated here; a per-lane window must name a lane of the
+    # ACTIVE profile (spec 016: those are the lanes that exist
+    # at runtime).
     dr = cfg.get("drain") or {}
     win = dr.get("window_s")
     if (isinstance(win, bool) or not isinstance(win, (int, float))
@@ -476,8 +615,9 @@ def validate(cfg):
         raise ConfigError(
             "drain.per_lane_window_s must be a mapping of lane "
             "to window seconds")
+    active_lanes = profiles.get(active) or {}
     for lname, lwin in per_lane.items():
-        if lname not in (cfg.get("lanes") or {}):
+        if lname not in active_lanes:
             raise ConfigError(
                 f"drain.per_lane_window_s: lane {lname!r} is not "
                 f"a declared lane")
@@ -529,7 +669,34 @@ def load_config(path=None):
         except OSError as e:
             raise ConfigError(f"cannot read config {path}: {e}")
         merged = _deep_merge(merged, parsed)
-    return validate(merged)
+    return _resolve_profiles(validate(merged))
+
+
+def _resolve_profiles(cfg):
+    """Spec 016 (FR-001): cfg["lanes"] becomes the ACTIVE
+    profile's enabled lanes — the flat mapping every consumer
+    has always read — with the profile table and the routing
+    knobs exposed alongside it. Disabled lanes are excluded
+    entirely; the per-lane routing fields (resource_class,
+    duration_band) are defaulted here so consumers never
+    guess."""
+    section = cfg.get("lanes") or {}
+    profiles = section.get("profiles") or {}
+    active = section.get("active_profile")
+    cfg["lane_profiles"] = profiles
+    cfg["active_lane_profile"] = active
+    cfg["lanes_auto_default"] = bool(section.get("auto_default", False))
+    cfg["lanes_capability_max_age_min"] = section.get(
+        "capability_max_age_min", 60)
+    resolved = {}
+    for name, lane in (profiles.get(active) or {}).items():
+        if isinstance(lane, dict) and lane.get("enabled", True):
+            entry = dict(lane)
+            entry.setdefault("resource_class", "any")
+            entry.setdefault("duration_band", [None, None])
+            resolved[name] = entry
+    cfg["lanes"] = resolved
+    return cfg
 
 
 if __name__ == "__main__":

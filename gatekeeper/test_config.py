@@ -96,6 +96,26 @@ for lane, (q, mode, vals) in {
           tuple(L["queued"]) == q and L["executing"]["mode"] == mode
           and tuple(L["executing"][key]) == vals
           and L["runner_label"] == f"lane-{lane}" and L["host"] == "desktop")
+# Spec 016: the resolved table IS the fleet-default profile, and
+# the profile surface carries today's semantics plus the new
+# routing fields pinned here.
+check("golden profile surface (spec 016 FR-001)",
+      cfg["active_lane_profile"] == "fleet-default"
+      and set(cfg["lane_profiles"]) == {
+          "fleet-default", "single-host-light", "gpu-farm"}
+      and cfg["lanes_auto_default"] is False
+      and cfg["lanes_capability_max_age_min"] == 60
+      and set(cfg["lanes"]) == {"quick", "normal", "long", "gpu"})
+for lane, (rclass, band) in {
+    "quick": ("cpu", [0, 10]),
+    "normal": ("cpu", [0, 45]),
+    "long": ("cpu", [30, None]),
+    "gpu": ("gpu", [0, None]),
+}.items():
+    L = cfg["lanes"][lane]
+    check(f"golden lane {lane} routing fields (spec 016 FR-002)",
+          L["resource_class"] == rclass and L["duration_band"] == band
+          and L["concurrency"] == 1)
 
 # 3: defaults (no file) equal the golden example on the fleet surface.
 os.environ.pop(cfgmod.ENV_VAR, None)
@@ -107,7 +127,8 @@ beside = os.path.join(HERE, cfgmod.CONFIG_FILENAME)
 check("no beside-file config in repo gatekeeper dir", not os.path.exists(beside))
 dflt = cfgmod.load_config(None)
 check("defaults == example fleet surface",
-      dflt["lanes"] == cfg["lanes"] and dflt["hosts"] == cfg["hosts"]
+      dflt["lanes"] == cfg["lanes"] and dflt["lane_profiles"] == cfg["lane_profiles"]
+      and dflt["hosts"] == cfg["hosts"]
       and dflt["budget"] == cfg["budget"] and dflt["workflows"] == cfg["workflows"]
       and dflt["liveness"] == cfg["liveness"]
       and dflt["reboot"] == cfg["reboot"]
@@ -116,9 +137,10 @@ check("defaults == example fleet surface",
       and dflt["checkpoint"] == cfg["checkpoint"]
       and dflt["lock"] == cfg["lock"])
 
-# 4: partial override merges.
+# 4: partial override merges (spec 016: the lanes path is the
+# active profile's table now — profiles.fleet-default.quick).
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
-    f.write("budget:\n  standdown_remaining: 2000\nlanes:\n  quick:\n    queued: [5, 15]\n")
+    f.write("budget:\n  standdown_remaining: 2000\nlanes:\n  profiles:\n    fleet-default:\n      quick:\n        queued: [5, 15]\n")
     path = f.name
 over = cfgmod.load_config(path)
 os.unlink(path)
@@ -129,15 +151,15 @@ check("override merges", over["budget"]["standdown_remaining"] == 2000
 
 # 5: invalid files fail closed, named.
 expect_error("reject warn>=escalate",
-             "lanes:\n  quick:\n    queued: [30, 30]\n")
+             "lanes:\n  profiles:\n    fleet-default:\n      quick:\n        queued: [30, 30]\n")
 expect_error("reject unknown lane host",
-             "lanes:\n  quick:\n    host: nowhere\n")
+             "lanes:\n  profiles:\n    fleet-default:\n      quick:\n        host: nowhere\n")
 expect_error("reject budget order",
              "budget:\n  standdown_remaining: 100\n  critical_remaining: 500\n")
 expect_error("reject duplicate key",
              "version: 1\nversion: 1\n")
 expect_error("reject bad executing mode",
-             "lanes:\n  quick:\n    executing:\n      mode: sideways\n")
+             "lanes:\n  profiles:\n    fleet-default:\n      quick:\n        executing:\n          mode: sideways\n")
 expect_error("reject bad version", "version: 2\n")
 expect_error("reject host serves undeclared workflow",
              "hosts:\n  desktop:\n    workflows:\n      teleport.yml: execute\n")
@@ -263,6 +285,23 @@ os.unlink(path)
 check("lock TTL override loads",
       over["lock"]["default_ttl_min"] == 60
       and over["lock"]["max_ttl_min"] == 720)
+
+# 10: spec 016 profile overrides load and land.
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("lanes:\n  active_profile: single-host-light\n  auto_default: true\n  capability_max_age_min: 30\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("profile switch override loads (spec 016 FR-001)",
+      over["active_lane_profile"] == "single-host-light"
+      and set(over["lanes"]) == {"quick", "long"}
+      and over["lanes"]["long"]["resource_class"] == "any"
+      and over["lanes_auto_default"] is True
+      and over["lanes_capability_max_age_min"] == 30)
+expect_error("reject pre-016 flat lanes shape (spec 016 FR-002)",
+             "lanes:\n  quick:\n    host: desktop\n    queued: [10, 30]\n    executing:\n      mode: fixed\n      values: [5, 15]\n")
+expect_error("reject unknown active profile (spec 016 FR-002)",
+             "lanes:\n  active_profile: nowhere\n")
 
 print()
 if fails:
