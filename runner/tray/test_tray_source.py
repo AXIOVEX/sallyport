@@ -344,6 +344,16 @@ def main():
         check("connection evaluation never gates supervision",
               "_conn" not in startmissing
               and "ConnectionStatus" not in startmissing),
+
+        # ---- menu-open rebuild deferral (owner report 2026-11-04) --
+        check("rebuild defers while the context menu is open",
+              "if (_menuOpen) { _menuDirty = true; return; }" in SRC),
+        check("menu tracks its own open and closed state",
+              "menu.Opened +=" in SRC and "menu.Closed +=" in SRC
+              and "_menuOpen = false;" in SRC),
+        check("a deferred rebuild runs once when the menu closes",
+              "if (_menuDirty) { _menuDirty = false; RebuildMenu(); }"
+              in SRC),
     ]
     print("TRAY_SOURCE %s" % ("OK" if all(results) else "FAILURES"))
     return 0 if all(results) else 1
