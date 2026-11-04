@@ -55,7 +55,12 @@ set -u
 BASE="${SYNCBC_BASE:-$HOME/syncyard-backchannel}"
 REPO_DIR="${SYNCBC_REPO_DIR:-$BASE/repo}"
 REPO_URL="${SYNCBC_REPO_URL:-https://github.com/tbitcs/syncyard-backchannel.git}"
-CHANNEL_REL="channels/syncyard-dev"
+# One channel per machine (2026-11-04): SYNCBC_CHANNEL names this
+# host's channel under channels/ in the backchannel repo. The desktop
+# sets nothing and keeps the original syncyard-dev channel; a second
+# host must set its own (for example syncyard-laptop) so two agents
+# never share cmd/out/heartbeat state.
+CHANNEL_REL="channels/${SYNCBC_CHANNEL:-syncyard-dev}"
 POLL_S="${SYNCBC_POLL_S:-60}"
 DEFAULT_TIMEOUT_S="${SYNCBC_TIMEOUT_S:-600}"
 MAX_TIMEOUT_S="${SYNCBC_MAX_TIMEOUT_S:-600}"

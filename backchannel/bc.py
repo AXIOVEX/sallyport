@@ -3,9 +3,11 @@
 
 Spec: specs/009-failsafe-backchannel/spec.md (FR-003).
 
-Talks to the DEDICATED channel `syncyard-dev` in the PRIVATE repo
-tbitcs/syncyard-backchannel, and only to that channel. The channel
-is owned by the Desktop Access chat; this client is its tool.
+Talks to one machine's channel in the PRIVATE repo
+tbitcs/syncyard-backchannel (default `syncyard-dev` for
+TRISTEN-DESKTOP; `--channel` or SYNCBC_CHANNEL selects another
+machine's channel, for example `syncyard-laptop`). The channels are
+owned by the Desktop Access chat; this client is its tool.
 
 Design points (from the spec):
   - `send` goes through the GitHub contents API, NOT local git, so
@@ -40,11 +42,28 @@ import uuid
 from datetime import datetime, timezone
 
 REPO = "tbitcs/syncyard-backchannel"
-CHANNEL = "channels/syncyard-dev"
+# One channel per machine (2026-11-04): the desktop keeps the default
+# syncyard-dev; every additional host gets its own channel name (for
+# example syncyard-laptop) so two agents never share cmd/out state.
+# Select with --channel or the SYNCBC_CHANNEL environment variable.
+CHANNEL_NAME = os.environ.get("SYNCBC_CHANNEL", "syncyard-dev")
+CHANNEL = "channels/" + CHANNEL_NAME
 CMD_PATH = CHANNEL + "/cmd.json"
 OUT_PATH = CHANNEL + "/out.json"
 HEARTBEAT_PATH = CHANNEL + "/heartbeat.json"
 STOP_PATH = CHANNEL + "/STOP"
+
+
+def set_channel(name):
+    """Point every channel path at another machine's channel."""
+    global CHANNEL_NAME, CHANNEL, CMD_PATH, OUT_PATH
+    global HEARTBEAT_PATH, STOP_PATH
+    CHANNEL_NAME = name
+    CHANNEL = "channels/" + name
+    CMD_PATH = CHANNEL + "/cmd.json"
+    OUT_PATH = CHANNEL + "/out.json"
+    HEARTBEAT_PATH = CHANNEL + "/heartbeat.json"
+    STOP_PATH = CHANNEL + "/STOP"
 
 API_BASE = "https://api.github.com"
 STALE_HEARTBEAT_S = 300  # FR-005: >5 min is stale
@@ -90,7 +109,7 @@ def pack_command(body, cmd_id=None, timeout_s=600, dt=None):
         "timeout_s": int(timeout_s),
         "created_at": now_iso(dt),
         "state": "pending",
-        "channel": "syncyard-dev",
+        "channel": CHANNEL_NAME,
     }
 
 
@@ -363,9 +382,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="bc.py",
         description="Syncyard failsafe backchannel client "
-                    "(syncyard-dev channel, Desktop Access chat only)")
+                    "(one channel per machine; default syncyard-dev, "
+                    "Desktop Access chat only)")
     parser.add_argument("--repo", default=REPO,
                         help="backchannel repo (default %(default)s)")
+    parser.add_argument("--channel", default=None,
+                        help="channel name under channels/ "
+                             "(default: SYNCBC_CHANNEL env or syncyard-dev)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("heartbeat", help="print heartbeat age / freshness")
@@ -385,6 +408,8 @@ def main(argv=None):
     p_wait.add_argument("--poll-s", type=int, default=20)
 
     args = parser.parse_args(argv)
+    if args.channel:
+        set_channel(args.channel)
     api = ContentsAPI(repo=args.repo)
     if args.command == "heartbeat":
         return cmd_heartbeat(api, args)

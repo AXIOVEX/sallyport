@@ -75,6 +75,11 @@ def main():
               'json_get "$REPO_DIR/$CHANNEL_REL/out.json" id'
               in SRC
               and "replay guard restored from out.json" in SRC),
+        check("channel default: SYNCBC_CHANNEL unset means the "
+              "original syncyard-dev channel (PR #66); a second "
+              "machine must name its own",
+              'CHANNEL_REL="channels/${SYNCBC_CHANNEL:-'
+              'syncyard-dev}"' in SRC),
     ]
     print("AGENT_SOURCE %s" % ("OK" if all(results) else "FAILURES"))
     return 0 if all(results) else 1

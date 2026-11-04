@@ -61,6 +61,10 @@ channel repo and subjects it to the failure cases:
      NOT interrupted (the spec gates new commands); the
      next command is halted and the heartbeat reports
      stopped
+ 20. channel isolation (SYNCBC_CHANNEL, PR #66): an agent
+     pointed at a second channel (syncyard-laptop) executes
+     there, heartbeats there, and leaves the default
+     channel's state untouched
 
 Everything lives in a temp dir; the agent is pointed at it via
 SYNCBC_BASE / SYNCBC_REPO_URL / SYNCBC_POLL_S=1. Stdlib only.
@@ -853,6 +857,58 @@ def main():
               "is present", bool(stopped)
               and out.get("id") != "chaos-19b")
         rig.push({CHANNEL + "/STOP": None})
+
+        # 20: channel isolation (PR #66). Restart the agent
+        # pointed at a second channel in the same repo - the
+        # TRISTEN-LAPTOP shape. It must execute and heartbeat
+        # on ITS channel only, and the default channel's
+        # recorded state must not move. (The replay guard is
+        # per-BASE in the rig; each real machine has its own
+        # base, and the probe id differs from the guard value,
+        # so the switch is exercised cleanly.)
+        rig.kill_agent(sig=signal.SIGTERM)
+        time.sleep(1)
+        rig.agent_env["SYNCBC_CHANNEL"] = "syncyard-laptop"
+        laptop_rel = "channels/syncyard-laptop"
+        dev_out_before = (rig.read_chan_json("out.json")
+                          or {}).get("id")
+        rig.start_agent()
+        doc = {"id": "chaos-laptop-1",
+               "body": "echo LAPTOP_CHANNEL_OK",
+               "sha256": hashlib.sha256(
+                   b"echo LAPTOP_CHANNEL_OK").hexdigest(),
+               "created_at": "2026-11-04T00:00:00Z"}
+        rig.push({laptop_rel + "/cmd.json":
+                  json.dumps(doc, indent=1)})
+
+        def laptop_json(name):
+            try:
+                with open(os.path.join(rig.base, "repo",
+                                       laptop_rel, name)) as fh:
+                    return json.load(fh)
+            except Exception:
+                return None
+
+        out = wait_for(
+            lambda: (laptop_json("out.json") or {}).get("id")
+            == "chaos-laptop-1" and laptop_json("out.json"),
+            45, "laptop channel out")
+        check("channel: a SYNCBC_CHANNEL agent executes on its "
+              "own channel",
+              out is not None
+              and "LAPTOP_CHANNEL_OK"
+              in (out.get("stdout_tail") or ""),
+              f"out={out}")
+        hb20 = laptop_json("heartbeat.json")
+        check("channel: the second channel carries its own "
+              "heartbeat", hb20 is not None
+              and bool(hb20.get("ts")))
+        out_dev = rig.read_chan_json("out.json") or {}
+        check("channel: the default channel is untouched by "
+              "the second agent",
+              out_dev.get("id") == dev_out_before,
+              f"dev out={out_dev.get('id')} before={dev_out_before}")
+        rig.agent_env.pop("SYNCBC_CHANNEL", None)
     finally:
         rig.cleanup()
 
