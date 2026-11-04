@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- Dispatch isolation: a job whose script file is missing or
+  unreadable at dispatch time (classically staged in /tmp and
+  wiped by a VM replacement between submit and dispatch) no
+  longer kills the sweep. dispatch_one catches the read error,
+  returns the job to submitted with the error recorded as a
+  dispatch_failed_retryable ledger event, and the pass continues
+  to the next waiting job; a restaged script revives the job on
+  a later sweep with no operator surgery. Field case
+  2026-11-04: spec053-f0-build-repair-2026-11-04 (sweep exit 1,
+  record wedged in dispatching, repaired by hand). Battery:
+  gatekeeper/test_dispatch_isolation.py.
 ### Added
 - Spec 016 (2026-11-02): adaptive lanes. Lanes now live in
   named **profiles** (`lanes.profiles.<name>` in config, one
