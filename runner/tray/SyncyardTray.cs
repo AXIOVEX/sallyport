@@ -331,6 +331,13 @@ namespace SyncyardTray
         public string FleetStatusPath =
             @"C:\Users\trist\Development\Syncyard\status\fleet-status.json";
         public int FleetStaleSeconds = 300;
+        // Spec 021 FR-007: the runner root is per-machine. The
+        // default is the original desktop layout; a machine
+        // whose lanes live elsewhere (the laptop) sets
+        // runnerRoot in tray-settings.json and the lane dirs
+        // are built from it. Nothing else about a lane changes.
+        public string RunnerRoot =
+            @"C:\Users\trist\Development\Syncyard\runners";
         // Spec 018: the backchannel agent's heartbeat file on this
         // host. The deployed agent (backchannel/agent.sh) writes
         // it at ~/syncyard-backchannel/repo/channels/syncyard-dev/
@@ -403,6 +410,8 @@ namespace SyncyardTray
                     "hideStrayConsoles", s.HideStrayConsoles);
                 string fp = MiniJson.GetString(text, "fleetStatusPath");
                 if (!string.IsNullOrEmpty(fp)) s.FleetStatusPath = fp;
+                string rr = MiniJson.GetString(text, "runnerRoot");
+                if (!string.IsNullOrEmpty(rr)) s.RunnerRoot = rr;
                 s.FleetStaleSeconds = Clamp(MiniJson.GetInt(text,
                     "fleetStaleSeconds", s.FleetStaleSeconds), 30, 3600);
                 string hb = MiniJson.GetString(text,
@@ -461,6 +470,8 @@ namespace SyncyardTray
             Line(sb, "hideStrayConsoles", Bool(HideStrayConsoles), true);
             Line(sb, "fleetStatusPath",
                 "\"" + MiniJson.Escape(FleetStatusPath) + "\"", true);
+            Line(sb, "runnerRoot",
+                "\"" + MiniJson.Escape(RunnerRoot) + "\"", true);
             Line(sb, "fleetStaleSeconds",
                 FleetStaleSeconds.ToString(CultureInfo.InvariantCulture),
                 true);
@@ -1113,17 +1124,21 @@ namespace SyncyardTray
                 catch { _logoImage = null; }
             }
 
-            _runners.Add(new RunnerDef { Lane = "long",   Dir = @"C:\Users\trist\Development\Syncyard\runners\long" });
-            _runners.Add(new RunnerDef { Lane = "quick",  Dir = @"C:\Users\trist\Development\Syncyard\runners\quick" });
-            _runners.Add(new RunnerDef { Lane = "normal", Dir = @"C:\Users\trist\Development\Syncyard\runners\normal" });
-            _runners.Add(new RunnerDef { Lane = "gpu",    Dir = @"C:\Users\trist\Development\Syncyard\runners\gpu" });
+            // Settings load before the runner table exists:
+            // the lane dirs are built from the per-machine
+            // runner root the settings carry (spec 021 FR-007).
+            _settings = TraySettings.Load();
+
+            _runners.Add(new RunnerDef { Lane = "long",   Dir = Path.Combine(_settings.RunnerRoot, "long") });
+            _runners.Add(new RunnerDef { Lane = "quick",  Dir = Path.Combine(_settings.RunnerRoot, "quick") });
+            _runners.Add(new RunnerDef { Lane = "normal", Dir = Path.Combine(_settings.RunnerRoot, "normal") });
+            _runners.Add(new RunnerDef { Lane = "gpu",    Dir = Path.Combine(_settings.RunnerRoot, "gpu") });
 
             _icon = new NotifyIcon();
             _icon.Text = "Syncyard runners";
             _icon.Visible = true;
             _icon.DoubleClick += delegate { RebuildMenu(); };
 
-            _settings = TraySettings.Load();
             if (TraySettings.LastNote != null)
                 Log("settings: " + TraySettings.LastNote);
 

@@ -110,6 +110,21 @@ PR #58 exit-forensics hooks are unchanged. The update items
 are built inside the same menu construction as every other
 item, so they inherit the menu-open guard.
 
+### FR-007 — Per-machine runner root
+
+The tray supervises the lanes of the machine it runs on, so
+the runner root is a setting (`runnerRoot` in
+tray-settings.json), not a compiled-in path. Its default is
+the original desktop layout
+(`C:\Users\trist\Development\Syncyard\runners`), so the
+desktop's behavior is unchanged with no settings edit. A
+machine whose lanes live elsewhere (the laptop:
+`D:\Development\Syncyard\runners`) sets runnerRoot in its
+settings file, and the lane directories are built from it.
+Settings load before the runner table is built. A lane that
+is disabled or whose directory is absent is neither started
+nor faulted, exactly as before.
+
 ## Falsifier
 
 A tampered or stale manifest must never replace the exe: a

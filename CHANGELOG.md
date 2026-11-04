@@ -36,7 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rollback to the `.bak` if the swap fails. Checks happen
   only on an explicit click; the tray never polls for
   updates, and the spec 018 connection indicator is
-  unchanged.
+  unchanged. The runner root the tray supervises is now a
+  per-machine setting (`runnerRoot`, defaulting to the
+  original desktop layout) so the same build runs on a
+  second machine whose lanes live elsewhere.
 - Spec 016 (2026-11-02): adaptive lanes. Lanes now live in
   named **profiles** (`lanes.profiles.<name>` in config, one
   `lanes.active_profile`): a profile is a lane table, and a

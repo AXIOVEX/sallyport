@@ -422,6 +422,28 @@ def main():
         check("tray hands off and exits for the update",
               "--apply-update " in SRC
               and '"tray exiting for update"' in SRC),
+        # ---- spec 021 FR-007: per-machine runner root ------------
+        # The lane dirs come from the settings runner root so a
+        # second machine (the laptop) supervises its own lanes;
+        # the hardcoded desktop lane paths must not come back.
+        check("runner root is a setting with the desktop default",
+              "public string RunnerRoot" in SRC
+              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners"'
+              in SRC
+              and '"runnerRoot"' in SRC),
+        check("lane dirs are built from the settings runner root",
+              'Path.Combine(_settings.RunnerRoot, "long")' in SRC
+              and 'Path.Combine(_settings.RunnerRoot, "quick")' in SRC
+              and 'Path.Combine(_settings.RunnerRoot, "normal")' in SRC
+              and 'Path.Combine(_settings.RunnerRoot, "gpu")' in SRC
+              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\long"'
+              not in SRC
+              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\gpu"'
+              not in SRC),
+        check("settings load before the runner table is built",
+              SRC.find("_settings = TraySettings.Load();") >= 0
+              and SRC.find("_settings = TraySettings.Load();")
+              < SRC.find("_runners.Add")),
     ]
     print("TRAY_SOURCE %s" % ("OK" if all(results) else "FAILURES"))
     return 0 if all(results) else 1
