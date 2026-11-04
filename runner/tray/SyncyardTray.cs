@@ -21,6 +21,15 @@
 // console; the settings dialog is the only window it ever shows,
 // and only when the owner opens it from the menu.
 //
+// Spec 021: the tray carries a build stamp and can update itself
+// to the latest published build. An owner-clicked menu check
+// reads a small JSON manifest from the project's GitHub
+// releases; a newer build is downloaded, verified against the
+// manifest's SHA-256, and swapped in by a UI-free helper mode
+// of this same exe, which relaunches the tray. The spec 018
+// connection indicator stays signal-file only; update traffic
+// happens only on the owner's explicit menu click.
+//
 // Compile (no SDK install needed - csc ships with Windows):
 //   csc /target:winexe /out:SyncyardTray.exe /win32icon:logo.ico
 //       /resource:logo.png,SyncyardLogo.png
@@ -37,7 +46,9 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -54,8 +65,8 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyCompany("Axiovex Systems, LLC")]
 [assembly: System.Reflection.AssemblyProduct("Syncyard Tray")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) Axiovex Systems, LLC")]
-[assembly: System.Reflection.AssemblyVersion("0.3.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.3.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.4.1.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.4.1.0")]
 
 namespace SyncyardTray
 {
@@ -320,6 +331,13 @@ namespace SyncyardTray
         public string FleetStatusPath =
             @"C:\Users\trist\Development\Syncyard\status\fleet-status.json";
         public int FleetStaleSeconds = 300;
+        // Spec 021 FR-007: the runner root is per-machine. The
+        // default is the original desktop layout; a machine
+        // whose lanes live elsewhere (the laptop) sets
+        // runnerRoot in tray-settings.json and the lane dirs
+        // are built from it. Nothing else about a lane changes.
+        public string RunnerRoot =
+            @"C:\Users\trist\Development\Syncyard\runners";
         // Spec 018: the backchannel agent's heartbeat file on this
         // host. The deployed agent (backchannel/agent.sh) writes
         // it at ~/syncyard-backchannel/repo/channels/syncyard-dev/
@@ -392,6 +410,8 @@ namespace SyncyardTray
                     "hideStrayConsoles", s.HideStrayConsoles);
                 string fp = MiniJson.GetString(text, "fleetStatusPath");
                 if (!string.IsNullOrEmpty(fp)) s.FleetStatusPath = fp;
+                string rr = MiniJson.GetString(text, "runnerRoot");
+                if (!string.IsNullOrEmpty(rr)) s.RunnerRoot = rr;
                 s.FleetStaleSeconds = Clamp(MiniJson.GetInt(text,
                     "fleetStaleSeconds", s.FleetStaleSeconds), 30, 3600);
                 string hb = MiniJson.GetString(text,
@@ -450,6 +470,8 @@ namespace SyncyardTray
             Line(sb, "hideStrayConsoles", Bool(HideStrayConsoles), true);
             Line(sb, "fleetStatusPath",
                 "\"" + MiniJson.Escape(FleetStatusPath) + "\"", true);
+            Line(sb, "runnerRoot",
+                "\"" + MiniJson.Escape(RunnerRoot) + "\"", true);
             Line(sb, "fleetStaleSeconds",
                 FleetStaleSeconds.ToString(CultureInfo.InvariantCulture),
                 true);
@@ -801,9 +823,148 @@ namespace SyncyardTray
 
     internal static class Program
     {
-        [STAThread]
-        private static void Main()
+        // The apply half of self-update (spec 021): the running
+        // tray starts a detached copy of this same exe with the
+        // verified download's path as its argument, then exits.
+        // The helper waits for that old process to be gone,
+        // renames the installed exe to .bak, renames the
+        // download into its place, and starts the new build.
+        // Every step is logged to the tray log. There is no UI
+        // here at all, by design: no icon, no window, no prompt,
+        // and no singleton claim (the relaunched tray takes it).
+        private static int ApplyUpdateHelper(string newPath)
         {
+            ProgramLog("update helper: applying update from " +
+                newPath);
+            string exePath;
+            try
+            {
+                exePath = Process.GetCurrentProcess()
+                    .MainModule.FileName;
+            }
+            catch (Exception ex)
+            {
+                ProgramLog("update helper: cannot name own " +
+                    "exe: " + ex.Message);
+                return 1;
+            }
+            if (!File.Exists(newPath))
+            {
+                ProgramLog("update helper: staged file " +
+                    "missing; aborting, nothing changed");
+                return 1;
+            }
+            int waitedMs = 0;
+            while (OtherInstanceRunning(exePath) &&
+                   waitedMs < 60000)
+            {
+                Thread.Sleep(500);
+                waitedMs += 500;
+            }
+            if (OtherInstanceRunning(exePath))
+            {
+                ProgramLog("update helper: another tray " +
+                    "instance is still running after 60 s; " +
+                    "aborting, nothing changed");
+                return 1;
+            }
+            string bakPath = exePath + ".bak";
+            try
+            {
+                if (File.Exists(bakPath)) File.Delete(bakPath);
+                File.Move(exePath, bakPath);
+                ProgramLog("update helper: previous build " +
+                    "kept as " + bakPath);
+                File.Move(newPath, exePath);
+                ProgramLog("update helper: new build in place");
+            }
+            catch (Exception ex)
+            {
+                ProgramLog("update helper: swap failed: " +
+                    ex.Message);
+                try
+                {
+                    if (!File.Exists(exePath) &&
+                        File.Exists(bakPath))
+                    {
+                        File.Move(bakPath, exePath);
+                        ProgramLog("update helper: rolled " +
+                            "back to the previous build");
+                    }
+                }
+                catch (Exception ex2)
+                {
+                    ProgramLog("update helper: rollback " +
+                        "failed: " + ex2.Message);
+                }
+            }
+            try
+            {
+                if (File.Exists(exePath))
+                {
+                    Process.Start(exePath);
+                    ProgramLog("update helper: tray relaunched");
+                }
+                else
+                {
+                    ProgramLog("update helper: no tray exe " +
+                        "in place; nothing relaunched");
+                }
+            }
+            catch (Exception ex)
+            {
+                ProgramLog("update helper: relaunch failed: " +
+                    ex.Message);
+            }
+            return 0;
+        }
+
+        // True while any other process is running this exe
+        // path (the tray that started the helper, until it
+        // exits; or an unrelated later instance, which the
+        // helper must not disturb).
+        private static bool OtherInstanceRunning(string exePath)
+        {
+            int me = Process.GetCurrentProcess().Id;
+            Process[] all;
+            try { all = Process.GetProcesses(); }
+            catch { return false; }
+            bool found = false;
+            foreach (var p in all)
+            {
+                try
+                {
+                    if (p.Id == me) continue;
+                    string path = null;
+                    try { path = p.MainModule.FileName; }
+                    catch { }
+                    if (path != null &&
+                        string.Equals(path, exePath,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                catch { }
+                finally { p.Dispose(); }
+            }
+            return found;
+        }
+
+        [STAThread]
+        private static void Main(string[] args)
+        {
+            // Self-update helper mode (spec 021) runs before
+            // the singleton mutex and before any UI exists:
+            // the helper must be able to replace the exe while
+            // no tray instance holds it, and it shows nothing.
+            if (args.Length >= 2 &&
+                args[0] == "--apply-update")
+            {
+                Environment.Exit(ApplyUpdateHelper(args[1]));
+                return;
+            }
             bool created;
             using (var mutex = new Mutex(true, "SyncyardTraySingleton", out created))
             {
@@ -829,6 +990,30 @@ namespace SyncyardTray
                     {
                         ProgramLog("unhandled UI exception (caught): " +
                             e.Exception);
+                    };
+                // Exit forensics (2026-11-04, after three silent
+                // tray deaths with no log line and no Windows
+                // crash event): a fatal fault on any non-UI
+                // thread is logged before the process dies, and
+                // every orderly end of the message loop is logged
+                // as it happens. A death that leaves NEITHER line
+                // behind was an external termination, and the
+                // per-minute "tray alive" line bounds when it
+                // happened. Nothing here can log a TerminateProcess
+                // kill; the watchdog's relaunch record covers that
+                // case from the other side.
+                AppDomain.CurrentDomain.UnhandledException +=
+                    delegate(object sender,
+                        UnhandledExceptionEventArgs e)
+                    {
+                        ProgramLog("unhandled appdomain exception " +
+                            "(fatal): " + e.ExceptionObject);
+                    };
+                Application.ApplicationExit +=
+                    delegate(object sender, EventArgs e)
+                    {
+                        ProgramLog("tray process exiting " +
+                            "(ApplicationExit)");
                     };
                 Application.Run(new TrayApp());
             }
@@ -880,6 +1065,28 @@ namespace SyncyardTray
         private int _lastConnState = -1;
         private SettingsForm _settingsForm;
 
+        // Self-update state (spec 021). The build stamp is the
+        // value the menu header and the startup log line carry;
+        // keep it in step with the assembly version attributes
+        // at the top of this file and the repo VERSION file
+        // (the update compare itself reads the live assembly
+        // version, so a stamp drift could mislabel, never
+        // misjudge). All other fields are UI-thread state,
+        // written by the posted completions of the two worker
+        // threads below; the workers never touch the menu.
+        private const string BuildId = "0.4.1.0";
+        private const string UpdateManifestUrl =
+            "https://github.com/AXIOVEX/syncyard/releases/latest/download/tray-update.json";
+        private string _updateVersion;     // newer build, if any
+        private string _updateSha256;
+        private string _updateUrl;
+        private bool _updateChecked;       // a check has finished
+        private bool _updateBusy;          // check/download runs
+        private bool _updateDownloading;   // the run is the exe
+        private string _pendingUpdatePath; // verified .new file
+        private bool _updateLaunched;      // helper started
+        private SynchronizationContext _uiContext;
+
         public TrayApp()
         {
             string baseDir = Path.Combine(
@@ -917,21 +1124,26 @@ namespace SyncyardTray
                 catch { _logoImage = null; }
             }
 
-            _runners.Add(new RunnerDef { Lane = "long",   Dir = @"C:\Users\trist\Development\Syncyard\runners\long" });
-            _runners.Add(new RunnerDef { Lane = "quick",  Dir = @"C:\Users\trist\Development\Syncyard\runners\quick" });
-            _runners.Add(new RunnerDef { Lane = "normal", Dir = @"C:\Users\trist\Development\Syncyard\runners\normal" });
-            _runners.Add(new RunnerDef { Lane = "gpu",    Dir = @"C:\Users\trist\Development\Syncyard\runners\gpu" });
+            // Settings load before the runner table exists:
+            // the lane dirs are built from the per-machine
+            // runner root the settings carry (spec 021 FR-007).
+            _settings = TraySettings.Load();
+
+            _runners.Add(new RunnerDef { Lane = "long",   Dir = Path.Combine(_settings.RunnerRoot, "long") });
+            _runners.Add(new RunnerDef { Lane = "quick",  Dir = Path.Combine(_settings.RunnerRoot, "quick") });
+            _runners.Add(new RunnerDef { Lane = "normal", Dir = Path.Combine(_settings.RunnerRoot, "normal") });
+            _runners.Add(new RunnerDef { Lane = "gpu",    Dir = Path.Combine(_settings.RunnerRoot, "gpu") });
 
             _icon = new NotifyIcon();
             _icon.Text = "Syncyard runners";
             _icon.Visible = true;
             _icon.DoubleClick += delegate { RebuildMenu(); };
 
-            _settings = TraySettings.Load();
             if (TraySettings.LastNote != null)
                 Log("settings: " + TraySettings.LastNote);
 
             Log("tray started");
+            Log("tray build " + BuildId);
             RefreshStates();
             StartMissing(false);
             if (_settings.HideStrayConsoles) HideStrayConsoles();
@@ -967,9 +1179,19 @@ namespace SyncyardTray
         private void TickCore()
         {
             _tick++;
+            // Self-update plumbing on the UI thread (spec 021):
+            // capture the context the worker completions post
+            // to, and act as the backstop launcher if a verified
+            // download completed with no context captured.
+            if (_uiContext == null)
+                _uiContext = SynchronizationContext.Current;
+            if (_pendingUpdatePath != null) LaunchHelperAndExit();
             bool wasFaulted = AnyFaulted();
             RefreshStates();
             StartMissing(false);
+            if (_tick % 12 == 0)
+                Log("tray alive");     // every ~60 s: bounds any
+                                       // silent death to a minute
             if (_tick % 6 == 0 && _settings.HideStrayConsoles)
                 HideStrayConsoles();   // every ~30 s
             if (!wasFaulted && AnyFaulted())
@@ -1248,6 +1470,297 @@ namespace SyncyardTray
             RebuildMenu();
         }
 
+        // --- self-update (spec 021) --------------------------------
+        // The tray's only network traffic, and only ever on the
+        // owner's explicit menu click: a check reads the update
+        // manifest published with the project's GitHub releases,
+        // an apply downloads the named build and verifies its
+        // SHA-256 before anything is swapped. Both run on a
+        // background thread so the menu never blocks; results
+        // come back to the UI thread through the synchronization
+        // context captured at click time (or on the tick), and
+        // the menu is rebuilt from the state fields, like every
+        // other surface. A failed check or download changes
+        // nothing on disk and is only a log line; the swap
+        // itself is the helper mode's job (see Program).
+
+        private static Version RunningVersion()
+        {
+            return System.Reflection.Assembly
+                .GetExecutingAssembly().GetName().Version;
+        }
+
+        private string UpdateItemText()
+        {
+            if (_updateDownloading) return "Downloading update...";
+            if (_updateBusy) return "Checking for updates...";
+            if (_updateVersion != null)
+                return "Update to v" + _updateVersion;
+            if (_updateChecked) return "Up to date";
+            return "Check for updates";
+        }
+
+        private void OnUpdateItemClick()
+        {
+            if (_updateBusy) return;
+            if (_uiContext == null)
+                _uiContext = SynchronizationContext.Current;
+            if (_updateVersion != null) StartApplyUpdate();
+            else StartUpdateCheck();
+        }
+
+        private void StartUpdateCheck()
+        {
+            _updateBusy = true;
+            _updateDownloading = false;
+            RebuildMenu();
+            var t = new Thread(CheckForUpdatesWorker);
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        private void CheckForUpdatesWorker()
+        {
+            string foundVersion = null;
+            string foundSha = null;
+            string foundUrl = null;
+            bool failed = false;
+            try
+            {
+                string json = DownloadText(UpdateManifestUrl);
+                string v = MiniJson.GetString(json, "version");
+                string sha = MiniJson.GetString(json, "sha256");
+                string url = MiniJson.GetString(json, "url");
+                if (v == null || sha == null || url == null)
+                {
+                    Log("update check: manifest incomplete; " +
+                        "ignored");
+                    failed = true;
+                }
+                else
+                {
+                    string vtext = v.Trim();
+                    if (vtext.StartsWith("v") ||
+                        vtext.StartsWith("V"))
+                        vtext = vtext.Substring(1);
+                    Version mv;
+                    if (!Version.TryParse(vtext, out mv))
+                    {
+                        Log("update check: manifest version " +
+                            "unreadable (" + v + "); ignored");
+                        failed = true;
+                    }
+                    else if (mv > RunningVersion())
+                    {
+                        foundVersion = vtext;
+                        foundSha = sha;
+                        foundUrl = url;
+                        string notes =
+                            MiniJson.GetString(json, "notes");
+                        Log("update available: v" + vtext +
+                            " (running " +
+                            RunningVersion().ToString() + ")" +
+                            (notes != null ? " - " + notes : ""));
+                    }
+                    else
+                    {
+                        Log("update check: up to date " +
+                            "(manifest " + vtext + ", running " +
+                            RunningVersion().ToString() + ")");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("update check failed: " + ex.Message);
+                failed = true;
+            }
+            var ui = _uiContext;
+            if (ui != null)
+            {
+                ui.Post(delegate(object state)
+                {
+                    _updateBusy = false;
+                    if (!failed)
+                    {
+                        _updateChecked = true;
+                        _updateVersion = foundVersion;
+                        _updateSha256 = foundSha;
+                        _updateUrl = foundUrl;
+                    }
+                    RebuildMenu();
+                }, null);
+            }
+            else
+            {
+                _updateBusy = false;
+                if (!failed)
+                {
+                    _updateChecked = true;
+                    _updateVersion = foundVersion;
+                    _updateSha256 = foundSha;
+                    _updateUrl = foundUrl;
+                }
+            }
+        }
+
+        private void StartApplyUpdate()
+        {
+            if (_updateBusy || _updateVersion == null) return;
+            _updateBusy = true;
+            _updateDownloading = true;
+            RebuildMenu();
+            string url = _updateUrl;
+            string sha = _updateSha256;
+            string version = _updateVersion;
+            var t = new Thread(new ThreadStart(
+                delegate { ApplyUpdateWorker(url, sha, version); }));
+            t.IsBackground = true;
+            t.Start();
+        }
+
+        private void ApplyUpdateWorker(string url, string sha256,
+            string version)
+        {
+            string dir = Path.GetDirectoryName(
+                Application.ExecutablePath);
+            string newPath = Path.Combine(dir,
+                "SyncyardTray.exe.new");
+            try
+            {
+                DownloadFile(url, newPath);
+                string actual = Sha256Hex(newPath);
+                if (!string.Equals(actual, sha256,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    try { File.Delete(newPath); } catch { }
+                    Log("update aborted: hash mismatch");
+                    EndUpdateBusy();
+                    return;
+                }
+                Log("update v" + version +
+                    " downloaded and hash verified");
+                _pendingUpdatePath = newPath;
+                var ui = _uiContext;
+                if (ui != null)
+                    ui.Post(delegate(object state)
+                        { LaunchHelperAndExit(); }, null);
+                // With no captured context the next tick is
+                // the launcher instead (see TickCore).
+            }
+            catch (Exception ex)
+            {
+                Log("update download failed: " + ex.Message);
+                try { if (File.Exists(newPath))
+                        File.Delete(newPath); }
+                catch { }
+                EndUpdateBusy();
+            }
+        }
+
+        private void EndUpdateBusy()
+        {
+            var ui = _uiContext;
+            if (ui != null)
+            {
+                ui.Post(delegate(object state)
+                {
+                    _updateBusy = false;
+                    _updateDownloading = false;
+                    RebuildMenu();
+                }, null);
+            }
+            else
+            {
+                _updateBusy = false;
+                _updateDownloading = false;
+            }
+        }
+
+        // Hand the verified download to the helper mode of
+        // this same exe and exit so the swap can proceed.
+        // Runs on the UI thread (posted completion, or the
+        // tick backstop); idempotent, because both paths can
+        // race to it.
+        private void LaunchHelperAndExit()
+        {
+            string newPath = _pendingUpdatePath;
+            if (newPath == null || _updateLaunched) return;
+            _pendingUpdatePath = null;
+            _updateLaunched = true;
+            try
+            {
+                Log("tray exiting for update");
+                var psi = new ProcessStartInfo();
+                psi.FileName = Application.ExecutablePath;
+                psi.Arguments =
+                    "--apply-update \"" + newPath + "\"";
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.WindowStyle = ProcessWindowStyle.Hidden;
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                Log("update launch failed: " + ex.Message);
+                _updateLaunched = false;
+                _updateBusy = false;
+                _updateDownloading = false;
+                RebuildMenu();
+                return;
+            }
+            _icon.Visible = false;
+            Application.Exit();
+        }
+
+        private static string DownloadText(string url)
+        {
+            ServicePointManager.SecurityProtocol |=
+                SecurityProtocolType.Tls12;
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Timeout = 15000;
+            req.ReadWriteTimeout = 15000;
+            req.UserAgent = "SyncyardTray/" + BuildId;
+            using (var resp = (HttpWebResponse)req.GetResponse())
+            using (var stream = resp.GetResponseStream())
+            using (var reader = new StreamReader(stream))
+                return reader.ReadToEnd();
+        }
+
+        private static void DownloadFile(string url, string path)
+        {
+            ServicePointManager.SecurityProtocol |=
+                SecurityProtocolType.Tls12;
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Timeout = 15000;
+            req.ReadWriteTimeout = 120000;
+            req.UserAgent = "SyncyardTray/" + BuildId;
+            using (var resp = (HttpWebResponse)req.GetResponse())
+            using (var input = resp.GetResponseStream())
+            using (var output = new FileStream(path,
+                FileMode.Create, FileAccess.Write))
+            {
+                var buf = new byte[81920];
+                int n;
+                while ((n = input.Read(buf, 0, buf.Length)) > 0)
+                    output.Write(buf, 0, n);
+            }
+        }
+
+        private static string Sha256Hex(string path)
+        {
+            using (var fs = File.OpenRead(path))
+            using (var sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(fs);
+                var sb = new StringBuilder();
+                foreach (byte b in hash)
+                    sb.Append(b.ToString("x2",
+                        CultureInfo.InvariantCulture));
+                return sb.ToString();
+            }
+        }
+
         // --- stray console hiding ----------------------------------------
 
         private void SetStrayConsoles(int cmd)
@@ -1299,35 +1812,17 @@ namespace SyncyardTray
             return s;
         }
 
-        // The menu's connection lines (spec 018 FR-003/FR-004):
-        // the state in words, then which signals it rests on.
+        // The menu's connection line (spec 018 FR-003): the state
+        // in words. The settings dialog keeps the signal detail;
+        // the menu header does not (owner trim, 2026-11-04: the
+        // header is the build line, the fleet summary, and this
+        // line; the per-job Next line and the signal detail line
+        // were removed as clutter).
         private string ConnectionText()
         {
             if (_conn == null)
                 return "Connection: unknown (no signal seen yet)";
             return _conn.Line();
-        }
-
-        private string ConnectionDetailText()
-        {
-            if (_conn == null) return "signal: backchannel heartbeat only";
-            return _conn.SignalDetail();
-        }
-
-        private string FleetNextText()
-        {
-            if (_fleet == null || !_fleet.HasData ||
-                _fleet.Waiting.Count == 0) return null;
-            var j = _fleet.Waiting[0];
-            string s = "Next: " + j.Key + " (" + j.Lane;
-            if (j.HasPriority)
-            {
-                s += ", pri " + j.Priority;
-                if (j.PrioritySource != null)
-                    s += ", " + j.PrioritySource;
-            }
-            if (j.HasHeld && j.Held) s += ", held";
-            return s + ")";
         }
 
         private void RebuildMenu()
@@ -1345,23 +1840,16 @@ namespace SyncyardTray
                 _menuOpen = false;
                 if (_menuDirty) { _menuDirty = false; RebuildMenu(); }
             };
+            var buildLine = new ToolStripMenuItem(
+                "Syncyard Tray v" + BuildId);
+            buildLine.Enabled = false;
+            menu.Items.Add(buildLine);
             var fleetLine = new ToolStripMenuItem(FleetMenuText());
             fleetLine.Enabled = false;
             menu.Items.Add(fleetLine);
-            string nextText = FleetNextText();
-            if (nextText != null)
-            {
-                var nextLine = new ToolStripMenuItem(nextText);
-                nextLine.Enabled = false;
-                menu.Items.Add(nextLine);
-            }
             var connLine = new ToolStripMenuItem(ConnectionText());
             connLine.Enabled = false;
             menu.Items.Add(connLine);
-            var connDetail = new ToolStripMenuItem(
-                ConnectionDetailText());
-            connDetail.Enabled = false;
-            menu.Items.Add(connDetail);
             menu.Items.Add(new ToolStripSeparator());
             int running = 0;
             foreach (var r in _runners) if (r.Running) running++;
@@ -1427,6 +1915,10 @@ namespace SyncyardTray
                 catch { }
             };
             menu.Items.Add(log);
+            var update = new ToolStripMenuItem(UpdateItemText());
+            update.Enabled = !_updateBusy;
+            update.Click += delegate { OnUpdateItemClick(); };
+            menu.Items.Add(update);
             var exit = new ToolStripMenuItem(
                 "Exit tray (runners keep running)");
             exit.Click += delegate
@@ -1447,37 +1939,47 @@ namespace SyncyardTray
             _icon.Text = TooltipText(running);
         }
 
-        // The tooltip carries the fleet mode + waiting count when
-        // a snapshot exists (spec 014 FR-007), capped at the
-        // notification area's safe text length. Fleet data never
-        // renders into the icon itself; the icon's second
-        // dimension is the connection state (spec 018), judged
-        // from host-local signals only.
+        // The tooltip is composed SHORT (owner ruling 2026-11-04:
+        // the previous build concatenated the full connection
+        // and fleet lines and chopped the result at 63 characters
+        // mid-word, so the hover text read as cut off). Segments
+        // join only while the whole stays inside the 63-character
+        // NotifyIcon limit, in priority order: the runner count,
+        // the connection as one word, the waiting count, the
+        // stale flag. A segment that does not fit is dropped
+        // whole; nothing is ever truncated mid-word. The detail
+        // lives in the menu's two header lines, not here.
+        //
+        // The cap is 63, not the shell's larger buffer:
+        // .NET Framework's NotifyIcon.Text setter throws
+        // ArgumentOutOfRangeException above 63 characters, and
+        // RebuildMenu runs in the constructor, before the message
+        // loop's exception guard applies (the 120 cap shipped in
+        // specs 014/018 crashed the tray at startup on
+        // 2026-11-03; the substring clamp that replaced it is
+        // what this composition supersedes).
         private string TooltipText(int running)
         {
             string s = "Syncyard: " + running + "/" + _runners.Count +
                 " runners up";
-            // The tooltip carries the connection line too
-            // (spec 018 FR-003), ahead of the fleet summary.
-            if (_conn != null) s += " - " + _conn.Line();
-            if (_fleet != null && _fleet.HasData)
+            var parts = new List<string>();
+            if (_conn != null && _conn.HasSignal)
             {
-                s += " - " + _fleet.ModeLine() + " - " +
-                    _fleet.Waiting.Count + " waiting";
-                if (_fleet.Stale) s += " - STALE";
+                parts.Add(_conn.State == ConnectionStatus.Connected
+                    ? "linked"
+                    : _conn.State == ConnectionStatus.Stale
+                        ? "link stale" : "unlinked");
             }
-            // The cap is 63, not the shell's larger buffer:
-            // .NET Framework's NotifyIcon.Text setter throws
-            // ArgumentOutOfRangeException above 63 characters.
-            // With the connection line appended (spec 018) the
-            // tooltip routinely exceeds 63, and RebuildMenu runs
-            // in the constructor, before the message loop's
-            // exception guard applies - the 120 cap shipped in
-            // specs 014/018 crashed the tray at startup on
-            // 2026-11-03 (event 1026: ArgumentOutOfRangeException
-            // at NotifyIcon.set_Text, from RebuildMenu, from the
-            // TrayApp constructor).
-            if (s.Length > 63) s = s.Substring(0, 63);
+            if (_fleet != null && _fleet.HasData &&
+                _fleet.Waiting.Count > 0)
+                parts.Add(_fleet.Waiting.Count + " waiting");
+            if (_fleet != null && _fleet.HasData && _fleet.Stale)
+                parts.Add("fleet stale");
+            foreach (var p in parts)
+            {
+                if ((s + " - " + p).Length > 63) break;
+                s += " - " + p;
+            }
             return s;
         }
 
