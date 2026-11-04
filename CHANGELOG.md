@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Fixed
+- Tray updater: the apply-update thread start is now wrapped in an explicit ThreadStart. The in-box .NET Framework csc (C# 5) rejects the bare anonymous method as ambiguous between ThreadStart and ParameterizedThreadStart (CS0121), which failed the r13 tray build on both fleet machines; the method-group start used by the update check was unaffected.
 - Per-host default cwd: the gatekeeper built its default
   working directory by merging every host's cwd map into one
   global dict, so the last host in the config set the default
