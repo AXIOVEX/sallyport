@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Backchannel, one channel per machine: the agent's channel is now selected by the SYNCBC_CHANNEL environment variable (agent.sh) and the client's by --channel or SYNCBC_CHANNEL (bc.py), defaulting to the original syncyard-dev channel so TRISTEN-DESKTOP's install is unchanged. A second host (TRISTEN-LAPTOP, channels/syncyard-laptop) can now run its own agent against the same private backchannel repo without sharing cmd/out/heartbeat state. Install procedure for additional machines: backchannel/INSTALL.md (deploy key per machine, systemd user unit with the channel set, four-step verification from records).
 ### Fixed
 - Tray tooltip no longer reads as cut off: the old composition concatenated the full connection and fleet lines and chopped the result at the 63-character NotifyIcon limit mid-word. The tooltip is now composed short (runner count, the connection as one word, the waiting count, the stale flag) and a segment that would cross the limit is dropped whole; nothing is truncated. Tray build stamp moves to 0.4.1.0.
 - Tray menu header trimmed (owner ruling): the per-job "Next:" line and the connection signal-detail line are removed from the menu's grayed header, which is now the build line, the fleet summary, and the connection line. The signal detail remains in the Settings dialog.
