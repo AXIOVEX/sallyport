@@ -88,6 +88,53 @@ powershell.exe -NoProfile -Command "
 "
 ```
 
+## Going-down records and the guard heartbeat (spec 011 Phase 3)
+
+The agent's message set grew by exactly two **merged fields**
+on the heartbeat payload; the agent originates neither. The
+host guard (spec 011 Phase 3, `runner/guard/`) writes two
+files on the Windows side, and `write_heartbeat` merges each
+into the heartbeat verbatim when it holds a non-empty JSON
+object:
+
+- `going_down` ← `C:\Users\trist\Development\Syncyard\
+  going-down.json` (WSL view: `/mnt/c/Users/trist/
+  Development/Syncyard/going-down.json`, override
+  `SYNCBC_GOING_DOWN_FILE`). The Phase 1 going-down record:
+  `{host, ts, trigger, active_run_ids, supervised,
+  uncheckpointed}`. The gatekeeper's sweep detects it on the
+  payload and ingests it exactly once per (host, ts) — the
+  file riding every later heartbeat is a no-op by design.
+  The guard clears the file (writes `{}`) when it starts, so
+  a record from a previous boot cannot re-ingest as a fresh
+  event after a gatekeeper state reset.
+- `guard` ← `...\guard-heartbeat.json` (override
+  `SYNCBC_GUARD_FILE`). The guard's beat: `{host, ts, active,
+  draining}`. The gatekeeper stores it on the host's liveness
+  record and judges staleness against the carrying
+  heartbeat's own `ts` (`drain.guard_stale_after_s`, default
+  180 s): a stale beat ledgers `guard_stale` once per
+  transition and shows in `gk status`, so a stopped guard is
+  a visible loss of protection, never a silent one.
+
+This merge is the going-down writer's transport because it is
+the fastest channel the shipped ingest contract supports:
+the sweep already spends one contents read of this payload
+per pass, and the channel syncs over the git protocol only —
+no new API class, no new heartbeat format (the Phase 1
+reader is unchanged). The agent remains a dumb merger: it
+never interprets either record, and queue access stays
+read-only (FR-004 above is unchanged).
+
+Triage additions: a going-down record that never ingests —
+check the heartbeat payload actually carries `going_down`
+(the file exists on the Windows side, parses as JSON, and
+names the config host, e.g. `desktop`, in its `host` field).
+A `guard_stale` ledger line with a live heartbeat — the
+guard process died or its beat file stopped updating; the
+guard's own log sits beside its executable
+(`C:\Users\trist\Development\Syncyard\guard\guard.log`).
+
 ## Failure triage
 
 - **Heartbeat stale, service inactive** — start it:

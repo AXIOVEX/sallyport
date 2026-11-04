@@ -115,6 +115,20 @@ the tray (green badge when all lanes are up) and
 `%LOCALAPPDATA%\SyncyardTray\tray.log` shows each runner started
 hidden.
 
+**Connection indicator (spec 018).** The icon's corner carries a
+link mark — solid when this host is connected to the fleet, hollow
+amber when stale, broken (with the mark desaturated) when
+disconnected — judged only from the backchannel agent's heartbeat
+file on this host (default
+`\\wsl.localhost\Ubuntu-24.04\home\tpierson\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json`;
+the path and the stale/down thresholds, 180 s / 900 s, are tray
+settings in the dialog's Connection section). The tray menu and
+tooltip state the connection in words, the dialog names the exact
+signal set the judgement rests on, and every transition is logged
+to `tray.log` with its signal age. The indicator is display-only:
+a disconnected host's tray keeps supervising its runners exactly
+as before.
+
 **Uninstall.** Use Add/Remove Programs ("Syncyard Tray"), or run
 `%LOCALAPPDATA%\Programs\SyncyardTray\Uninstall.exe`. Uninstalling
 the tray never stops the runners themselves; stop a runner from the

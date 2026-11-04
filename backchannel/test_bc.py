@@ -70,6 +70,26 @@ class PackingTests(unittest.TestCase):
         self.assertEqual(cmd["id"], "fixed-id-1")
 
 
+class ChannelTests(unittest.TestCase):
+    def tearDown(self):
+        bc.set_channel("syncyard-dev")
+
+    def test_default_channel_is_syncyard_dev(self):
+        self.assertEqual(bc.CHANNEL_NAME, "syncyard-dev")
+        self.assertEqual(bc.CMD_PATH, "channels/syncyard-dev/cmd.json")
+
+    def test_set_channel_repoints_paths_and_packing(self):
+        bc.set_channel("syncyard-laptop")
+        self.assertEqual(bc.CHANNEL_NAME, "syncyard-laptop")
+        self.assertEqual(bc.CMD_PATH, "channels/syncyard-laptop/cmd.json")
+        self.assertEqual(bc.OUT_PATH, "channels/syncyard-laptop/out.json")
+        self.assertEqual(bc.HEARTBEAT_PATH,
+                         "channels/syncyard-laptop/heartbeat.json")
+        self.assertEqual(bc.STOP_PATH, "channels/syncyard-laptop/STOP")
+        cmd = bc.pack_command("echo hi")
+        self.assertEqual(cmd["channel"], "syncyard-laptop")
+
+
 class RefusalTests(unittest.TestCase):
     def test_no_existing_command_no_refusal(self):
         self.assertFalse(bc.should_refuse_overwrite(None, None, False))

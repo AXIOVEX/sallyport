@@ -31,6 +31,8 @@ dispatch:
   lock_stale_min: 10
   duplicate_policy: refuse    # refuse | allow (same --key while active)
   soft_cap_min: 30            # jobs expected longer are announced first
+  optimizer_ceiling: 100      # spec 013 FR-012: auto priorities cap here
+  optimizer_aging_step_min: 10  # spec 013 FR-012: +1 auto priority per 10 min waited
 
 # Script transport. Workflow inputs have a practical size
 # ceiling (~54 KB observed); larger scripts must use the
@@ -64,6 +66,62 @@ liveness:
 # non-positive or non-numeric value fails closed at load.
 reboot:
   grace_s: 60
+
+# Checkpoint hold (spec 013 FR-007). The cooperative job-level
+# pause contract: at dispatch each script job is passed the
+# venue path of its own hold file (holds_dir for its workflow
+# + "<job-id>.hold"), and the transport workflow exports that
+# path to the job's script as the env var named here. A job
+# that polls the file stops at its next checkpoint, prints
+# the marker, and exits with exit_code. The gatekeeper cannot
+# pause an arbitrary running script mid-flight — the contract
+# is cooperative, and a job that never polls the file is never
+# paused by it. Failure mode: an exit code outside 1..255, a
+# marker that is not a marker token, an invalid env var name,
+# or a holds_dir naming an undeclared workflow fails closed
+# at load. A workflow with no holds_dir entry gets no hold
+# file (gk hold refuses it by name).
+checkpoint:
+  exit_code: 86
+  marker: CHECKPOINT_PAUSED
+  env_var: SYNCYARD_HOLD_FILE
+  holds_dir:
+    run.yml: "C:\\Users\\trist\\Development\\Syncyard\\holds"
+    wsl.yml: /home/tpierson/.syncyard/holds
+
+# Host drain (spec 011 FR-005/FR-007). `gk drain --host <host>`
+# holds dispatch to that one host, signals its running
+# checkpoint-capable jobs (the spec 013 hold contract), waits
+# out the window below (per lane when a lane overrides it),
+# and prints a plain CLEAN / INTERRUPTING verdict. The drain
+# hold then stands until `gk host-resume <host>` — it is
+# host-scoped and separate from the pipeline pause/focus/drain
+# of spec 013, which `gk resume` clears; neither clears the
+# other. guard_stale_after_s bounds the host guard's heartbeat
+# (spec 011 Phase 3): the guard beats into a host file the
+# backchannel agent merges into its heartbeat payload, and a
+# beat older than this relative to the carrying heartbeat is
+# stale — ledgered once per transition and shown in status, so
+# a stopped guard is never a silent loss of protection.
+# Failure mode: a non-positive window, a per-lane override for
+# an undeclared lane, or a non-positive staleness bound fails
+# closed at load.
+drain:
+  window_s: 120
+  per_lane_window_s: {}
+  guard_stale_after_s: 180
+# Lane priority lock (spec 015 FR-007). `gk lock --lane
+# <lane> --program <program>` gives one program exclusive
+# dispatch on a lane until it releases, the operator
+# overrides, or the lock expires. Every lock carries a TTL
+# so a forgotten claim cannot squat a lane forever: a lock
+# taken without --ttl-min gets the default; a --ttl-min
+# outside [1, max_ttl_min] is refused. Failure mode: a
+# non-integer, non-positive value, or a default above the
+# maximum, fails closed at load.
+lock:
+  default_ttl_min: 240
+  max_ttl_min: 1440
 
 # Hosts. Each host names its type, the transport workflows it
 # serves (execute = run a script, grab = return a file), the
@@ -137,40 +195,119 @@ workflows:
 #     cwd:
 #       docker.yml: /
 
-# Lanes (spec 010 FR-002). Count and names are configuration.
-# concurrency is 1 (serial) unless a lane says otherwise.
-# Watermarks are minutes: queued/executing (warn, escalate);
-# executing mode is `fixed` (table values) or `expectation`
-# (the job's declared expectation scaled, floored by `floor`).
+# Lanes (spec 010 FR-002; spec 016 FR-001/FR-002). Lanes live
+# in named PROFILES; exactly one profile is active. A profile
+# is a lane table: each lane names its host, runner label,
+# concurrency (1 = serial unless a lane says otherwise),
+# resource class (cpu|gpu|any) and expected-duration band in
+# minutes ([lo, hi], either end null = open) for auto routing,
+# an optional workflow pin, and an enabled flag. Watermarks
+# are minutes: queued/executing (warn, escalate); executing
+# mode is `fixed` (table values) or `expectation` (the job's
+# declared expectation scaled, floored by `floor`). Switching
+# the active profile is a config edit; it takes effect at the
+# next sweep. `auto_default: true` makes a lane-less submit
+# mean --lane auto (default false: a lane is required).
+# `capability_max_age_min` is how old a host capability probe
+# may be before auto routing treats it as unknown.
 lanes:
-  quick:
-    host: desktop
-    runner_label: lane-quick
-    queued: [10, 30]
-    executing:
-      mode: fixed
-      values: [5, 15]
-  normal:
-    host: desktop
-    runner_label: lane-normal
-    queued: [20, 45]
-    executing:
-      mode: fixed
-      values: [45, 90]
-  long:
-    host: desktop
-    runner_label: lane-long
-    queued: [45, 120]
-    executing:
-      mode: expectation
-      floor: [90, 180]
-  gpu:
-    host: desktop
-    runner_label: lane-gpu
-    queued: [30, 90]
-    executing:
-      mode: expectation
-      floor: [120, 240]
+  active_profile: fleet-default
+  auto_default: false
+  capability_max_age_min: 60
+  profiles:
+    fleet-default:
+      quick:
+        host: desktop
+        runner_label: lane-quick
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [0, 10]
+        queued: [10, 30]
+        executing:
+          mode: fixed
+          values: [5, 15]
+      normal:
+        host: desktop
+        runner_label: lane-normal
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [0, 45]
+        queued: [20, 45]
+        executing:
+          mode: fixed
+          values: [45, 90]
+      long:
+        host: desktop
+        runner_label: lane-long
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [30, null]
+        queued: [45, 120]
+        executing:
+          mode: expectation
+          floor: [90, 180]
+      gpu:
+        host: desktop
+        runner_label: lane-gpu
+        concurrency: 1
+        resource_class: gpu
+        duration_band: [0, null]
+        queued: [30, 90]
+        executing:
+          mode: expectation
+          floor: [120, 240]
+    single-host-light:
+      quick:
+        host: desktop
+        runner_label: lane-quick
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [0, 10]
+        queued: [10, 30]
+        executing:
+          mode: fixed
+          values: [5, 15]
+      long:
+        host: desktop
+        runner_label: lane-long
+        concurrency: 1
+        resource_class: any
+        duration_band: [10, null]
+        queued: [45, 120]
+        executing:
+          mode: expectation
+          floor: [90, 180]
+    gpu-farm:
+      quick:
+        host: desktop
+        runner_label: lane-quick
+        concurrency: 1
+        resource_class: cpu
+        duration_band: [0, 10]
+        queued: [10, 30]
+        executing:
+          mode: fixed
+          values: [5, 15]
+      gpu:
+        host: desktop
+        runner_label: lane-gpu
+        concurrency: 2
+        resource_class: gpu
+        duration_band: [0, 120]
+        queued: [30, 90]
+        executing:
+          mode: expectation
+          floor: [120, 240]
+      gpu-long:
+        host: desktop
+        runner_label: lane-gpu-long
+        concurrency: 1
+        resource_class: gpu
+        duration_band: [60, null]
+        queued: [30, 90]
+        executing:
+          mode: expectation
+          floor: [240, 360]
 
 # Notification endpoints (spec 010 FR-007). Programs register
 # an endpoint name on submit; the outbox delivers per type.

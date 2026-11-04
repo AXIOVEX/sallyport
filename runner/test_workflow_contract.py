@@ -64,6 +64,39 @@ for fname in EXECUTE + GRAB:
     else:
         check(f"{fname}: takes path", "\n      path:" in text)
 
+# The checkpoint hold signal (spec 013 FR-007): the two venue
+# workflows that carry a holds_dir declare the hold_file input
+# and pass it to the job as SYNCYARD_HOLD_FILE.
+for fname in ("run.yml", "wsl.yml"):
+    text = open(os.path.join(WF_DIR, fname)).read()
+    check(f"{fname}: takes hold_file (spec 013)", "hold_file:" in text)
+    check(f"{fname}: exposes SYNCYARD_HOLD_FILE (spec 013)",
+          "SYNCYARD_HOLD_FILE" in text)
+
+# The running-job registry (spec 011 Phase 3): while a job
+# with a hold venue runs, its workflow keeps an entry file in
+# the `running` dir beside the holds dir — the host guard's
+# local discovery of live checkpoint-capable jobs. The entry
+# is written before the job starts and removed when it ends.
+rtext = open(os.path.join(WF_DIR, "run.yml")).read()
+check("run.yml: registers the running job (spec 011)",
+      "$regFile" in rtext and ".entry" in rtext
+      and "job_id=" in rtext and "'running'" in rtext)
+check("run.yml: unregisters at job end (spec 011)",
+      "Remove-Item -Force -ErrorAction SilentlyContinue $regFile"
+      in rtext)
+wtext = open(os.path.join(WF_DIR, "wsl.yml")).read()
+check("wsl.yml: registers the running job over the UNC path "
+      "(spec 011)",
+      "$regFileWsl" in wtext and "wsl.localhost" in wtext
+      and ".entry" in wtext and "hold_file_win=" in wtext)
+check("wsl.yml: unregisters at job end (spec 011)",
+      "Remove-Item -Force -ErrorAction SilentlyContinue $regFileWsl"
+      in wtext)
+check("grab.yml: no registry (no hold venue, not "
+      "checkpoint-capable)",
+      ".entry" not in open(os.path.join(WF_DIR, "grab.yml")).read())
+
 # The docker transport declares its venue inputs and runs docker.
 dtext = open(os.path.join(WF_DIR, "docker.yml")).read()
 check("docker.yml: takes image", "\n      image:" in dtext)

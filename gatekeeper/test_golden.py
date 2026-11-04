@@ -209,13 +209,15 @@ hosts:
     cwd:
       mac.yml: /Users/test
 lanes:
-  maclane:
-    host: macmini
-    runner_label: lane-maclane
-    queued: [10, 30]
-    executing:
-      mode: fixed
-      values: [5, 15]
+  profiles:
+    fleet-default:
+      maclane:
+        host: macmini
+        runner_label: lane-maclane
+        queued: [10, 30]
+        executing:
+          mode: fixed
+          values: [5, 15]
 """
 
 ROUTE_DRIVER = r"""
@@ -266,7 +268,8 @@ finally:
     shutil.rmtree(d, ignore_errors=True)
 
 # 5: dispatch argv construction (docker image/mounts ride along;
-# plain and grab jobs gain nothing).
+# signal-capable venues gain the spec 013 hold_file input; grab
+# and docker jobs gain nothing).
 DISPATCH_DRIVER = r"""
 import base64, importlib.util, json, os
 spec = importlib.util.spec_from_file_location("gk_under_test",
@@ -320,7 +323,9 @@ try:
           res["out"]["plain"] == base + ["wsl.yml", "-R", "tbitcs/desktop-runner",
                                          "-f", "cmd_b64=" + b64,
                                          "-f", "lane=lane-quick",
-                                         "-f", "cwd=/home/tpierson"],
+                                         "-f", "cwd=/home/tpierson",
+                                         "-f", "hold_file=/home/tpierson/"
+                                               ".syncyard/holds/j1.hold"],
           str(res["out"]["plain"]))
     check("dispatch argv: docker job carries image + mounts",
           res["out"]["docker"] == base + ["docker.yml", "-R", "tbitcs/desktop-runner",
