@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Tray 0.4.3.0: update check at launch, queue line, status
+  window, consoles viewer. A few seconds after startup the
+  tray now runs the same update check the menu item runs
+  (spec 021): it downloads and installs nothing on its own;
+  a found update is announced once by balloon, the menu
+  item shows the available version, and install stays the
+  owner's click. The menu gains a queue line over the lane
+  rows rendering the fleet's queue depth in four states
+  (idle, waiting, running, full) with counts; the waiting
+  state (work queued, nothing running) renders amber and
+  bold. A Status menu item opens a status window: fleet
+  mode and snapshot age, per-lane queues, the running and
+  waiting job lists, this machine's connection and
+  heartbeat state, and the update state with Check now /
+  Update now buttons wired to the same paths as the menu.
+  "Show consoles" opens a read-only tabbed viewer tailing
+  each supervised runner's newest _diag log, the tray log,
+  and the backchannel agent log where known: append-only
+  file reads, no input path of any kind.
+- Fleet snapshot queue depth (publisher fallback
+  derivation, gatekeeper/fleet_status.py): the snapshot
+  gains `active` (jobs in dispatching/dispatched/watching,
+  with run_id when recorded), `lanes` (per-lane cap,
+  running, waiting, and a four-state word), `queue_state`
+  (idle/waiting/running/full, fleet-wide), and
+  `running_total` / `waiting_total`. All additive; every
+  existing field is unchanged, and a consumer meeting a
+  snapshot without them degrades rather than guessing.
+
+### Removed
+- Tray: the "Show runner consoles" menu item and its
+  SW_SHOW window hunt. It un-hid session windows by title,
+  and the fleet's runners run with no console window, so
+  it could never show a healthy runner (red team,
+  2026-11-05). The read-only consoles viewer replaces it.
+  "Hide runner consoles now" (the stray-window janitor) is
+  unchanged.
+
+### Added
 - Gatekeeper-emitted fleet snapshot + publisher v2 (spec
   014 FR-008/FR-009, the spec 013 fleet deploy's step 2).
   New `gk snapshot` command: the FR-008 snapshot as one
