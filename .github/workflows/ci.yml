@@ -20,13 +20,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Python syntax check (gatekeeper)
-        run: python3 -m py_compile gatekeeper/gk.py gatekeeper/config.py
+        run: python3 -m py_compile gatekeeper/gk.py gatekeeper/config.py gatekeeper/fleet_status.py
 
       - name: Python batteries (config golden + FR-013 + wiring golden)
         run: |
           python3 gatekeeper/test_config.py
           python3 gatekeeper/test_fr013.py
           python3 gatekeeper/test_golden.py
+          python3 gatekeeper/test_spec013.py
+          python3 gatekeeper/test_spec011.py
+          python3 gatekeeper/test_spec015.py
+          python3 gatekeeper/test_spec016.py
+          python3 gatekeeper/test_fleet_status.py
+          python3 gatekeeper/test_dispatch_isolation.py
+          python3 gatekeeper/test_per_host_cwd.py
+          python3 gatekeeper/test_profile_suggest.py
 
       - name: Transport workflow contract battery
         run: python3 runner/test_workflow_contract.py
@@ -36,11 +44,14 @@ jobs:
 
       - name: Tray source battery (GDI leak guards, spec 007)
         run: python3 runner/tray/test_tray_source.py
+      - name: Guard source battery (spec 011 Phase 3)
+        run: python3 runner/guard/test_guard_source.py
 
       - name: Backchannel batteries (unit + chaos)
         run: |
           (cd backchannel && python3 test_bc.py)
           python3 backchannel/test_chaos.py
+          python3 backchannel/test_agent_source.py
 
       - name: Skills currency battery (spec 010 T016)
         run: python3 skills/test_skills.py

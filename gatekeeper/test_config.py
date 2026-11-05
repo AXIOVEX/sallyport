@@ -61,6 +61,23 @@ check("golden liveness threshold (spec 011 FR-001)",
       cfg["liveness"]["down_after_s"] == 900)
 check("golden reboot grace (spec 011 FR-015)",
       cfg["reboot"]["grace_s"] == 60)
+check("golden optimizer knobs (spec 013 FR-012)",
+      cfg["dispatch"]["optimizer_ceiling"] == 100
+      and cfg["dispatch"]["optimizer_aging_step_min"] == 10)
+check("golden checkpoint contract (spec 013 FR-007)",
+      cfg["checkpoint"]["exit_code"] == 86
+      and cfg["checkpoint"]["marker"] == "CHECKPOINT_PAUSED"
+      and cfg["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE"
+      and cfg["checkpoint"]["holds_dir"] == {
+          "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
+          "wsl.yml": "/home/tpierson/.syncyard/holds"})
+check("golden drain (spec 011 FR-005/FR-007)",
+      cfg["drain"]["window_s"] == 120
+      and cfg["drain"]["per_lane_window_s"] == {}
+      and cfg["drain"]["guard_stale_after_s"] == 180)
+check("golden lock TTLs (spec 015 FR-011)",
+      cfg["lock"]["default_ttl_min"] == 240
+      and cfg["lock"]["max_ttl_min"] == 1440)
 check("golden log cap", cfg["retention"]["human_log_max_bytes"] == 1000000)
 check("golden cwd windows", cfg["hosts"]["desktop"]["cwd"]["run.yml"] == r"C:\Users\trist")
 check("golden cwd grab null", cfg["hosts"]["desktop"]["cwd"]["grab.yml"] is None)
@@ -79,6 +96,26 @@ for lane, (q, mode, vals) in {
           tuple(L["queued"]) == q and L["executing"]["mode"] == mode
           and tuple(L["executing"][key]) == vals
           and L["runner_label"] == f"lane-{lane}" and L["host"] == "desktop")
+# Spec 016: the resolved table IS the fleet-default profile, and
+# the profile surface carries today's semantics plus the new
+# routing fields pinned here.
+check("golden profile surface (spec 016 FR-001)",
+      cfg["active_lane_profile"] == "fleet-default"
+      and set(cfg["lane_profiles"]) == {
+          "fleet-default", "single-host-light", "gpu-farm"}
+      and cfg["lanes_auto_default"] is False
+      and cfg["lanes_capability_max_age_min"] == 60
+      and set(cfg["lanes"]) == {"quick", "normal", "long", "gpu"})
+for lane, (rclass, band) in {
+    "quick": ("cpu", [0, 10]),
+    "normal": ("cpu", [0, 45]),
+    "long": ("cpu", [30, None]),
+    "gpu": ("gpu", [0, None]),
+}.items():
+    L = cfg["lanes"][lane]
+    check(f"golden lane {lane} routing fields (spec 016 FR-002)",
+          L["resource_class"] == rclass and L["duration_band"] == band
+          and L["concurrency"] == 1)
 
 # 3: defaults (no file) equal the golden example on the fleet surface.
 os.environ.pop(cfgmod.ENV_VAR, None)
@@ -90,14 +127,20 @@ beside = os.path.join(HERE, cfgmod.CONFIG_FILENAME)
 check("no beside-file config in repo gatekeeper dir", not os.path.exists(beside))
 dflt = cfgmod.load_config(None)
 check("defaults == example fleet surface",
-      dflt["lanes"] == cfg["lanes"] and dflt["hosts"] == cfg["hosts"]
+      dflt["lanes"] == cfg["lanes"] and dflt["lane_profiles"] == cfg["lane_profiles"]
+      and dflt["hosts"] == cfg["hosts"]
       and dflt["budget"] == cfg["budget"] and dflt["workflows"] == cfg["workflows"]
       and dflt["liveness"] == cfg["liveness"]
-      and dflt["reboot"] == cfg["reboot"])
+      and dflt["reboot"] == cfg["reboot"]
+      and dflt["dispatch"] == cfg["dispatch"]
+      and dflt["drain"] == cfg["drain"]
+      and dflt["checkpoint"] == cfg["checkpoint"]
+      and dflt["lock"] == cfg["lock"])
 
-# 4: partial override merges.
+# 4: partial override merges (spec 016: the lanes path is the
+# active profile's table now — profiles.fleet-default.quick).
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
-    f.write("budget:\n  standdown_remaining: 2000\nlanes:\n  quick:\n    queued: [5, 15]\n")
+    f.write("budget:\n  standdown_remaining: 2000\nlanes:\n  profiles:\n    fleet-default:\n      quick:\n        queued: [5, 15]\n")
     path = f.name
 over = cfgmod.load_config(path)
 os.unlink(path)
@@ -108,15 +151,15 @@ check("override merges", over["budget"]["standdown_remaining"] == 2000
 
 # 5: invalid files fail closed, named.
 expect_error("reject warn>=escalate",
-             "lanes:\n  quick:\n    queued: [30, 30]\n")
+             "lanes:\n  profiles:\n    fleet-default:\n      quick:\n        queued: [30, 30]\n")
 expect_error("reject unknown lane host",
-             "lanes:\n  quick:\n    host: nowhere\n")
+             "lanes:\n  profiles:\n    fleet-default:\n      quick:\n        host: nowhere\n")
 expect_error("reject budget order",
              "budget:\n  standdown_remaining: 100\n  critical_remaining: 500\n")
 expect_error("reject duplicate key",
              "version: 1\nversion: 1\n")
 expect_error("reject bad executing mode",
-             "lanes:\n  quick:\n    executing:\n      mode: sideways\n")
+             "lanes:\n  profiles:\n    fleet-default:\n      quick:\n        executing:\n          mode: sideways\n")
 expect_error("reject bad version", "version: 2\n")
 expect_error("reject host serves undeclared workflow",
              "hosts:\n  desktop:\n    workflows:\n      teleport.yml: execute\n")
@@ -147,6 +190,54 @@ expect_error("reject non-numeric reboot grace",
              "reboot:\n  grace_s: soon\n")
 expect_error("reject boolean reboot grace",
              "reboot:\n  grace_s: true\n")
+expect_error("reject zero optimizer ceiling",
+             "dispatch:\n  optimizer_ceiling: 0\n")
+expect_error("reject non-integer optimizer ceiling",
+             "dispatch:\n  optimizer_ceiling: high\n")
+expect_error("reject zero optimizer aging step",
+             "dispatch:\n  optimizer_aging_step_min: 0\n")
+expect_error("reject zero checkpoint exit code",
+             "checkpoint:\n  exit_code: 0\n")
+expect_error("reject out-of-range checkpoint exit code",
+             "checkpoint:\n  exit_code: 256\n")
+expect_error("reject non-integer checkpoint exit code",
+             "checkpoint:\n  exit_code: soon\n")
+expect_error("reject boolean checkpoint exit code",
+             "checkpoint:\n  exit_code: true\n")
+expect_error("reject lowercase checkpoint marker",
+             "checkpoint:\n  marker: checkpoint_paused\n")
+expect_error("reject empty checkpoint env var",
+             "checkpoint:\n  env_var: ''\n")
+expect_error("reject checkpoint holds_dir for undeclared workflow",
+             "checkpoint:\n  holds_dir:\n    teleport.yml: /tmp/holds\n")
+expect_error("reject empty checkpoint holds_dir value",
+             "checkpoint:\n  holds_dir:\n    run.yml: ''\n")
+expect_error("reject zero drain window",
+             "drain:\n  window_s: 0\n")
+expect_error("reject negative drain window",
+             "drain:\n  window_s: -10\n")
+expect_error("reject non-numeric drain window",
+             "drain:\n  window_s: soon\n")
+expect_error("reject boolean drain window",
+             "drain:\n  window_s: true\n")
+expect_error("reject drain override for undeclared lane",
+             "drain:\n  per_lane_window_s:\n    warp: 30\n")
+expect_error("reject zero drain per-lane window",
+             "drain:\n  per_lane_window_s:\n    quick: 0\n")
+expect_error("reject non-mapping drain per-lane windows",
+             "drain:\n  per_lane_window_s: 30\n")
+expect_error("reject zero guard staleness bound",
+             "drain:\n  guard_stale_after_s: 0\n")
+expect_error("reject zero lock default TTL",
+             "lock:\n  default_ttl_min: 0\n")
+expect_error("reject negative lock max TTL",
+             "lock:\n  max_ttl_min: -10\n")
+expect_error("reject non-integer lock TTL",
+             "lock:\n  default_ttl_min: soon\n")
+expect_error("reject boolean lock TTL",
+             "lock:\n  default_ttl_min: true\n")
+expect_error("reject lock default above max",
+             "lock:\n  default_ttl_min: 2000\n  max_ttl_min: 1440\n")
 
 # 6: a valid liveness override loads and lands.
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
@@ -163,6 +254,54 @@ with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
 over = cfgmod.load_config(path)
 os.unlink(path)
 check("reboot grace override loads", over["reboot"]["grace_s"] == 120)
+
+# 8: a valid checkpoint override loads and lands.
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("checkpoint:\n  exit_code: 42\n  marker: HELD_HERE\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("checkpoint override loads",
+      over["checkpoint"]["exit_code"] == 42
+      and over["checkpoint"]["marker"] == "HELD_HERE"
+      and over["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE")
+
+# 9: a valid drain override loads and lands.
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("drain:\n  window_s: 45\n  per_lane_window_s:\n    gpu: 300\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("drain override loads",
+      over["drain"]["window_s"] == 45
+      and over["drain"]["per_lane_window_s"] == {"gpu": 300}
+      and over["drain"]["guard_stale_after_s"] == 180)
+# 9: a valid lock TTL override loads and lands (spec 015 FR-011).
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("lock:\n  default_ttl_min: 60\n  max_ttl_min: 720\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("lock TTL override loads",
+      over["lock"]["default_ttl_min"] == 60
+      and over["lock"]["max_ttl_min"] == 720)
+
+# 10: spec 016 profile overrides load and land.
+with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+    f.write("lanes:\n  active_profile: single-host-light\n  auto_default: true\n  capability_max_age_min: 30\n")
+    path = f.name
+over = cfgmod.load_config(path)
+os.unlink(path)
+check("profile switch override loads (spec 016 FR-001)",
+      over["active_lane_profile"] == "single-host-light"
+      and set(over["lanes"]) == {"quick", "long"}
+      and over["lanes"]["long"]["resource_class"] == "any"
+      and over["lanes_auto_default"] is True
+      and over["lanes_capability_max_age_min"] == 30)
+expect_error("reject pre-016 flat lanes shape (spec 016 FR-002)",
+             "lanes:\n  quick:\n    host: desktop\n    queued: [10, 30]\n    executing:\n      mode: fixed\n      values: [5, 15]\n")
+expect_error("reject unknown active profile (spec 016 FR-002)",
+             "lanes:\n  active_profile: nowhere\n")
 
 print()
 if fails:

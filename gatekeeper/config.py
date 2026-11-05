@@ -26,6 +26,16 @@ Validation (load time, all named errors):
   - transport ceiling positive
   - liveness threshold (spec 011 FR-001) a positive number
   - reboot grace (spec 011 FR-015) a positive number
+  - checkpoint contract (spec 013 FR-007): exit code an integer
+    in 1..255, marker a valid marker token, env var a valid
+    name, holds_dir a mapping of declared workflows to
+    non-empty venue directories
+  - drain (spec 011 FR-005/FR-007): the host drain window a
+    positive number of seconds, per-lane overrides keyed by
+    declared lanes with positive values, and the guard
+    staleness bound a positive number of seconds
+  - lane lock TTLs (spec 015 FR-011): default and maximum TTL
+    integers, positive, with default <= maximum
 """
 import os
 import re
@@ -54,6 +64,13 @@ DEFAULTS = {
         "lock_stale_min": 10,
         "duplicate_policy": "refuse",
         "soft_cap_min": 30,
+        # Priority optimizer (spec 013 FR-012): auto-assigned
+        # effective priorities never exceed this ceiling (a
+        # human-set priority above it is unreachable by any
+        # auto job), and an auto job gains +1 per this many
+        # minutes waited.
+        "optimizer_ceiling": 100,
+        "optimizer_aging_step_min": 10,
     },
     "transport": {"max_script_bytes": 49152},
     "markers": {"pattern": r"^[A-Z][A-Z0-9_]{2,}([ :]|$)"},
@@ -67,6 +84,45 @@ DEFAULTS = {
     # --delay overrides it, so in-flight uploads and log
     # writes finish before the host goes down.
     "reboot": {"grace_s": 60},
+    # Checkpoint hold (spec 013 FR-007): the cooperative
+    # job-level pause contract. A dispatch passes each script
+    # job the venue path of its per-job hold file (holds_dir
+    # per workflow + "<job-id>.hold"); the transport workflow
+    # exports that path to the job's script as the env var
+    # named here. A job that polls the file stops at its next
+    # checkpoint, prints the marker, and exits with exit_code.
+    "checkpoint": {
+        "exit_code": 86,
+        "marker": "CHECKPOINT_PAUSED",
+        "env_var": "SYNCYARD_HOLD_FILE",
+        "holds_dir": {
+            "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
+            "wsl.yml": "/home/tpierson/.syncyard/holds",
+        },
+    },
+    # Host drain (spec 011 FR-005/FR-007): `gk drain --host`
+    # holds dispatch to one host, signals its running
+    # checkpoint-capable jobs, and waits out the window —
+    # per lane when a lane overrides — before printing its
+    # CLEAN / INTERRUPTING verdict. guard_stale_after_s bounds
+    # the guard heartbeat the backchannel agent merges into
+    # its heartbeat payload: a guard beat older than this
+    # (relative to the heartbeat carrying it) is stale and is
+    # ledgered + shown in status (spec 011 T007: a stopped
+    # guard is never a silent loss of protection).
+    "drain": {
+        "window_s": 120,
+        "per_lane_window_s": {},
+        "guard_stale_after_s": 180,
+    },
+    # Lane priority lock (spec 015 FR-007/FR-011): every lane
+    # lock carries a TTL so a forgotten claim cannot squat a
+    # lane forever. A lock taken without --ttl-min gets the
+    # default; no lock may exceed the maximum.
+    "lock": {
+        "default_ttl_min": 240,
+        "max_ttl_min": 1440,
+    },
     "hosts": {
         "desktop": {
             "type": "windows",
@@ -85,19 +141,75 @@ DEFAULTS = {
         },
     },
     "workflows": ["run.yml", "wsl.yml", "grab.yml"],
+    # Spec 016: lanes live in named profiles; exactly one is
+    # active. load_config() resolves the active profile's
+    # enabled lanes into cfg["lanes"] (the flat mapping every
+    # consumer has always read) and exposes the table as
+    # cfg["lane_profiles"]. fleet-default reproduces the
+    # pre-016 lane table exactly.
     "lanes": {
-        "quick": {"host": "desktop", "runner_label": "lane-quick",
-                  "concurrency": 1, "queued": [10, 30],
-                  "executing": {"mode": "fixed", "values": [5, 15]}},
-        "normal": {"host": "desktop", "runner_label": "lane-normal",
-                   "concurrency": 1, "queued": [20, 45],
-                   "executing": {"mode": "fixed", "values": [45, 90]}},
-        "long": {"host": "desktop", "runner_label": "lane-long",
-                 "concurrency": 1, "queued": [45, 120],
-                 "executing": {"mode": "expectation", "floor": [90, 180]}},
-        "gpu": {"host": "desktop", "runner_label": "lane-gpu",
-                "concurrency": 1, "queued": [30, 90],
-                "executing": {"mode": "expectation", "floor": [120, 240]}},
+        "active_profile": "fleet-default",
+        "auto_default": False,
+        "capability_max_age_min": 60,
+        "profiles": {
+            "fleet-default": {
+                "quick": {"host": "desktop", "runner_label": "lane-quick",
+                          "concurrency": 1, "resource_class": "cpu",
+                          "duration_band": [0, 10],
+                          "queued": [10, 30],
+                          "executing": {"mode": "fixed", "values": [5, 15]}},
+                "normal": {"host": "desktop", "runner_label": "lane-normal",
+                           "concurrency": 1, "resource_class": "cpu",
+                           "duration_band": [0, 45],
+                           "queued": [20, 45],
+                           "executing": {"mode": "fixed", "values": [45, 90]}},
+                "long": {"host": "desktop", "runner_label": "lane-long",
+                         "concurrency": 1, "resource_class": "cpu",
+                         "duration_band": [30, None],
+                         "queued": [45, 120],
+                         "executing": {"mode": "expectation",
+                                       "floor": [90, 180]}},
+                "gpu": {"host": "desktop", "runner_label": "lane-gpu",
+                        "concurrency": 1, "resource_class": "gpu",
+                        "duration_band": [0, None],
+                        "queued": [30, 90],
+                        "executing": {"mode": "expectation",
+                                      "floor": [120, 240]}},
+            },
+            "single-host-light": {
+                "quick": {"host": "desktop", "runner_label": "lane-quick",
+                          "concurrency": 1, "resource_class": "cpu",
+                          "duration_band": [0, 10],
+                          "queued": [10, 30],
+                          "executing": {"mode": "fixed", "values": [5, 15]}},
+                "long": {"host": "desktop", "runner_label": "lane-long",
+                         "concurrency": 1, "resource_class": "any",
+                         "duration_band": [10, None],
+                         "queued": [45, 120],
+                         "executing": {"mode": "expectation",
+                                       "floor": [90, 180]}},
+            },
+            "gpu-farm": {
+                "quick": {"host": "desktop", "runner_label": "lane-quick",
+                          "concurrency": 1, "resource_class": "cpu",
+                          "duration_band": [0, 10],
+                          "queued": [10, 30],
+                          "executing": {"mode": "fixed", "values": [5, 15]}},
+                "gpu": {"host": "desktop", "runner_label": "lane-gpu",
+                        "concurrency": 2, "resource_class": "gpu",
+                        "duration_band": [0, 120],
+                        "queued": [30, 90],
+                        "executing": {"mode": "expectation",
+                                      "floor": [120, 240]}},
+                "gpu-long": {"host": "desktop",
+                             "runner_label": "lane-gpu-long",
+                             "concurrency": 1, "resource_class": "gpu",
+                             "duration_band": [60, None],
+                             "queued": [30, 90],
+                             "executing": {"mode": "expectation",
+                                           "floor": [240, 360]}},
+            },
+        },
     },
     "endpoints": {},
     "retention": {"human_log_max_bytes": 1000000},
@@ -118,6 +230,9 @@ IDENTITY_BY_TYPE = {
 
 WORKFLOW_KINDS = ("execute", "grab")
 
+# Spec 016: the resource class a lane declares for auto routing.
+RESOURCE_CLASSES = ("cpu", "gpu", "any")
+
 
 # --- Restricted YAML-subset parser --------------------------------
 
@@ -125,6 +240,8 @@ def _scalar(tok, lineno):
     tok = tok.strip()
     if tok == "":
         return None
+    if tok == "{}":
+        return {}
     if tok.startswith("[") and tok.endswith("]"):
         inner = tok[1:-1].strip()
         if not inner:
@@ -310,6 +427,49 @@ def validate(cfg):
             or grace <= 0):
         raise ConfigError(
             "reboot.grace_s must be a positive number of seconds")
+    ck = cfg.get("checkpoint") or {}
+    code = ck.get("exit_code")
+    if (isinstance(code, bool) or not isinstance(code, int)
+            or not 1 <= code <= 255):
+        raise ConfigError(
+            "checkpoint.exit_code must be an integer in 1..255")
+    marker = ck.get("marker")
+    if (not isinstance(marker, str)
+            or not re.fullmatch(r"[A-Z][A-Z0-9_]{2,}", marker or "")):
+        raise ConfigError(
+            "checkpoint.marker must be a marker token "
+            "(ALL_CAPS, at least 3 characters)")
+    env_var = ck.get("env_var")
+    if (not isinstance(env_var, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_var or "")):
+        raise ConfigError(
+            "checkpoint.env_var must be a valid environment "
+            "variable name")
+    holds = ck.get("holds_dir")
+    if not isinstance(holds, dict):
+        raise ConfigError(
+            "checkpoint.holds_dir must be a mapping of workflow "
+            "to venue directory")
+    for wname, wdir in holds.items():
+        if wname not in (cfg.get("workflows") or []):
+            raise ConfigError(
+                f"checkpoint.holds_dir: workflow {wname!r} is not "
+                f"in the top-level workflows list")
+        if not (isinstance(wdir, str) and wdir):
+            raise ConfigError(
+                f"checkpoint.holds_dir.{wname} must be a non-empty "
+                f"venue directory path")
+    lk = cfg.get("lock") or {}
+    for lkey in ("default_ttl_min", "max_ttl_min"):
+        lval = lk.get(lkey)
+        if (isinstance(lval, bool) or not isinstance(lval, int)
+                or lval <= 0):
+            raise ConfigError(
+                f"lock.{lkey} must be a positive integer "
+                f"number of minutes")
+    if lk.get("default_ttl_min", 0) > lk.get("max_ttl_min", 0):
+        raise ConfigError(
+            "lock.default_ttl_min must be <= lock.max_ttl_min")
     hosts = cfg.get("hosts") or {}
     declared = cfg.get("workflows") or []
     served = set()
@@ -345,28 +505,147 @@ def validate(cfg):
     for wname in declared:
         if wname not in served:
             raise ConfigError(f"workflows: {wname!r} is served by no host")
+    # Spec 016: lanes live in named profiles (FR-001/FR-002).
+    # Validation is fail-closed over the whole table — every
+    # profile, active or not — and the pre-016 flat shape
+    # (lane names directly under `lanes`) fails here with the
+    # migration named.
     lanes = cfg.get("lanes") or {}
-    if not lanes:
-        raise ConfigError("at least one lane is required")
-    for name, lane in lanes.items():
-        if not isinstance(lane, dict):
-            raise ConfigError(f"lanes.{name}: must be a mapping")
-        if lane.get("host") not in hosts:
-            raise ConfigError(f"lanes.{name}: unknown host {lane.get('host')!r}")
-        _check_pair(lane.get("queued"), f"lanes.{name}.queued")
-        ex = lane.get("executing") or {}
-        mode = ex.get("mode")
-        if mode == "fixed":
-            _check_pair(ex.get("values"), f"lanes.{name}.executing.values")
-        elif mode == "expectation":
-            _check_pair(ex.get("floor"), f"lanes.{name}.executing.floor")
-        else:
-            raise ConfigError(f"lanes.{name}.executing.mode must be fixed|expectation")
-        if lane.get("concurrency", 1) < 1:
-            raise ConfigError(f"lanes.{name}.concurrency must be >= 1")
+    if not isinstance(lanes, dict):
+        raise ConfigError("lanes must be a mapping")
+    for key in lanes:
+        if key not in ("active_profile", "auto_default",
+                       "capability_max_age_min", "profiles"):
+            raise ConfigError(
+                f"lanes.{key}: unknown lanes key — spec 016 moved "
+                f"lanes into named profiles; use lanes.profiles."
+                f"<name>.<lane> (see config/syncyard.example.yaml)")
+    if not isinstance(lanes.get("auto_default", False), bool):
+        raise ConfigError("lanes.auto_default must be a boolean")
+    max_age = lanes.get("capability_max_age_min", 60)
+    if (isinstance(max_age, bool) or not isinstance(max_age, int)
+            or max_age <= 0):
+        raise ConfigError(
+            "lanes.capability_max_age_min must be a positive integer "
+            "number of minutes")
+    profiles = lanes.get("profiles")
+    if not isinstance(profiles, dict) or not profiles:
+        raise ConfigError("lanes.profiles must name at least one profile")
+    active = lanes.get("active_profile")
+    if active not in profiles:
+        raise ConfigError(
+            f"lanes.active_profile {active!r} names no profile in "
+            f"lanes.profiles")
+    for pname, profile in profiles.items():
+        where = f"lanes.profiles.{pname}"
+        if not re.fullmatch(r"[a-z][a-z0-9-]*", pname or ""):
+            raise ConfigError(
+                f"{where}: profile name must match [a-z][a-z0-9-]*")
+        if not isinstance(profile, dict) or not profile:
+            raise ConfigError(f"{where}: must be a non-empty lane mapping")
+        enabled = 0
+        for name, lane in profile.items():
+            lwhere = f"{where}.{name}"
+            if not re.fullmatch(r"[a-z][a-z0-9-]*", name or ""):
+                raise ConfigError(
+                    f"{lwhere}: lane name must match [a-z][a-z0-9-]*")
+            if not isinstance(lane, dict):
+                raise ConfigError(f"{lwhere}: must be a mapping")
+            if lane.get("host") not in hosts:
+                raise ConfigError(
+                    f"{lwhere}: unknown host {lane.get('host')!r}")
+            pin = lane.get("workflow")
+            if pin is not None and pin not in declared:
+                raise ConfigError(
+                    f"{lwhere}: workflow pin {pin!r} is not in the "
+                    f"top-level workflows list")
+            _check_pair(lane.get("queued"), f"{lwhere}.queued")
+            ex = lane.get("executing") or {}
+            mode = ex.get("mode")
+            if mode == "fixed":
+                _check_pair(ex.get("values"), f"{lwhere}.executing.values")
+            elif mode == "expectation":
+                _check_pair(ex.get("floor"), f"{lwhere}.executing.floor")
+            else:
+                raise ConfigError(
+                    f"{lwhere}.executing.mode must be fixed|expectation")
+            conc = lane.get("concurrency", 1)
+            if (isinstance(conc, bool) or not isinstance(conc, int)
+                    or conc < 1):
+                raise ConfigError(
+                    f"{lwhere}.concurrency must be a positive integer")
+            rclass = lane.get("resource_class", "any")
+            if rclass not in RESOURCE_CLASSES:
+                raise ConfigError(
+                    f"{lwhere}.resource_class must be one of "
+                    f"{RESOURCE_CLASSES}")
+            band = lane.get("duration_band", [None, None])
+            if (not isinstance(band, list) or len(band) != 2
+                    or not all(x is None or (isinstance(x, (int, float))
+                                             and not isinstance(x, bool)
+                                             and x >= 0)
+                               for x in band)):
+                raise ConfigError(
+                    f"{lwhere}.duration_band must be [lo, hi] in "
+                    f"minutes, either end null or a non-negative number")
+            if (band[0] is not None and band[1] is not None
+                    and band[0] > band[1]):
+                raise ConfigError(
+                    f"{lwhere}.duration_band: lo ({band[0]}) must be "
+                    f"<= hi ({band[1]})")
+            if not isinstance(lane.get("enabled", True), bool):
+                raise ConfigError(f"{lwhere}.enabled must be a boolean")
+            if lane.get("enabled", True):
+                enabled += 1
+        if enabled == 0:
+            raise ConfigError(
+                f"{where}: profile has no enabled lanes")
+    # Host drain (spec 011 phases 2–3): the drain windows are
+    # validated here; a per-lane window must name a lane of the
+    # ACTIVE profile (spec 016: those are the lanes that exist
+    # at runtime).
+    dr = cfg.get("drain") or {}
+    win = dr.get("window_s")
+    if (isinstance(win, bool) or not isinstance(win, (int, float))
+            or win <= 0):
+        raise ConfigError(
+            "drain.window_s must be a positive number of seconds")
+    per_lane = dr.get("per_lane_window_s")
+    if not isinstance(per_lane, dict):
+        raise ConfigError(
+            "drain.per_lane_window_s must be a mapping of lane "
+            "to window seconds")
+    active_lanes = profiles.get(active) or {}
+    for lname, lwin in per_lane.items():
+        if lname not in active_lanes:
+            raise ConfigError(
+                f"drain.per_lane_window_s: lane {lname!r} is not "
+                f"a declared lane")
+        if (isinstance(lwin, bool)
+                or not isinstance(lwin, (int, float)) or lwin <= 0):
+            raise ConfigError(
+                f"drain.per_lane_window_s.{lname} must be a "
+                f"positive number of seconds")
+    gstale = dr.get("guard_stale_after_s")
+    if (isinstance(gstale, bool)
+            or not isinstance(gstale, (int, float)) or gstale <= 0):
+        raise ConfigError(
+            "drain.guard_stale_after_s must be a positive "
+            "number of seconds")
     dp = (cfg.get("dispatch") or {}).get("duplicate_policy")
     if dp not in ("refuse", "allow"):
         raise ConfigError("dispatch.duplicate_policy must be refuse|allow")
+    ceil = (cfg.get("dispatch") or {}).get("optimizer_ceiling")
+    if (isinstance(ceil, bool) or not isinstance(ceil, int)
+            or ceil <= 0):
+        raise ConfigError(
+            "dispatch.optimizer_ceiling must be a positive integer")
+    step = (cfg.get("dispatch") or {}).get("optimizer_aging_step_min")
+    if (isinstance(step, bool)
+            or not isinstance(step, (int, float)) or step <= 0):
+        raise ConfigError(
+            "dispatch.optimizer_aging_step_min must be a positive "
+            "number of minutes")
     try:
         re.compile((cfg.get("markers") or {}).get("pattern", ""))
     except re.error as e:
@@ -390,7 +669,34 @@ def load_config(path=None):
         except OSError as e:
             raise ConfigError(f"cannot read config {path}: {e}")
         merged = _deep_merge(merged, parsed)
-    return validate(merged)
+    return _resolve_profiles(validate(merged))
+
+
+def _resolve_profiles(cfg):
+    """Spec 016 (FR-001): cfg["lanes"] becomes the ACTIVE
+    profile's enabled lanes — the flat mapping every consumer
+    has always read — with the profile table and the routing
+    knobs exposed alongside it. Disabled lanes are excluded
+    entirely; the per-lane routing fields (resource_class,
+    duration_band) are defaulted here so consumers never
+    guess."""
+    section = cfg.get("lanes") or {}
+    profiles = section.get("profiles") or {}
+    active = section.get("active_profile")
+    cfg["lane_profiles"] = profiles
+    cfg["active_lane_profile"] = active
+    cfg["lanes_auto_default"] = bool(section.get("auto_default", False))
+    cfg["lanes_capability_max_age_min"] = section.get(
+        "capability_max_age_min", 60)
+    resolved = {}
+    for name, lane in (profiles.get(active) or {}).items():
+        if isinstance(lane, dict) and lane.get("enabled", True):
+            entry = dict(lane)
+            entry.setdefault("resource_class", "any")
+            entry.setdefault("duration_band", [None, None])
+            resolved[name] = entry
+    cfg["lanes"] = resolved
+    return cfg
 
 
 if __name__ == "__main__":
