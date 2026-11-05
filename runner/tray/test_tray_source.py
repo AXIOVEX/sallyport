@@ -123,6 +123,8 @@ def main():
                      "private string TooltipText")
     updworker = region("private void ApplyUpdateWorker",
                        "private void EndUpdateBusy")
+    consoles = region("internal sealed class ConsolesForm",
+                      "internal sealed class SettingsForm")
     written, read = settings_keys()
     results = [
         # ---- spec 007: the GDI leak and exception guards ----------
@@ -218,9 +220,11 @@ def main():
               "SetValue(" not in ctor and "DeleteValue(" not in ctor),
 
         # ---- spec 014 FR-003: the dialog --------------------------
-        check("SettingsForm is the only Form in the source",
+        check("the tray has exactly three forms",
               "internal sealed class SettingsForm : Form" in SRC
-              and SRC.count(": Form") == 1),
+              and "internal sealed class StatusForm : Form" in SRC
+              and "internal sealed class ConsolesForm : Form" in SRC
+              and SRC.count(": Form") == 3),
         check("dialog is single-instance with an Activate path",
               "if (_settingsForm != null && !_settingsForm.IsDisposed)"
               in SRC and "_settingsForm.Activate();" in SRC),
@@ -406,11 +410,11 @@ def main():
               and 'Log("tray alive")' in SRC),
 
         # ---- spec 021: build stamp and self-update ----------------
-        check("assembly version is the 0.4.2.0 build stamp",
-              'AssemblyVersion("0.4.2.0")' in SRC
-              and 'AssemblyFileVersion("0.4.2.0")' in SRC),
+        check("assembly version is the 0.4.3.0 build stamp",
+              'AssemblyVersion("0.4.3.0")' in SRC
+              and 'AssemblyFileVersion("0.4.3.0")' in SRC),
         check("BuildId constant carries the stamp",
-              'BuildId = "0.4.2.0"' in SRC),
+              'BuildId = "0.4.3.0"' in SRC),
         check("menu header shows the build stamp",
               '"Syncyard Tray v" + BuildId' in SRC),
         check("startup log carries the build stamp",
@@ -452,6 +456,73 @@ def main():
         check("tray hands off and exits for the update",
               "--apply-update " in SRC
               and '"tray exiting for update"' in SRC),
+
+        # ---- 0.4.3.0: launch check, queue line, status window,
+        # ---- consoles viewer -------------------------------------
+        check("update check runs once at launch",
+              '"update check at launch"' in SRC
+              and "_checkFromLaunch = true;" in SRC
+              and "_launchTimer.Interval = 4000;" in SRC),
+        check("launch check announces by balloon, never installs",
+              '"Syncyard tray update available: v"' in SRC
+              and '". Open the tray menu to install."' in SRC
+              and "_icon.ShowBalloonTip(10000" in SRC
+              and "_launchBalloonPending = true;" in SRC),
+        check("every check records its time and result",
+              "_lastCheckAt = DateTime.Now;" in SRC
+              and "_lastCheckResult = resultText;" in SRC
+              and '"not checked yet this session"' in SRC),
+        check("fleet parser reads the queue depth fields",
+              all(k in fleet for k in (
+                  '"active"', '"lanes"', '"queue_state"',
+                  '"running_total"', '"waiting_total"',
+                  '"run_id"', '"cap"', '"state"'))),
+        check("queue line renders the four states with counts",
+              "internal string QueueLineText()" in SRC
+              and '"Queue: Idle"' in SRC
+              and '"Queue: Waiting, "' in SRC
+              and '"Queue: Full, "' in SRC
+              and '"Queue: Running, "' in SRC),
+        check("queue line degrades honestly without depth fields",
+              '" waiting, running unknown"' in SRC),
+        check("waiting queue line is styled as the alert state",
+              "internal bool QueueLineAlert()" in SRC
+              and "queueLine.ForeColor = QueueAlertColor;" in SRC
+              and "queueLine.Font = QueueAlertFont;" in SRC),
+        check("status window is a singleton form of its own",
+              "internal sealed class StatusForm : Form" in SRC
+              and '"Syncyard status"' in SRC
+              and "if (_statusForm != null && "
+                  "!_statusForm.IsDisposed)" in SRC
+              and "_statusForm.Activate();" in SRC),
+        check("status window refreshes itself while open",
+              '"Refreshes itself every 5 seconds "' in SRC
+              and "_timer.Interval = 5000;" in SRC),
+        check("status window drives the same update paths",
+              "_app.RequestUpdateCheck();" in SRC
+              and "_app.RequestApplyUpdate();" in SRC
+              and "internal void RequestUpdateCheck()" in SRC
+              and "internal void RequestApplyUpdate()" in SRC),
+        check("status window shows lanes, jobs, machine, updates",
+              '"Queues by lane"' in SRC
+              and '"This machine"' in SRC
+              and '"Backchannel heartbeat: "' in SRC
+              and 'Last check: ' in SRC),
+        check("consoles viewer tails the runner logs read-only",
+              "internal sealed class ConsolesForm : Form" in SRC
+              and '"Show consoles"' in SRC
+              and "box.ReadOnly = true;" in consoles
+              and "NewestDiagLog" in consoles
+              and '"_diag"' in SRC),
+        check("consoles viewer has no input path of any kind",
+              "FileAccess.Read" in consoles
+              and "File.WriteAllText" not in consoles
+              and "Process." not in consoles
+              and "StandardInput" not in consoles),
+        check("the window-hunting show path is gone",
+              '"Show runner consoles"' not in SRC
+              and "SetStrayConsoles(SW_SHOW)" not in SRC
+              and "SW_SHOW" not in SRC),
         # ---- spec 021 FR-007: per-machine runner root ------------
         # The lane dirs come from the settings runner root so a
         # second machine (the laptop) supervises its own lanes;

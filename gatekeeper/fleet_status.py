@@ -22,6 +22,19 @@ shows an unrecognized mode verbatim, never blank):
       "source": "gatekeeper" | "fallback"
     }
 
+Additive queue-depth fields (tray 0.4.3.0): the fallback
+derivation below also emits "active" ([{"key", "program",
+"lane", optional "run_id"}] for jobs in the dispatching /
+dispatched / watching states), "lanes" ({lane: {"cap",
+"running", "waiting", "state"}} with the per-lane state in
+the tray's four-state model - idle, waiting, running,
+full), "queue_state" (the fleet-wide state in the same
+model), and "running_total" / "waiting_total". A
+gatekeeper emission is transported verbatim whether or
+not it carries them, and consumers must tolerate their
+absence (the tray labels running as unknown rather than
+inventing it).
+
 Publisher v2 (the spec 013 fleet deploy): the primary source
 is the gatekeeper's own emission — `gk snapshot`, which
 derives this shape from the gatekeeper's own normalized
@@ -177,6 +190,41 @@ def _host_draining(gk_dir):
                for h in hosts.values())
 
 
+def _lane_caps():
+    """Per-lane concurrency caps from the gatekeeper
+    config (the same expression gk.py uses for its
+    LANE_CONCURRENCY). The config module sits beside this
+    file in every layout the publisher runs in. Any
+    failure yields no caps and the caller defaults a
+    lane's cap to 1: the fallback derivation exists for
+    exactly the moments the gatekeeper is broken, and a
+    config it cannot read must not take the snapshot
+    down with it."""
+    try:
+        import config
+        cfg = config.load_config()
+        return {n: int(l.get("concurrency", 1))
+                for n, l in cfg["lanes"].items()}
+    except Exception:
+        return {}
+
+
+def _lane_state(cap, running, waiting):
+    """The tray's four-state queue model for one lane:
+    idle (nothing running, nothing waiting), waiting
+    (jobs queued, nothing running - the dangerous
+    state), full (running at cap with jobs still
+    waiting), running (everything else with a runner
+    out)."""
+    if running == 0 and waiting == 0:
+        return "idle"
+    if running == 0:
+        return "waiting"
+    if waiting > 0 and running >= cap:
+        return "full"
+    return "running"
+
+
 def build_snapshot(gk_dir):
     """The FR-008 snapshot dict from the gatekeeper state in
     gk_dir (PAUSED.json / STOPPED.json / hosts.json /
@@ -214,8 +262,10 @@ def build_snapshot(gk_dir):
         if not stopped:
             reason = pause["reason"]
     waiting = []
+    active = []
     queue_dir = os.path.join(gk_dir, "queue")
     jobs = []
+    active_jobs = []
     busy_lanes = set()
     if os.path.isdir(queue_dir):
         for name in os.listdir(queue_dir):
@@ -229,6 +279,7 @@ def build_snapshot(gk_dir):
             elif job.get("state") in ("dispatching", "dispatched",
                                       "watching"):
                 busy_lanes.add(job.get("lane") or "")
+                active_jobs.append(job)
     # Free lanes first (they can dispatch on the next sweep),
     # submission order inside each group — see the docstring
     # for what this approximation does not replicate.
@@ -253,6 +304,49 @@ def build_snapshot(gk_dir):
             if job.get(opt) is not None:
                 entry[opt] = job[opt]
         waiting.append(entry)
+    # Active jobs (a run is out on a runner) in submission
+    # order, with the run id when the record carries one.
+    active_jobs.sort(key=lambda j: (j.get("created_at") or "",
+                                    j.get("key") or ""))
+    for job in active_jobs:
+        entry = {
+            "key": job.get("key") or "",
+            "program": job.get("program") or "",
+            "lane": job.get("lane") or "",
+        }
+        if job.get("run_id") is not None:
+            entry["run_id"] = job["run_id"]
+        active.append(entry)
+    # Per-lane depth: every configured lane (from the
+    # caps), plus any lane a queued or active record names
+    # (an unconfigured lane defaults to cap 1).
+    caps = _lane_caps()
+    lane_names = set(caps)
+    for entry in waiting:
+        lane_names.add(entry["lane"])
+    for entry in active:
+        lane_names.add(entry["lane"])
+    lanes = {}
+    for name in sorted(lane_names):
+        run_n = sum(1 for e in active if e["lane"] == name)
+        wait_n = sum(1 for e in waiting if e["lane"] == name)
+        cap = caps.get(name, 1)
+        lanes[name] = {"cap": cap, "running": run_n,
+                       "waiting": wait_n,
+                       "state": _lane_state(cap, run_n, wait_n)}
+    running_total = len(active)
+    waiting_total = len(waiting)
+    if running_total == 0 and waiting_total == 0:
+        queue_state = "idle"
+    elif running_total == 0:
+        queue_state = "waiting"
+    elif waiting_total > 0 and all(
+            lanes[n]["state"] == "full"
+            for n in lanes if lanes[n]["waiting"] > 0):
+        # Saturated: every lane with a queue is at its cap.
+        queue_state = "full"
+    else:
+        queue_state = "running"
     return {
         "generated_at": now_iso(),
         "mode": mode,
@@ -260,6 +354,11 @@ def build_snapshot(gk_dir):
         "reason": reason,
         "focus": focus,
         "waiting": waiting,
+        "active": active,
+        "lanes": lanes,
+        "queue_state": queue_state,
+        "running_total": running_total,
+        "waiting_total": waiting_total,
     }
 
 
