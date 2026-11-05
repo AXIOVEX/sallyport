@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Gatekeeper-emitted fleet snapshot + publisher v2 (spec
+  014 FR-008/FR-009, the spec 013 fleet deploy's step 2).
+  New `gk snapshot` command: the FR-008 snapshot as one
+  JSON object on stdout, derived by the gatekeeper's own
+  code paths — the FR-001-normalized pause record, the
+  FR-012 dispatch order the sweep itself uses, the sweep's
+  admission rule for the held marks (stop / pause / focus
+  with the maintenance exemption, plus host dispatch holds
+  with the FR-015 signal-job exemption), and the
+  host-state file for draining. One derivation, two
+  surfaces: `gk status` at the terminal, the tray panel
+  via the publisher. fleet_status.py becomes the
+  transporter: it runs the snapshot command
+  ($SYNCYARD_GK_SNAPSHOT_CMD, else the gk.py beside it)
+  under a bounded timeout, validates the JSON against the
+  contract, and publishes it verbatim with a top-level
+  `source: "gatekeeper"` label; on any failure it falls
+  back to the v1.1 state-file derivation, labeled
+  `source: "fallback"`, with all v1.1 behavior (budget
+  preflight, failure counters, lockfile, contents-API
+  publish) unchanged. The PUBLISHED line now carries the
+  source. VERSION is deliberately not bumped (the spec
+  013 stack owns 0.4.0).
 - Spec 017: standalone distribution. Syncyard now builds as
   a standalone Python package alongside the gh extension:
   a root `pyproject.toml` defines the single distribution
@@ -38,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deliberately not bumped in this change (the release
   mechanics ride the next feature version).
 - Backchannel, one channel per machine: the agent's channel is now selected by the SYNCBC_CHANNEL environment variable (agent.sh) and the client's by --channel or SYNCBC_CHANNEL (bc.py), defaulting to the original syncyard-dev channel so TRISTEN-DESKTOP's install is unchanged. A second host (TRISTEN-LAPTOP, channels/syncyard-laptop) can now run its own agent against the same private backchannel repo without sharing cmd/out/heartbeat state. Install procedure for additional machines: backchannel/INSTALL.md (deploy key per machine, systemd user unit with the channel set, four-step verification from records).
+- Spec 023 (fleet tray convention): one shared surface for every project tray in the fleet (Syncyard, EdgeLab, RealLoom) — tooltip composed short under a 63-character budget with parts dropped whole and never chopped, one status vocabulary (up/down; linked / link stale / unlinked; N waiting), one menu order ending in an always-enabled Exit, Start/Stop as the only verbs for supervised things (Enable/Disable reserved for supervisor switches), greyed items meaning "unavailable in the current state" with the reason visible, status always from direct observation, and exit finality via a stopped-by-user marker every relauncher must honor. The spec carries a source-read conformance checklist for all three trays; the gaps it names (Syncyard tray watchdog ignoring a user exit, EdgeLab tooltip chop and missing Start item, RealLoom unbounded tooltip and unlogged quit, per-item greying gaps) are findings for each tray's own follow-on work, not changes in this spec.
 ### Fixed
 - Tray tooltip no longer reads as cut off: the old composition concatenated the full connection and fleet lines and chopped the result at the 63-character NotifyIcon limit mid-word. The tooltip is now composed short (runner count, the connection as one word, the waiting count, the stale flag) and a segment that would cross the limit is dropped whole; nothing is truncated. Tray build stamp moves to 0.4.1.0.
 - Tray menu header trimmed (owner ruling): the per-job "Next:" line and the connection signal-detail line are removed from the menu's grayed header, which is now the build line, the fleet summary, and the connection line. The signal detail remains in the Settings dialog.
