@@ -7,8 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Gatekeeper-emitted fleet snapshot + publisher v2 (spec
+  014 FR-008/FR-009, the spec 013 fleet deploy's step 2).
+  New `gk snapshot` command: the FR-008 snapshot as one
+  JSON object on stdout, derived by the gatekeeper's own
+  code paths — the FR-001-normalized pause record, the
+  FR-012 dispatch order the sweep itself uses, the sweep's
+  admission rule for the held marks (stop / pause / focus
+  with the maintenance exemption, plus host dispatch holds
+  with the FR-015 signal-job exemption), and the
+  host-state file for draining. One derivation, two
+  surfaces: `gk status` at the terminal, the tray panel
+  via the publisher. fleet_status.py becomes the
+  transporter: it runs the snapshot command
+  ($SYNCYARD_GK_SNAPSHOT_CMD, else the gk.py beside it)
+  under a bounded timeout, validates the JSON against the
+  contract, and publishes it verbatim with a top-level
+  `source: "gatekeeper"` label; on any failure it falls
+  back to the v1.1 state-file derivation, labeled
+  `source: "fallback"`, with all v1.1 behavior (budget
+  preflight, failure counters, lockfile, contents-API
+  publish) unchanged. The PUBLISHED line now carries the
+  source. VERSION is deliberately not bumped (the spec
+  013 stack owns 0.4.0).
+- Fleet-status publisher in the install (spec 024): the publisher's systemd units are repo files (gatekeeper/systemd/) and gatekeeper/install-publisher.sh installs the publisher as a package — full dependency preflight with named refusals before anything is written, the proxy/token env captured from the installing shell into a root-only env file (values never printed), a root-owned publisher copy whose sha256 is asserted against the checkout, the timer enabled, and a first publish proven from the publisher's state record before success is reported. Previously the publisher's units and installer existed only as loose local files, so a VM replacement silently removed the service and the tray fleet panel went stale. The publisher now also publishes one snapshot byte-identically to every configured channel path (--path is repeatable; the installer's --channels option, default syncyard-dev), which is the per-channel setting backchannel/INSTALL.md already referred to; a FLEET_STATUS_API_BASE env override (default unchanged) lets install tests run against a local stand-in. Battery: gatekeeper/test_install_publisher.py runs the real installer in a sandbox (stub systemctl that executes the installed unit, stub contents API) and proves fresh one- and two-channel installs, idempotency, and named refusals that install nothing.
+- Spec 017: standalone distribution. Syncyard now builds as
+  a standalone Python package alongside the gh extension:
+  a root `pyproject.toml` defines the single distribution
+  `syncyard`, its version read dynamically from the repo
+  VERSION file (no packaging edit on a version bump), zero
+  runtime dependencies, and a `syncyard` console command
+  that is a direct entry point to the gatekeeper's own
+  `main()` — no re-implemented verbs. The package-dir
+  mapping installs the literal `gatekeeper/` and
+  `backchannel/` files as the `syncyard` and
+  `syncyard.backchannel` namespace packages, so the
+  packaged code is the checkout code byte-for-byte (the new
+  packaging battery compares them, installs the wheel into
+  a fresh venv offline, and smokes the console command and
+  the config load). A tag-triggered release workflow
+  builds, `twine check`s, smoke-installs, and publishes to
+  PyPI via OIDC trusted publishing — no stored tokens; a
+  manual dry run does everything except publish. The first
+  publish waits on the owner's one-time trusted-publisher
+  registration on pypi.org (the name `syncyard` was checked
+  available, 2026-11-02). Documentation gains a MkDocs
+  site (stock theme, strict build wired into CI) and a
+  `.readthedocs.yaml`, ready for the owner's Read the Docs
+  import; the site excludes the unsent pitch brief and
+  labels spec-stage features as specified, not shipped.
+  The skills pack and this repo's SKILL.md now name the
+  standalone route beside the checkout and `gh syncyard`
+  routes wherever a command form is given. VERSION is
+  deliberately not bumped in this change (the release
+  mechanics ride the next feature version).
 - Backchannel, one channel per machine: the agent's channel is now selected by the SYNCBC_CHANNEL environment variable (agent.sh) and the client's by --channel or SYNCBC_CHANNEL (bc.py), defaulting to the original syncyard-dev channel so TRISTEN-DESKTOP's install is unchanged. A second host (TRISTEN-LAPTOP, channels/syncyard-laptop) can now run its own agent against the same private backchannel repo without sharing cmd/out/heartbeat state. Install procedure for additional machines: backchannel/INSTALL.md (deploy key per machine, systemd user unit with the channel set, four-step verification from records).
+- Spec 023 (fleet tray convention): one shared surface for every project tray in the fleet (Syncyard, EdgeLab, RealLoom) — tooltip composed short under a 63-character budget with parts dropped whole and never chopped, one status vocabulary (up/down; linked / link stale / unlinked; N waiting), one menu order ending in an always-enabled Exit, Start/Stop as the only verbs for supervised things (Enable/Disable reserved for supervisor switches), greyed items meaning "unavailable in the current state" with the reason visible, status always from direct observation, and exit finality via a stopped-by-user marker every relauncher must honor. The spec carries a source-read conformance checklist for all three trays; the gaps it names (Syncyard tray watchdog ignoring a user exit, EdgeLab tooltip chop and missing Start item, RealLoom unbounded tooltip and unlogged quit, per-item greying gaps) are findings for each tray's own follow-on work, not changes in this spec.
 ### Fixed
+- Backchannel agent envelope-timeout edges (robustness offensive, 2026-11-04): a `timeout_s` of 0 no longer reaches GNU timeout, which treats a 0 duration as "no timeout" and would have run one body unbounded, stalling the single-threaded agent and its heartbeat; 0 now falls back to the default. A timeout with 10+ digits is clamped on length before any arithmetic (bash `[ -gt ]` errors on 19+ digit values and reads as not-clamped, defeating the 0.2.2 max clamp). The replay guard is re-seeded from out.json when `.last_executed_id` is lost, so FR-004(b) (a re-pushed old command never re-runs) survives a wiped base or a reinstall that kept the clone. Chaos scenarios 15 and 17 pin all three (failing before, passing after); scenarios 14, 16, 18, 19 pin push-rejection recovery, SSH-transport failure visibility, at-least-once re-execution after a mid-execution kill, and STOP arriving mid-execution.
+- Backchannel client (bc.py) corrupt-channel handling: a cmd.json / out.json / heartbeat.json that does not parse as a JSON object now reads as unreadable channel state on every command path (heartbeat, status, send, wait) instead of an AttributeError traceback, and a future-dated heartbeat beyond a 30s tolerance reports BC_HEARTBEAT_SKEW with an unjudgeable verdict instead of FRESH (the host's WSL clock and the VM clock are different clocks; a dead agent could otherwise hide behind a skewed clock for the skew plus the whole stale window). Batteries: test_bc.py unit battery.
 - Tray crash on menu activation change fixed: RebuildMenu built a new ContextMenuStrip on every rebuild, assigned it to the NotifyIcon, and disposed the previous strip, and the deferred rebuild inside the old strip's own Closed handler disposed it while WinForms' modal menu filter still held it as the active menu, so the next activation change reparented a disposed object and the tray died with an unhandled ObjectDisposedException (TRISTEN-LAPTOP, 2026-11-04). The strip is now created once, bound to the icon once, and never disposed while the tray lives; rebuilds replace its items in place and dispose only the detached items. Menu order, item states, and the open-menu rebuild deferral are unchanged. Tray build stamp moves to 0.4.2.0.
 - Tray tooltip no longer reads as cut off: the old composition concatenated the full connection and fleet lines and chopped the result at the 63-character NotifyIcon limit mid-word. The tooltip is now composed short (runner count, the connection as one word, the waiting count, the stale flag) and a segment that would cross the limit is dropped whole; nothing is truncated. Tray build stamp moves to 0.4.1.0.
 - Tray menu header trimmed (owner ruling): the per-job "Next:" line and the connection signal-detail line are removed from the menu's grayed header, which is now the build line, the fleet summary, and the connection line. The signal detail remains in the Settings dialog.

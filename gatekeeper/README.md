@@ -18,6 +18,18 @@ with a version bump and a changelog entry.
 gatekeeper/
   gk.py               the CLI (Python 3, standard library only)
   config.py           the configuration loader (spec 010/016)
+  fleet_status.py     the fleet-status publisher (spec 014 FR-009):
+                      builds the tray's fleet snapshot from the
+                      state files here and publishes it into the
+                      backchannel repo, one copy per machine
+                      channel (spec 024)
+  install-publisher.sh
+                      the packaged publisher installer (spec 024):
+                      preflight, env capture, root-owned copy,
+                      units, timer, first-publish gate
+  systemd/            the publisher's units as repo files
+                      (fleet-status-publish.service, a template
+                      the installer renders, and .timer)
   probes/             host capability probe scripts (spec 016:
                       probe-windows.ps1, probe-linux.sh,
                       probe-darwin.sh — same bytes as the
@@ -324,6 +336,68 @@ harvests their markers, but does not chain grabs automatically.
 
 Every 5 minutes matches the fleet poll floor; the sweep self-locks, so
 an overlapping invocation is a no-op.
+
+## The fleet-status publisher (spec 014 FR-009, spec 024)
+
+The publisher is part of the install, not a loose add-on: its
+units and installer live in this directory and ship with the
+product. It runs from a root-owned copy under
+`/etc/fleet-status-publish/` (never from the agent-writable
+checkout), on a 2-minute systemd timer, and publishes the
+snapshot every tray's fleet panel reads into the backchannel
+repo — one copy per machine channel, so each host's tray reads
+its own channel's file (spec 024 FR-007).
+
+Install or repair (idempotent; run from a shell that carries
+the egress proxy and a token source — the preflight refuses by
+name, before writing anything, when one is missing):
+
+```bash
+gatekeeper/install-publisher.sh [--gk-dir DIR] [--channels syncyard-dev,syncyard-laptop]
+```
+
+`--gk-dir` is the live gatekeeper state directory the
+publisher reads (default: the installer's own directory, for a
+checkout that is itself the live copy). `--channels` lists the
+backchannel channels to publish to (default `syncyard-dev`
+alone — the pre-024 behavior). The installer captures the
+proxy/token environment from the installing shell into a
+root-only env file (values are never printed), installs the
+publisher copy with its sha256 asserted against this checkout,
+renders and installs the units from `systemd/`, enables the
+timer, and proves a first publish from the publisher's own
+state record (`.fleet-status-publisher.json` in the gatekeeper
+directory) before it reports success. The sandbox battery
+(`gatekeeper/test_install_publisher.py`) runs the real
+installer against a stub systemctl and a stub contents API and
+proves a fresh install, a two-channel install, idempotency,
+and the named refusals.
+
+## Dependencies (operator side)
+
+Everything the operator-side install (gatekeeper + publisher)
+needs, and where each dependency is declared or enforced. A
+dependency no installer preflights is marked as such, never
+omitted (spec 024 FR-009).
+
+| Dependency | Needed by | Declared / preflighted by |
+|---|---|---|
+| Python 3 >= 3.8, standard library only | gatekeeper, publisher | publisher: `install-publisher.sh` preflight `python3`. Gatekeeper: this table (no gatekeeper installer exists yet) |
+| `gh` CLI, authenticated — or `GH_TOKEN` / `GITHUB_TOKEN` set | gatekeeper sweep; publisher token source | publisher: preflight `github-token`. Gatekeeper: this table |
+| `HTTPS_PROXY` in the operator shell (egress to api.github.com) | publisher | preflight `proxy-env`; captured into the service env file at install |
+| systemd, system scope; root or passwordless sudo | publisher units and timer | preflights `systemd`, `write-access` |
+| coreutils (`install`, `sha256sum`) | publisher installer | preflight `coreutils` |
+| cron daemon | gatekeeper sweep cadence | the Cron section above — declared, not preflighted by any installer |
+| git | checkout and updates of this repo | this table |
+| The backchannel repo, with a deploy key per machine | publisher transport; agent sync | `backchannel/INSTALL.md` section 1 |
+| WSL2 with systemd user services + linger; `git`, `python3`, `curl` in WSL | backchannel agent (per fleet host) | `backchannel/INSTALL.md` prerequisites; spec 022 host setup |
+
+Before spec 024, the proxy, token-source, and systemd
+dependencies of the publisher were declared nowhere in this
+repository — they existed only in a loose local installer —
+and the per-channel publish setting the backchannel install
+document already referred to did not exist. Both are now part
+of the package above.
 
 ## The runner watchdog is separate
 

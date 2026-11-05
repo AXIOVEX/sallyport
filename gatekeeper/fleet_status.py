@@ -18,8 +18,27 @@ shows an unrecognized mode verbatim, never blank):
       "reason": pause reason or "",
       "focus": {"keys": [...], "programs": [...], "chats": [...]},
       "waiting": [{"key", "program", "lane", "held",
-                   optional "priority", "priority_source"}]
+                   optional "priority", "priority_source"}],
+      "source": "gatekeeper" | "fallback"
     }
+
+Publisher v2 (the spec 013 fleet deploy): the primary source
+is the gatekeeper's own emission — `gk snapshot`, which
+derives this shape from the gatekeeper's own normalized
+pause record, its FR-012 dispatch ordering, its admission
+marks, and the host-state file. One derivation, two surfaces
+(terminal status and tray panel), permanently. This module
+is then a thin transporter: it runs the snapshot command,
+validates the JSON against the contract, labels it
+"source": "gatekeeper", and publishes it verbatim. On ANY
+failure of that path (no gatekeeper, nonzero exit, timeout,
+invalid shape) it falls back to the state-file derivation
+below, labeled "source": "fallback" — a dead gatekeeper is
+exactly when the panel matters, and the label keeps the two
+semantics from ever being silently mixed. The snapshot
+command comes from $SYNCYARD_GK_SNAPSHOT_CMD when set, else
+the gk.py beside this file; the fleet unit points the
+variable at the fleet gatekeeper.
 
 Mode, focus, and draining mirror the gatekeeper's own
 derivations — spec 013 FR-001's pause-record normalization
@@ -46,20 +65,18 @@ exactly one place — the going-down ingest — and cleared in
 exactly one place, host-resume, so `hold` alone is the
 operative drain state.)
 
-Waiting order is an approximation of the sweep's effective
-dispatch order: jobs whose lane has no active run come
-first (they can dispatch on the next sweep), then jobs
-behind a busy lane, submission order inside each group.
-That keeps the tray's "Next:" on a job that can actually go
-next, but it is not the sweep's full admission logic (the
-active-dispatch cap and duplicate-script skips are not
-replicated). Passed-through `priority` values are the
-records' nominal values. The canonical fix for both is the
-gatekeeper emitting this snapshot itself from its own
-ordering code — planned with the spec 013 fleet deploy, at
-which point this publisher becomes its transporter and this
-state-file derivation remains only as the fallback for a
-gatekeeper that cannot run.
+Fallback-path divergences from the gatekeeper's own
+derivation, kept knowingly: waiting order is an approximation
+of the sweep's effective dispatch order (jobs whose lane has
+no active run first, then jobs behind a busy lane, submission
+order inside each group — not the FR-012 effective-priority
+order); `held` does not mark lane-host-held jobs (the
+lane-to-host map lives in the gatekeeper config, and this
+fallback stays dependency-free; draining=true carries that
+signal); passed-through `priority` values are the records'
+nominal values, as on the primary path. The "source" label
+is what keeps a reader from mistaking any of this for the
+gatekeeper's own marks.
 
 Single-shot: run on a cadence (the tray's default staleness
 bound is 300 s; a 2-minute publish cadence plus the agent's
@@ -67,12 +84,23 @@ bound is 300 s; a 2-minute publish cadence plus the agent's
 Publishing goes through the GitHub contents API, the same
 channel bc.py uses: one GET for the current sha plus one PUT
 per cycle.
+
+Multi-channel (spec 024): --path is repeatable; one snapshot
+is built once and published byte-identically to every
+configured path, one per machine channel
+(channels/<channel>/fleet-status.json), so every host's tray
+can read its fleet panel from its own channel copy. With no
+--path the historical single default is published. The API
+base can be overridden with the FLEET_STATUS_API_BASE
+environment variable (a GitHub Enterprise base, or a local
+stand-in for install tests); the default is unchanged.
 """
 
 import argparse
 import base64
 import json
 import os
+import shlex
 import subprocess
 import sys
 import urllib.error
@@ -83,6 +111,10 @@ from datetime import datetime, timezone
 DEFAULT_REPO = "tbitcs/syncyard-backchannel"
 DEFAULT_PATH = "channels/syncyard-dev/fleet-status.json"
 API_BASE = "https://api.github.com"
+
+
+def _api_base():
+    return os.environ.get("FLEET_STATUS_API_BASE") or API_BASE
 
 
 def now_iso():
@@ -148,7 +180,10 @@ def _host_draining(gk_dir):
 def build_snapshot(gk_dir):
     """The FR-008 snapshot dict from the gatekeeper state in
     gk_dir (PAUSED.json / STOPPED.json / hosts.json /
-    queue/*.json)."""
+    queue/*.json). This is publisher v2's FALLBACK derivation,
+    used only when the gatekeeper's own emission is
+    unavailable; obtain_snapshot labels its output
+    accordingly."""
     stop_path = os.path.join(gk_dir, "STOPPED.json")
     stopped = os.path.isfile(stop_path)
     pause_path = os.path.join(gk_dir, "PAUSED.json")
@@ -228,6 +263,97 @@ def build_snapshot(gk_dir):
     }
 
 
+SNAPSHOT_CMD_ENV = "SYNCYARD_GK_SNAPSHOT_CMD"
+SNAPSHOT_TIMEOUT_S = 30
+
+
+def snapshot_command():
+    """Argv for the gatekeeper-emitted snapshot (publisher
+    v2's primary source): $SYNCYARD_GK_SNAPSHOT_CMD when set
+    and parseable, else the gk.py beside this file. An
+    unparseable value resolves to the default rather than
+    breaking the cycle — the run's failure handling would
+    only fall back anyway, and the default is the honest
+    first try in the co-located layout."""
+    raw = os.environ.get(SNAPSHOT_CMD_ENV)
+    if raw:
+        try:
+            argv = shlex.split(raw)
+        except ValueError:
+            argv = []
+        if argv:
+            return argv
+    return [sys.executable,
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "gk.py"),
+            "snapshot"]
+
+
+def _valid_snapshot(obj):
+    """Structural check of a gatekeeper-emitted snapshot
+    against the FR-008 contract: the required keys with the
+    required types. Anything less is not transported — the
+    fallback derivation serves instead, labeled."""
+    if not isinstance(obj, dict):
+        return False
+    if not isinstance(obj.get("generated_at"), str):
+        return False
+    if not isinstance(obj.get("mode"), str):
+        return False
+    if not isinstance(obj.get("draining"), bool):
+        return False
+    if not isinstance(obj.get("reason"), str):
+        return False
+    focus = obj.get("focus")
+    if not isinstance(focus, dict):
+        return False
+    for name in ("keys", "programs", "chats"):
+        val = focus.get(name)
+        if not isinstance(val, list) \
+                or not all(isinstance(x, str) for x in val):
+            return False
+    waiting = obj.get("waiting")
+    if not isinstance(waiting, list):
+        return False
+    for entry in waiting:
+        if not isinstance(entry, dict):
+            return False
+        for name in ("key", "program", "lane"):
+            if not isinstance(entry.get(name), str):
+                return False
+        if not isinstance(entry.get("held"), bool):
+            return False
+    return True
+
+
+def obtain_snapshot(gk_dir):
+    """The snapshot to publish, with its derivation labeled
+    in the top-level `source` field: the gatekeeper's own
+    emission ("gatekeeper") when the snapshot command exits
+    0 inside the timeout and its stdout validates against
+    the contract; this module's state-file derivation
+    ("fallback") on any failure — missing gatekeeper,
+    nonzero exit, timeout, unparseable or invalid shape.
+    The gatekeeper's JSON is transported verbatim apart
+    from the added label."""
+    snap = None
+    try:
+        out = subprocess.run(snapshot_command(), capture_output=True,
+                             text=True, timeout=SNAPSHOT_TIMEOUT_S)
+        if out.returncode == 0:
+            parsed = json.loads(out.stdout)
+            if _valid_snapshot(parsed):
+                snap = parsed
+    except Exception:
+        snap = None
+    if snap is None:
+        snap = build_snapshot(gk_dir)
+        snap["source"] = "fallback"
+    else:
+        snap["source"] = "gatekeeper"
+    return snap
+
+
 class ContentsAPI:
     """Minimal GitHub contents-API client (same shape as
     backchannel/bc.py's; kept standalone so this publisher has
@@ -255,7 +381,7 @@ class ContentsAPI:
 
     def _request(self, method, path, payload=None):
         url = "%s/repos/%s/contents/%s" % (
-            API_BASE, self.repo, urllib.parse.quote(path))
+            _api_base(), self.repo, urllib.parse.quote(path))
         data = None
         headers = {"Accept": "application/vnd.github+json"}
         if self.token:
@@ -282,7 +408,7 @@ class ContentsAPI:
         endpoint (which does not itself consume budget).
         Returns None when the check itself fails — a failed
         preflight must not block publishing."""
-        url = API_BASE + "/rate_limit"
+        url = _api_base() + "/rate_limit"
         headers = {"Accept": "application/vnd.github+json"}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
@@ -317,32 +443,41 @@ class BudgetSkip(Exception):
         self.remaining = remaining
 
 
-def publish(gk_dir, repo=DEFAULT_REPO, path=DEFAULT_PATH, api=None):
-    """Build the snapshot and put it at path in repo. Returns
-    the snapshot dict. Retries once on a sha conflict: the
-    blob sha is this file's alone, so a 409/422 means another
-    publisher run (an operator's manual run, an install's
-    gate publish) landed between our GET and PUT. Any other
-    failure propagates — a publish that did not land is never
+def publish(gk_dir, repo=DEFAULT_REPO, path=DEFAULT_PATH, api=None,
+            paths=None):
+    """Build the snapshot once and put it at every target path
+    in repo (a single path, or one per machine channel when
+    paths is given — the bodies are byte-identical, same
+    generated_at). Returns the snapshot dict. Each path
+    retries once on a sha conflict: the blob sha is that
+    file's alone, so a 409/422 means another publisher run
+    (an operator's manual run, an install's gate publish)
+    landed between our GET and PUT. Any other failure
+    propagates — a publish that did not land is never
     reported as one that did."""
     api = api or ContentsAPI(repo=repo)
     remaining = api.core_remaining()
     if remaining is not None and remaining < BUDGET_FLOOR:
         raise BudgetSkip(remaining)
-    snap = build_snapshot(gk_dir)
+    snap = obtain_snapshot(gk_dir)
     body = (json.dumps(snap, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    for attempt in (1, 2):
-        sha = api.get_sha(path)
-        try:
-            api.put_file(path, body, "fleet-status: %s mode=%s waiting=%d"
-                         % (snap["generated_at"], snap["mode"],
-                            len(snap["waiting"])), sha=sha)
-            return snap
-        except urllib.error.HTTPError as exc:
-            if exc.code in (409, 422) and attempt == 1:
-                continue
-            raise
-    raise RuntimeError("publish retry loop exited without a result")
+    message = ("fleet-status: %s mode=%s waiting=%d"
+               % (snap["generated_at"], snap["mode"],
+                  len(snap["waiting"])))
+    for target in (list(paths) if paths else [path]):
+        for attempt in (1, 2):
+            sha = api.get_sha(target)
+            try:
+                api.put_file(target, body, message, sha=sha)
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code in (409, 422) and attempt == 1:
+                    continue
+                raise
+        else:
+            raise RuntimeError(
+                "publish retry loop exited without a result")
+    return snap
 
 
 STATE_NAME = ".fleet-status-publisher.json"
@@ -401,12 +536,16 @@ def main(argv=None):
         os.path.abspath(__file__)),
         help="gatekeeper state directory (default: beside this file)")
     ap.add_argument("--repo", default=DEFAULT_REPO)
-    ap.add_argument("--path", default=DEFAULT_PATH)
+    ap.add_argument("--path", action="append", default=None,
+                    help="contents path to publish to; repeatable, "
+                         "one per machine channel (default: %s)"
+                         % DEFAULT_PATH)
     ap.add_argument("--print-only", action="store_true",
                     help="print the snapshot; publish nothing")
     args = ap.parse_args(argv)
+    paths = args.path or [DEFAULT_PATH]
     if args.print_only:
-        print(json.dumps(build_snapshot(args.gk_dir), indent=2,
+        print(json.dumps(obtain_snapshot(args.gk_dir), indent=2,
                          sort_keys=True))
         return 0
     lock = _acquire_lock(args.gk_dir)
@@ -415,7 +554,7 @@ def main(argv=None):
         return 0
     try:
         try:
-            snap = publish(args.gk_dir, repo=args.repo, path=args.path)
+            snap = publish(args.gk_dir, repo=args.repo, paths=paths)
         except BudgetSkip as skip:
             print("SKIPPED_BUDGET core_remaining=%s (floor %d)"
                   % (skip.remaining, BUDGET_FLOOR))
@@ -433,9 +572,11 @@ def main(argv=None):
         state["consecutive_failures"] = 0
         state["last_success"] = snap["generated_at"]
         _save_pub_state(args.gk_dir, state)
-        line = ("PUBLISHED %s mode=%s waiting=%d"
+        line = ("PUBLISHED %s mode=%s waiting=%d source=%s"
                 % (snap["generated_at"], snap["mode"],
-                   len(snap["waiting"])))
+                   len(snap["waiting"]), snap.get("source") or "?"))
+        if len(paths) > 1:
+            line += " paths=%d" % len(paths)
         if recovered:
             line += " recovered_after=%d" % recovered
         print(line)

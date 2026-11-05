@@ -9,12 +9,15 @@ or:  python3 test_bc.py
 """
 
 import base64
+import contextlib
 import hashlib
+import io
 import json
 import os
 import sys
+import types
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bc  # noqa: E402
@@ -68,6 +71,13 @@ class PackingTests(unittest.TestCase):
     def test_explicit_id_is_kept(self):
         cmd = bc.pack_command("true", cmd_id="fixed-id-1")
         self.assertEqual(cmd["id"], "fixed-id-1")
+
+    def test_pack_bytes_body_decodes_utf8(self):
+        raw = "echo ✓\n".encode("utf-8")
+        cmd = bc.pack_command(raw)
+        self.assertEqual(cmd["body"], "echo ✓\n")
+        self.assertEqual(cmd["sha256"],
+                         hashlib.sha256(raw).hexdigest())
 
 
 class ChannelTests(unittest.TestCase):
@@ -165,6 +175,205 @@ class HeartbeatTests(unittest.TestCase):
         self.assertIsNone(bc.heartbeat_age_s({"ts": "junk"}))
         self.assertIsNone(bc.heartbeat_age_s(None))
         self.assertIsNone(bc.heartbeat_age_s({}))
+
+    def test_age_of_a_future_ts_is_negative(self):
+        # The raw math is signed on purpose: a heartbeat stamped
+        # an hour ahead of this clock yields -3600, and the
+        # freshness judgment (below) is what must refuse to call
+        # that "fresh".
+        dt = datetime(2026, 10, 29, 23, 0, 0, tzinfo=timezone.utc)
+        hb = {"ts": "2026-10-30T00:00:00Z"}
+        self.assertEqual(bc.heartbeat_age_s(hb, dt=dt), -3600)
+
+
+def run_heartbeat(api):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = bc.cmd_heartbeat(api, None)
+    return rc, buf.getvalue()
+
+
+def seed_heartbeat(api, age_s):
+    ts = datetime.now(timezone.utc) - timedelta(seconds=age_s)
+    api.seed_json(bc.HEARTBEAT_PATH, {
+        "ts": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "host": "TESTHOST", "user": "tpierson",
+        "last_executed_id": None, "stopped": False})
+
+
+class HeartbeatJudgmentTests(unittest.TestCase):
+    """cmd_heartbeat's verdicts, driven through the mock API.
+
+    Guards the FR-005 freshness judgment against the clock-skew
+    failure: the host's WSL clock and the VM clock are different
+    clocks, so a heartbeat can arrive stamped in the future.
+    """
+
+    def test_fresh_heartbeat_reports_fresh(self):
+        api = MockAPI()
+        seed_heartbeat(api, age_s=5)
+        rc, out = run_heartbeat(api)
+        self.assertEqual(rc, 0)
+        self.assertIn("BC_HEARTBEAT_FRESH 1", out)
+
+    def test_stale_heartbeat_reports_stale(self):
+        api = MockAPI()
+        seed_heartbeat(api, age_s=bc.STALE_HEARTBEAT_S + 120)
+        rc, out = run_heartbeat(api)
+        self.assertEqual(rc, 3)
+        self.assertIn("BC_HEARTBEAT_STALE", out)
+
+    def test_future_heartbeat_is_skew_never_fresh(self):
+        # An agent that died while its host clock ran ahead
+        # leaves a future-dated heartbeat; a naive age check
+        # calls it fresh for the whole skew + stale window.
+        api = MockAPI()
+        seed_heartbeat(api, age_s=-7200)
+        rc, out = run_heartbeat(api)
+        self.assertEqual(rc, 2)
+        self.assertIn("BC_HEARTBEAT_SKEW", out)
+        self.assertNotIn("BC_HEARTBEAT_FRESH", out)
+
+    def test_small_future_ts_within_tolerance_is_fresh(self):
+        # Ordinary clock jitter between two healthy machines
+        # must not cry skew.
+        api = MockAPI()
+        seed_heartbeat(api, age_s=-5)
+        rc, out = run_heartbeat(api)
+        self.assertEqual(rc, 0)
+        self.assertIn("BC_HEARTBEAT_FRESH 1", out)
+
+
+class CorruptFileTests(unittest.TestCase):
+    """Channel files that do not parse as JSON objects.
+
+    get_file returns raw text for unparseable content; every
+    command path must treat that as unreadable channel state,
+    never as a traceback (the status check is the tool operators
+    reach for exactly when the channel looks broken).
+    """
+
+    def seed_raw(self, api, path, raw):
+        api.files[path] = (raw, "raw-" + path)
+
+    def test_corrupt_heartbeat_is_unreadable(self):
+        api = MockAPI()
+        self.seed_raw(api, bc.HEARTBEAT_PATH, b"this is not json{{{\n")
+        rc, out = run_heartbeat(api)
+        self.assertEqual(rc, 2)
+        self.assertIn("BC_HEARTBEAT UNREADABLE", out)
+
+    def test_status_survives_corrupt_cmd_and_out(self):
+        api = MockAPI()
+        seed_heartbeat(api, age_s=5)
+        self.seed_raw(api, bc.CMD_PATH, b"\x00\x01 not json")
+        self.seed_raw(api, bc.OUT_PATH, b"[1, 2")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = bc.cmd_status(api, None)
+        text = buf.getvalue()
+        self.assertEqual(rc, 0)  # the heartbeat's verdict
+        self.assertIn("BC_LAST_CMD unreadable", text)
+        self.assertIn("BC_LAST_OUT unreadable", text)
+
+    def test_status_valid_cmd_with_corrupt_out_is_pending(self):
+        api = MockAPI()
+        seed_heartbeat(api, age_s=5)
+        api.seed_json(bc.CMD_PATH, {"id": "c1",
+                                    "created_at": "2026-10-29T23:00:00Z"})
+        self.seed_raw(api, bc.OUT_PATH, b"garbage")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = bc.cmd_status(api, None)
+        text = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("BC_LAST_CMD id=c1 state=pending", text)
+        self.assertIn("BC_LAST_OUT unreadable", text)
+
+    def test_send_overwrites_a_corrupt_cmd(self):
+        # A cmd.json that does not parse names no command the
+        # agent could run (it skips it too), so it must not
+        # brick the channel behind the refusal rule.
+        api = MockAPI()
+        self.seed_raw(api, bc.CMD_PATH, b"not json at all")
+        cmd = bc.pack_command("echo ok", cmd_id="cmd-new")
+        self.assertEqual(bc.do_send(api, cmd), 0)
+        stored, _ = api.get_file(bc.CMD_PATH)
+        self.assertEqual(stored["id"], "cmd-new")
+
+    def test_corrupt_out_proves_no_acknowledgement(self):
+        # The conservative direction: a pending command plus an
+        # unreadable out.json is still a refusal, never a guess
+        # that the command completed.
+        api = MockAPI()
+        api.seed_json(bc.CMD_PATH, {"id": "pending-1", "sha256": "x"})
+        self.seed_raw(api, bc.OUT_PATH, b"garbage")
+        with self.assertRaises(RuntimeError):
+            bc.do_send(api, bc.pack_command("echo 2", cmd_id="cmd-2"))
+
+    def test_readback_returning_junk_is_loud_not_a_crash(self):
+        class JunkReadbackAPI(MockAPI):
+            def get_file(self, path):
+                if path == bc.CMD_PATH and self.put_count:
+                    return "junk-not-json", "sha-x"
+                return super().get_file(path)
+
+        api = JunkReadbackAPI()
+        with self.assertRaises(RuntimeError):
+            bc.do_send(api, bc.pack_command("echo x", cmd_id="cmd-9"))
+
+    def test_wait_ignores_corrupt_out_and_times_out(self):
+        api = MockAPI()
+        self.seed_raw(api, bc.OUT_PATH, b"garbage")
+        args = types.SimpleNamespace(id="w1", timeout_s=1, poll_s=0.05)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = bc.cmd_wait(api, args)
+        self.assertEqual(rc, 5)
+        self.assertIn("BC_WAIT_TIMEOUT", buf.getvalue())
+
+    def test_wait_reports_the_recorded_exit_code(self):
+        api = MockAPI()
+        api.seed_json(bc.OUT_PATH, {"id": "w1", "exit_code": 3})
+        args = types.SimpleNamespace(id="w1", timeout_s=5, poll_s=0.05)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = bc.cmd_wait(api, args)
+        self.assertEqual(rc, 4)
+        self.assertIn("BC_DONE id=w1 exit_code=3", buf.getvalue())
+
+        api2 = MockAPI()
+        api2.seed_json(bc.OUT_PATH, {"id": "w1", "exit_code": 0})
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = bc.cmd_wait(api2, args)
+        self.assertEqual(rc, 0)
+
+
+class SendRaceTests(unittest.TestCase):
+    """The lost-command race, client side: a second writer wins
+    between do_send's read of cmd.json and its PUT. The contents
+    API answers the stale-sha PUT with an HTTP error; the send
+    must surface as a loud refusal (exit 3), never as a crash or
+    a quiet success."""
+
+    def test_conflicting_put_is_a_loud_refusal(self):
+        class ConflictingAPI(MockAPI):
+            def put_file(self, path, content_bytes, message, sha=None):
+                raise RuntimeError(
+                    "GitHub API PUT %s failed: HTTP 409 conflict"
+                    % path)
+
+        api = ConflictingAPI()
+        with self.assertRaises(RuntimeError):
+            bc.do_send(api, bc.pack_command("echo x", cmd_id="cmd-r"))
+
+        args = types.SimpleNamespace(file=None, cmd="echo raced",
+                                     timeout_s=600, force=False)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = bc.cmd_send(api, args)
+        self.assertEqual(rc, 3)
+        self.assertIn("BC_SEND_REFUSED", buf.getvalue())
 
 
 if __name__ == "__main__":

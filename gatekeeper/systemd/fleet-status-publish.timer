@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Syncyard fleet-status publisher every 2 minutes (spec 014 FR-009)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+AccuracySec=10s
+Unit=fleet-status-publish.service
+
+[Install]
+WantedBy=timers.target
