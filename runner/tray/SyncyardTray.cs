@@ -65,8 +65,8 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyCompany("Axiovex Systems, LLC")]
 [assembly: System.Reflection.AssemblyProduct("Syncyard Tray")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) Axiovex Systems, LLC")]
-[assembly: System.Reflection.AssemblyVersion("0.4.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.4.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.4.1.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.4.1.0")]
 
 namespace SyncyardTray
 {
@@ -1074,7 +1074,7 @@ namespace SyncyardTray
         // misjudge). All other fields are UI-thread state,
         // written by the posted completions of the two worker
         // threads below; the workers never touch the menu.
-        private const string BuildId = "0.4.0.0";
+        private const string BuildId = "0.4.1.0";
         private const string UpdateManifestUrl =
             "https://github.com/AXIOVEX/syncyard/releases/latest/download/tray-update.json";
         private string _updateVersion;     // newer build, if any
@@ -1613,8 +1613,8 @@ namespace SyncyardTray
             string url = _updateUrl;
             string sha = _updateSha256;
             string version = _updateVersion;
-            var t = new Thread(
-                delegate { ApplyUpdateWorker(url, sha, version); });
+            var t = new Thread(new ThreadStart(
+                delegate { ApplyUpdateWorker(url, sha, version); }));
             t.IsBackground = true;
             t.Start();
         }
@@ -1812,35 +1812,17 @@ namespace SyncyardTray
             return s;
         }
 
-        // The menu's connection lines (spec 018 FR-003/FR-004):
-        // the state in words, then which signals it rests on.
+        // The menu's connection line (spec 018 FR-003): the state
+        // in words. The settings dialog keeps the signal detail;
+        // the menu header does not (owner trim, 2026-11-04: the
+        // header is the build line, the fleet summary, and this
+        // line; the per-job Next line and the signal detail line
+        // were removed as clutter).
         private string ConnectionText()
         {
             if (_conn == null)
                 return "Connection: unknown (no signal seen yet)";
             return _conn.Line();
-        }
-
-        private string ConnectionDetailText()
-        {
-            if (_conn == null) return "signal: backchannel heartbeat only";
-            return _conn.SignalDetail();
-        }
-
-        private string FleetNextText()
-        {
-            if (_fleet == null || !_fleet.HasData ||
-                _fleet.Waiting.Count == 0) return null;
-            var j = _fleet.Waiting[0];
-            string s = "Next: " + j.Key + " (" + j.Lane;
-            if (j.HasPriority)
-            {
-                s += ", pri " + j.Priority;
-                if (j.PrioritySource != null)
-                    s += ", " + j.PrioritySource;
-            }
-            if (j.HasHeld && j.Held) s += ", held";
-            return s + ")";
         }
 
         private void RebuildMenu()
@@ -1865,20 +1847,9 @@ namespace SyncyardTray
             var fleetLine = new ToolStripMenuItem(FleetMenuText());
             fleetLine.Enabled = false;
             menu.Items.Add(fleetLine);
-            string nextText = FleetNextText();
-            if (nextText != null)
-            {
-                var nextLine = new ToolStripMenuItem(nextText);
-                nextLine.Enabled = false;
-                menu.Items.Add(nextLine);
-            }
             var connLine = new ToolStripMenuItem(ConnectionText());
             connLine.Enabled = false;
             menu.Items.Add(connLine);
-            var connDetail = new ToolStripMenuItem(
-                ConnectionDetailText());
-            connDetail.Enabled = false;
-            menu.Items.Add(connDetail);
             menu.Items.Add(new ToolStripSeparator());
             int running = 0;
             foreach (var r in _runners) if (r.Running) running++;
@@ -1968,37 +1939,47 @@ namespace SyncyardTray
             _icon.Text = TooltipText(running);
         }
 
-        // The tooltip carries the fleet mode + waiting count when
-        // a snapshot exists (spec 014 FR-007), capped at the
-        // notification area's safe text length. Fleet data never
-        // renders into the icon itself; the icon's second
-        // dimension is the connection state (spec 018), judged
-        // from host-local signals only.
+        // The tooltip is composed SHORT (owner ruling 2026-11-04:
+        // the previous build concatenated the full connection
+        // and fleet lines and chopped the result at 63 characters
+        // mid-word, so the hover text read as cut off). Segments
+        // join only while the whole stays inside the 63-character
+        // NotifyIcon limit, in priority order: the runner count,
+        // the connection as one word, the waiting count, the
+        // stale flag. A segment that does not fit is dropped
+        // whole; nothing is ever truncated mid-word. The detail
+        // lives in the menu's two header lines, not here.
+        //
+        // The cap is 63, not the shell's larger buffer:
+        // .NET Framework's NotifyIcon.Text setter throws
+        // ArgumentOutOfRangeException above 63 characters, and
+        // RebuildMenu runs in the constructor, before the message
+        // loop's exception guard applies (the 120 cap shipped in
+        // specs 014/018 crashed the tray at startup on
+        // 2026-11-03; the substring clamp that replaced it is
+        // what this composition supersedes).
         private string TooltipText(int running)
         {
             string s = "Syncyard: " + running + "/" + _runners.Count +
                 " runners up";
-            // The tooltip carries the connection line too
-            // (spec 018 FR-003), ahead of the fleet summary.
-            if (_conn != null) s += " - " + _conn.Line();
-            if (_fleet != null && _fleet.HasData)
+            var parts = new List<string>();
+            if (_conn != null && _conn.HasSignal)
             {
-                s += " - " + _fleet.ModeLine() + " - " +
-                    _fleet.Waiting.Count + " waiting";
-                if (_fleet.Stale) s += " - STALE";
+                parts.Add(_conn.State == ConnectionStatus.Connected
+                    ? "linked"
+                    : _conn.State == ConnectionStatus.Stale
+                        ? "link stale" : "unlinked");
             }
-            // The cap is 63, not the shell's larger buffer:
-            // .NET Framework's NotifyIcon.Text setter throws
-            // ArgumentOutOfRangeException above 63 characters.
-            // With the connection line appended (spec 018) the
-            // tooltip routinely exceeds 63, and RebuildMenu runs
-            // in the constructor, before the message loop's
-            // exception guard applies - the 120 cap shipped in
-            // specs 014/018 crashed the tray at startup on
-            // 2026-11-03 (event 1026: ArgumentOutOfRangeException
-            // at NotifyIcon.set_Text, from RebuildMenu, from the
-            // TrayApp constructor).
-            if (s.Length > 63) s = s.Substring(0, 63);
+            if (_fleet != null && _fleet.HasData &&
+                _fleet.Waiting.Count > 0)
+                parts.Add(_fleet.Waiting.Count + " waiting");
+            if (_fleet != null && _fleet.HasData && _fleet.Stale)
+                parts.Add("fleet stale");
+            foreach (var p in parts)
+            {
+                if ((s + " - " + p).Length > 63) break;
+                s += " - " + p;
+            }
             return s;
         }
 
