@@ -18,8 +18,9 @@
 // displayed read-only from a published snapshot file when one
 // exists, and shown as unavailable, with the reason, when none
 // does. The tray never edits fleet state and never creates a
-// console; the settings dialog is the only window it ever shows,
-// and only when the owner opens it from the menu.
+// console; its windows (settings, the status window, and the
+// read-only consoles viewer) open only when the owner asks
+// from the menu.
 //
 // Spec 021: the tray carries a build stamp and can update itself
 // to the latest published build. An owner-clicked menu check
@@ -27,8 +28,22 @@
 // releases; a newer build is downloaded, verified against the
 // manifest's SHA-256, and swapped in by a UI-free helper mode
 // of this same exe, which relaunches the tray. The spec 018
-// connection indicator stays signal-file only; update traffic
-// happens only on the owner's explicit menu click.
+// connection indicator stays signal-file only; an update is
+// installed only on the owner's explicit click - 0.4.3.0 adds
+// an automatic check a few seconds after startup, and a check
+// downloads nothing and installs nothing.
+//
+// 0.4.3.0: the menu also carries the fleet queue line (the
+// snapshot's four-state queue summary: idle, waiting, running,
+// full), a Status window rendering the snapshot's queue depth
+// (active jobs, per-lane caps and states) beside this
+// machine's own state and the update state, and a read-only
+// tabbed consoles viewer over the runners' own log files.
+// The runners run with no console window, so there is no
+// console to show; their logs are the output, and the viewer
+// tails them. It replaces the old Show-runner-consoles
+// item, which hunted session windows by title and could
+// never show a healthy runner.
 //
 // Compile (no SDK install needed - csc ships with Windows):
 //   csc /target:winexe /out:SyncyardTray.exe /win32icon:logo.ico
@@ -65,8 +80,8 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyCompany("Axiovex Systems, LLC")]
 [assembly: System.Reflection.AssemblyProduct("Syncyard Tray")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) Axiovex Systems, LLC")]
-[assembly: System.Reflection.AssemblyVersion("0.4.2.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.4.2.0")]
+[assembly: System.Reflection.AssemblyVersion("0.4.3.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.4.3.0")]
 
 namespace SyncyardTray
 {
@@ -198,6 +213,52 @@ namespace SyncyardTray
                 }
             }
             return list;
+        }
+
+        // The top-level keys of a JSON object string, in
+        // order. MiniJson otherwise reads values by key, but
+        // the snapshot's "lanes" object is keyed BY lane
+        // name, so its keys are data. String-aware and
+        // depth-aware; tolerant like everything here - a
+        // malformed object yields the keys read so far.
+        public static List<string> GetObjectKeys(string obj)
+        {
+            var keys = new List<string>();
+            if (obj == null) return keys;
+            int i = 0;
+            while (i < obj.Length && obj[i] != '{') i++;
+            if (i >= obj.Length) return keys;
+            i++;
+            int depth = 1;
+            while (i < obj.Length && depth >= 1)
+            {
+                char c = obj[i];
+                if (c == '"')
+                {
+                    if (depth == 1)
+                    {
+                        // A depth-1 string followed by a
+                        // colon is a key; any other depth-1
+                        // string is a value.
+                        string s = ParseString(obj, i);
+                        if (s == null) break;
+                        int j = SkipString(obj, i);
+                        int k = j;
+                        while (k < obj.Length &&
+                               char.IsWhiteSpace(obj[k])) k++;
+                        if (k < obj.Length && obj[k] == ':')
+                            keys.Add(s);
+                        i = j;
+                        continue;
+                    }
+                    i = SkipString(obj, i);
+                    continue;
+                }
+                if (c == '{' || c == '[') depth++;
+                else if (c == '}' || c == ']') depth--;
+                i++;
+            }
+            return keys;
         }
 
         public static string Escape(string s)
@@ -566,6 +627,22 @@ namespace SyncyardTray
         public string PrioritySource;   // null when not published
         public bool Held;
         public bool HasHeld;
+        public string RunId;            // active entries only,
+                                        // null when not published
+    }
+
+    // One lane's queue depth from the snapshot's "lanes"
+    // object (0.4.3.0): how many runs the lane may carry at
+    // once, how many it carries, how many wait, and the
+    // lane's state in the four-state model (idle, waiting,
+    // running, full), carried verbatim like the mode.
+    internal sealed class FleetLane
+    {
+        public string Lane = "";
+        public int Cap;
+        public int Running;
+        public int Waiting;
+        public string State = "";
     }
 
     // A read-only view of the gatekeeper's published status
@@ -587,6 +664,17 @@ namespace SyncyardTray
         public readonly List<string> FocusPrograms = new List<string>();
         public readonly List<string> FocusChats = new List<string>();
         public readonly List<FleetJob> Waiting = new List<FleetJob>();
+        // Queue depth (0.4.3.0, additive): a snapshot whose
+        // publisher does not emit these fields leaves
+        // HasQueueData false and the totals at -1, and the
+        // displays say running is unknown rather than
+        // guessing it from the waiting list.
+        public readonly List<FleetJob> Active = new List<FleetJob>();
+        public readonly List<FleetLane> Lanes = new List<FleetLane>();
+        public bool HasQueueData;
+        public string QueueState;       // null when not published
+        public int RunningTotal = -1;
+        public int WaitingTotal = -1;
 
         public string ModeLine()
         {
@@ -647,6 +735,79 @@ namespace SyncyardTray
                     job.HasHeld = MiniJson.HasKey(obj, "held");
                     job.Held = MiniJson.GetBool(obj, "held", false);
                     st.Waiting.Add(job);
+                }
+                // Queue depth, parsed under its own guard: a
+                // malformed depth section degrades to "not
+                // published" and must never poison the mode
+                // and waiting reads above.
+                try
+                {
+                    foreach (var obj in MiniJson.GetObjects(
+                        text, "active"))
+                    {
+                        var job = new FleetJob();
+                        job.Key = MiniJson.GetString(obj, "key") ?? "";
+                        job.Program =
+                            MiniJson.GetString(obj, "program") ?? "";
+                        job.Lane = MiniJson.GetString(obj, "lane") ?? "";
+                        job.RunId = MiniJson.GetString(obj, "run_id");
+                        if (job.RunId == null &&
+                            MiniJson.HasKey(obj, "run_id"))
+                        {
+                            // Run ids are numbers in the
+                            // records; carry the digits.
+                            int rid = MiniJson.GetInt(obj, "run_id",
+                                -1);
+                            if (rid >= 0)
+                                job.RunId = rid.ToString(
+                                    CultureInfo.InvariantCulture);
+                        }
+                        st.Active.Add(job);
+                    }
+                    string lanesObj = MiniJson.GetObject(text,
+                        "lanes");
+                    if (lanesObj != null)
+                    {
+                        foreach (var name in MiniJson.GetObjectKeys(
+                            lanesObj))
+                        {
+                            string sub = MiniJson.GetObject(
+                                lanesObj, name);
+                            if (sub == null) continue;
+                            var lane = new FleetLane();
+                            lane.Lane = name;
+                            lane.Cap = MiniJson.GetInt(sub, "cap",
+                                0);
+                            lane.Running = MiniJson.GetInt(sub,
+                                "running", 0);
+                            lane.Waiting = MiniJson.GetInt(sub,
+                                "waiting", 0);
+                            lane.State = MiniJson.GetString(sub,
+                                "state") ?? "";
+                            st.Lanes.Add(lane);
+                        }
+                    }
+                    if (MiniJson.HasKey(text, "queue_state"))
+                    {
+                        st.QueueState = MiniJson.GetString(text,
+                            "queue_state");
+                        st.HasQueueData = st.QueueState != null;
+                    }
+                    if (MiniJson.HasKey(text, "running_total"))
+                        st.RunningTotal = MiniJson.GetInt(text,
+                            "running_total", -1);
+                    if (MiniJson.HasKey(text, "waiting_total"))
+                        st.WaitingTotal = MiniJson.GetInt(text,
+                            "waiting_total", -1);
+                }
+                catch
+                {
+                    st.Active.Clear();
+                    st.Lanes.Clear();
+                    st.HasQueueData = false;
+                    st.QueueState = null;
+                    st.RunningTotal = -1;
+                    st.WaitingTotal = -1;
                 }
                 DateTime gen;
                 if (DateTime.TryParse(st.GeneratedAt,
@@ -818,6 +979,16 @@ namespace SyncyardTray
                 catch { /* vanished mid-read: one retry, above */ }
             }
             return false;
+        }
+
+        // The heartbeat signal's own age, for the status
+        // window (0.4.3.0): the same read Evaluate makes,
+        // exposed so the window can show the backchannel
+        // agent's last beat beside the combined judgement.
+        public static bool HeartbeatAgeSeconds(string path,
+            out double ageSeconds)
+        {
+            return TryHeartbeatAge(path, out ageSeconds);
         }
     }
 
@@ -1039,7 +1210,6 @@ namespace SyncyardTray
     internal sealed class TrayApp : ApplicationContext
     {
         private const int SW_HIDE = 0;
-        private const int SW_SHOW = 5;
 
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -1070,6 +1240,9 @@ namespace SyncyardTray
         private ConnectionStatus _conn;
         private int _lastConnState = -1;
         private SettingsForm _settingsForm;
+        private StatusForm _statusForm;
+        private ConsolesForm _consolesForm;
+        private System.Windows.Forms.Timer _launchTimer;
 
         // Self-update state (spec 021). The build stamp is the
         // value the menu header and the startup log line carry;
@@ -1080,7 +1253,7 @@ namespace SyncyardTray
         // misjudge). All other fields are UI-thread state,
         // written by the posted completions of the two worker
         // threads below; the workers never touch the menu.
-        private const string BuildId = "0.4.2.0";
+        private const string BuildId = "0.4.3.0";
         private const string UpdateManifestUrl =
             "https://github.com/AXIOVEX/syncyard/releases/latest/download/tray-update.json";
         private string _updateVersion;     // newer build, if any
@@ -1092,6 +1265,25 @@ namespace SyncyardTray
         private string _pendingUpdatePath; // verified .new file
         private bool _updateLaunched;      // helper started
         private SynchronizationContext _uiContext;
+        // Check bookkeeping (0.4.3.0): when the last check
+        // finished and what it found, for the status window;
+        // and the launch check's one balloon - the launch
+        // check arms it, whichever completion path runs
+        // first shows it, and it fires at most once.
+        private DateTime _lastCheckAt = DateTime.MinValue;
+        private string _lastCheckResult;   // null = never checked
+        private bool _checkFromLaunch;
+        private bool _launchBalloonPending;
+        private bool _updateBalloonShown;
+
+        // The queue line's waiting-state styling: one shared
+        // bold font and one amber, held for the process's
+        // life (the icon discipline: rare and tight - a font
+        // per rebuild would leak a handle per tick).
+        private static readonly Font QueueAlertFont =
+            new Font(Control.DefaultFont, FontStyle.Bold);
+        private static readonly Color QueueAlertColor =
+            Color.FromArgb(192, 120, 0);
 
         public TrayApp()
         {
@@ -1181,6 +1373,29 @@ namespace SyncyardTray
             _timer.Interval = _settings.TickSeconds * 1000;
             _timer.Tick += OnTick;
             _timer.Start();
+
+            // One update check a few seconds after startup
+            // (0.4.3.0): the same check the menu item runs,
+            // on its background thread. A check downloads
+            // nothing and installs nothing - an update it
+            // finds is announced once (balloon + the menu
+            // item's text) and installed only on the
+            // owner's click, exactly like a manual check's.
+            _launchTimer = new System.Windows.Forms.Timer();
+            _launchTimer.Interval = 4000;
+            _launchTimer.Tick += delegate
+            {
+                _launchTimer.Stop();
+                _launchTimer.Dispose();
+                _launchTimer = null;
+                if (!_updateBusy)
+                {
+                    Log("update check at launch");
+                    _checkFromLaunch = true;
+                    StartUpdateCheck();
+                }
+            };
+            _launchTimer.Start();
         }
 
         // --- supervision ------------------------------------------------
@@ -1221,12 +1436,25 @@ namespace SyncyardTray
             // One fleet read per tick, after supervision, so the
             // menu, tooltip, and any open dialog all render the
             // same snapshot (spec 014 FR-008/FR-010).
+            ReloadSignals();
+            MaybeShowUpdateBalloon();
+            RebuildMenu();
+            RefreshSettingsDialog();
+            RefreshStatusDialog();
+        }
+
+        // The one fleet read plus the connection judgement
+        // (spec 018 FR-001): shared by the tick and by the
+        // status window's own refresh, so both surfaces
+        // render the same snapshot and a transition is
+        // logged exactly once, by whichever surface reads
+        // first. A transition is logged with the signal
+        // age that caused it, and only a transition
+        // (FR-006) - steady-state reads write nothing.
+        internal void ReloadSignals()
+        {
             _fleet = FleetStatus.Load(_settings.FleetStatusPath,
                 _settings.FleetStaleSeconds);
-            // The connection judgement rides the same tick
-            // (spec 018 FR-001); a transition is logged with the
-            // signal age that caused it, and only a transition
-            // (FR-006) - steady-state ticks write nothing.
             _conn = ConnectionStatus.Evaluate(
                 _settings.ConnectionHeartbeatPath, _fleet,
                 _settings.ConnectionStaleSeconds,
@@ -1242,8 +1470,6 @@ namespace SyncyardTray
                         : "no signal seen") + ")");
                 _lastConnState = _conn.State;
             }
-            RebuildMenu();
-            RefreshSettingsDialog();
         }
 
         private bool AnyFaulted()
@@ -1474,6 +1700,96 @@ namespace SyncyardTray
             catch { }
         }
 
+        // --- status and consoles surfaces (0.4.3.0) -----------
+        // Both are single-instance, non-modal, and opened
+        // only from the menu, exactly like the settings
+        // dialog; both are display-only (the consoles
+        // viewer's read-only discipline is its own note).
+
+        private void OpenStatus()
+        {
+            if (_statusForm != null && !_statusForm.IsDisposed)
+            {
+                _statusForm.Activate();
+                return;
+            }
+            _statusForm = new StatusForm(this);
+            _statusForm.FormClosed +=
+                delegate { _statusForm = null; };
+            _statusForm.Show();
+        }
+
+        private void RefreshStatusDialog()
+        {
+            try
+            {
+                if (_statusForm != null && !_statusForm.IsDisposed)
+                    _statusForm.RefreshDynamic();
+            }
+            catch { }
+        }
+
+        private void OpenConsoles()
+        {
+            if (_consolesForm != null && !_consolesForm.IsDisposed)
+            {
+                _consolesForm.Activate();
+                return;
+            }
+            _consolesForm = new ConsolesForm(this);
+            _consolesForm.FormClosed +=
+                delegate { _consolesForm = null; };
+            _consolesForm.Show();
+        }
+
+        internal string BuildStamp { get { return BuildId; } }
+        internal string TrayLogPath { get { return _logPath; } }
+
+        // The backchannel agent's log, when its path is
+        // known: the agent's home is three directories
+        // above the channel heartbeat file (channels\
+        // <channel>\heartbeat.json -> repo -> agent home)
+        // and the log sits in it as agent.log. Any other
+        // layout simply yields no agent tab.
+        internal string AgentLogPath()
+        {
+            try
+            {
+                string hb = _settings.ConnectionHeartbeatPath;
+                if (string.IsNullOrEmpty(hb)) return null;
+                string dir = Path.GetDirectoryName(hb);
+                dir = Path.GetDirectoryName(dir);
+                dir = Path.GetDirectoryName(dir);
+                dir = Path.GetDirectoryName(dir);
+                if (dir == null) return null;
+                string p = Path.Combine(dir, "agent.log");
+                return File.Exists(p) ? p : null;
+            }
+            catch { return null; }
+        }
+
+        // The newest listener diagnostic log in a runner
+        // directory's _diag folder - the runner's own
+        // continuous record of what it is doing, and the
+        // file the consoles viewer tails for that lane.
+        internal static string NewestDiagLog(string runnerDir)
+        {
+            try
+            {
+                string diag = Path.Combine(runnerDir, "_diag");
+                if (!Directory.Exists(diag)) return null;
+                string best = null;
+                DateTime bestTs = DateTime.MinValue;
+                foreach (var f in Directory.GetFiles(diag, "*.log"))
+                {
+                    DateTime ts = File.GetLastWriteTimeUtc(f);
+                    if (ts > bestTs) { bestTs = ts; best = f; }
+                }
+                return best;
+            }
+            catch { return null; }
+        }
+
         private void StopAll()
         {
             var ok = MessageBox.Show(
@@ -1526,6 +1842,66 @@ namespace SyncyardTray
             else StartUpdateCheck();
         }
 
+        // The status window's update surface (0.4.3.0): the
+        // same check and the same apply the menu item
+        // drives, never a second path.
+        internal bool UpdateBusyState { get { return _updateBusy; } }
+        internal bool UpdateDownloadingState
+        {
+            get { return _updateDownloading; }
+        }
+        internal string AvailableUpdateVersion
+        {
+            get { return _updateVersion; }
+        }
+
+        internal string LastUpdateCheckLine()
+        {
+            if (_lastCheckResult == null)
+                return "not checked yet this session";
+            return _lastCheckAt.ToString("HH:mm:ss",
+                CultureInfo.InvariantCulture) + " - " +
+                _lastCheckResult;
+        }
+
+        internal void RequestUpdateCheck()
+        {
+            if (_updateBusy) return;
+            if (_uiContext == null)
+                _uiContext = SynchronizationContext.Current;
+            StartUpdateCheck();
+        }
+
+        internal void RequestApplyUpdate()
+        {
+            if (_updateBusy || _updateVersion == null) return;
+            if (_uiContext == null)
+                _uiContext = SynchronizationContext.Current;
+            StartApplyUpdate();
+        }
+
+        // The launch check's one announcement (0.4.3.0):
+        // shown by whichever UI-thread path runs first
+        // after the check completes (the posted completion,
+        // or the tick as backstop), and at most once.
+        private void MaybeShowUpdateBalloon()
+        {
+            if (!_launchBalloonPending || _updateBalloonShown)
+                return;
+            if (_updateVersion == null) return;
+            _launchBalloonPending = false;
+            _updateBalloonShown = true;
+            try
+            {
+                _icon.ShowBalloonTip(10000, "Syncyard Tray",
+                    "Syncyard tray update available: v" +
+                    _updateVersion +
+                    ". Open the tray menu to install.",
+                    ToolTipIcon.Info);
+            }
+            catch { }
+        }
+
         private void StartUpdateCheck()
         {
             _updateBusy = true;
@@ -1542,6 +1918,12 @@ namespace SyncyardTray
             string foundSha = null;
             string foundUrl = null;
             bool failed = false;
+            // The status window's record of this check
+            // (0.4.3.0): set on every path, failures
+            // included - a failed check is still a check,
+            // and the window says so with the reason.
+            string resultText = "check failed";
+            bool launchCheck = _checkFromLaunch;
             try
             {
                 string json = DownloadText(UpdateManifestUrl);
@@ -1553,6 +1935,7 @@ namespace SyncyardTray
                     Log("update check: manifest incomplete; " +
                         "ignored");
                     failed = true;
+                    resultText = "check failed: manifest incomplete";
                 }
                 else
                 {
@@ -1566,6 +1949,8 @@ namespace SyncyardTray
                         Log("update check: manifest version " +
                             "unreadable (" + v + "); ignored");
                         failed = true;
+                        resultText =
+                            "check failed: manifest version unreadable";
                     }
                     else if (mv > RunningVersion())
                     {
@@ -1578,12 +1963,14 @@ namespace SyncyardTray
                             " (running " +
                             RunningVersion().ToString() + ")" +
                             (notes != null ? " - " + notes : ""));
+                        resultText = "update available: v" + vtext;
                     }
                     else
                     {
                         Log("update check: up to date " +
                             "(manifest " + vtext + ", running " +
                             RunningVersion().ToString() + ")");
+                        resultText = "up to date";
                     }
                 }
             }
@@ -1591,6 +1978,9 @@ namespace SyncyardTray
             {
                 Log("update check failed: " + ex.Message);
                 failed = true;
+                string msg = ex.Message ?? "";
+                if (msg.Length > 80) msg = msg.Substring(0, 80);
+                resultText = "check failed: " + msg;
             }
             var ui = _uiContext;
             if (ui != null)
@@ -1598,6 +1988,9 @@ namespace SyncyardTray
                 ui.Post(delegate(object state)
                 {
                     _updateBusy = false;
+                    _checkFromLaunch = false;
+                    _lastCheckAt = DateTime.Now;
+                    _lastCheckResult = resultText;
                     if (!failed)
                     {
                         _updateChecked = true;
@@ -1605,12 +1998,18 @@ namespace SyncyardTray
                         _updateSha256 = foundSha;
                         _updateUrl = foundUrl;
                     }
+                    if (launchCheck && foundVersion != null)
+                        _launchBalloonPending = true;
                     RebuildMenu();
+                    MaybeShowUpdateBalloon();
                 }, null);
             }
             else
             {
                 _updateBusy = false;
+                _checkFromLaunch = false;
+                _lastCheckAt = DateTime.Now;
+                _lastCheckResult = resultText;
                 if (!failed)
                 {
                     _updateChecked = true;
@@ -1618,6 +2017,10 @@ namespace SyncyardTray
                     _updateSha256 = foundSha;
                     _updateUrl = foundUrl;
                 }
+                if (launchCheck && foundVersion != null)
+                    _launchBalloonPending = true;
+                // No UI context captured: the balloon waits
+                // for the tick's backstop call.
             }
         }
 
@@ -1842,6 +2245,59 @@ namespace SyncyardTray
             return _conn.Line();
         }
 
+        // The queue line (0.4.3.0): one line over the lane
+        // rows carrying the fleet's queue depth in the
+        // four-state model - idle, waiting (work queued and
+        // nothing running: the dangerous state, rendered
+        // amber and bold by the menu builder), running, and
+        // full (every busy lane at cap with work still
+        // waiting). Counts ride with the state. A snapshot
+        // whose publisher does not emit the depth fields
+        // degrades honestly: waiting is counted from the
+        // list it does carry and running is labelled
+        // unknown, never guessed.
+        internal string QueueLineText()
+        {
+            var f = _fleet;
+            if (f == null) return "Queue: not loaded yet";
+            if (!f.HasData)
+                return "Queue: unavailable (" + f.Problem + ")";
+            if (f.QueueState != null)
+            {
+                string state = f.QueueState;
+                int r = f.RunningTotal >= 0
+                    ? f.RunningTotal : f.Active.Count;
+                int w = f.WaitingTotal >= 0
+                    ? f.WaitingTotal : f.Waiting.Count;
+                if (state == "idle") return "Queue: Idle";
+                if (state == "waiting")
+                    return "Queue: Waiting, " + w + " waiting, " +
+                        r + " running";
+                if (state == "full")
+                {
+                    int cap = 0;
+                    foreach (var l in f.Lanes) cap += l.Cap;
+                    string run = cap > 0
+                        ? r + " of " + cap + " running"
+                        : r + " running";
+                    return "Queue: Full, " + run + ", " + w +
+                        " waiting";
+                }
+                string runLine = "Queue: Running, " + r + " running";
+                if (w > 0) runLine += ", " + w + " waiting";
+                return runLine;
+            }
+            return "Queue: " + f.Waiting.Count +
+                " waiting, running unknown";
+        }
+
+        internal bool QueueLineAlert()
+        {
+            var f = _fleet;
+            return f != null && f.HasData &&
+                f.QueueState == "waiting";
+        }
+
         private void RebuildMenu()
         {
             // The strip itself is never replaced and never
@@ -1879,6 +2335,20 @@ namespace SyncyardTray
             var connLine = new ToolStripMenuItem(ConnectionText());
             connLine.Enabled = false;
             menu.Items.Add(connLine);
+            // The queue line (0.4.3.0): the fleet's queue
+            // depth at a glance. Clickable - it opens the
+            // status window - and in the waiting state it
+            // is the one loud item in the menu (amber and
+            // bold), because queued work with nothing
+            // running is how a stall hides.
+            var queueLine = new ToolStripMenuItem(QueueLineText());
+            if (QueueLineAlert())
+            {
+                queueLine.ForeColor = QueueAlertColor;
+                queueLine.Font = QueueAlertFont;
+            }
+            queueLine.Click += delegate { OpenStatus(); };
+            menu.Items.Add(queueLine);
             menu.Items.Add(new ToolStripSeparator());
             int running = 0;
             foreach (var r in _runners) if (r.Running) running++;
@@ -1930,10 +2400,19 @@ namespace SyncyardTray
             var hide = new ToolStripMenuItem("Hide runner consoles now");
             hide.Click += delegate { HideStrayConsoles(); };
             menu.Items.Add(hide);
-            var show = new ToolStripMenuItem("Show runner consoles");
-            show.Click += delegate { SetStrayConsoles(SW_SHOW); };
+            // The old Show-runner-consoles item is gone:
+            // it un-hid windows by title, and the fleet's
+            // runners run with no console window, so it
+            // could never show a healthy runner (red team,
+            // 2026-11-05). The consoles viewer replaces it:
+            // the runners' own log files, tailed read-only.
+            var show = new ToolStripMenuItem("Show consoles");
+            show.Click += delegate { OpenConsoles(); };
             menu.Items.Add(show);
             menu.Items.Add(new ToolStripSeparator());
+            var statusItem = new ToolStripMenuItem("Status");
+            statusItem.Click += delegate { OpenStatus(); };
+            menu.Items.Add(statusItem);
             var settingsItem = new ToolStripMenuItem("Settings...");
             settingsItem.Click += delegate { OpenSettings(); };
             menu.Items.Add(settingsItem);
@@ -2178,8 +2657,674 @@ namespace SyncyardTray
         }
     }
 
-    // The settings dialog (spec 014 Part B): the only window the
-    // tray ever shows, opened only from the tray menu, one instance
+    // Status window (0.4.3.0): everything the menu compresses
+    // into three lines, laid out in full - the fleet's queue
+    // depth by lane, the running and waiting jobs behind it,
+    // this machine's own state, and the update state with its
+    // two buttons wired to the same check and install paths
+    // the menu item drives. Display-only apart from those two
+    // buttons and Refresh; it refreshes itself about every
+    // five seconds while open (and each tray tick refreshes it
+    // too), reading through the tray so both surfaces always
+    // render the same snapshot.
+    internal sealed class StatusForm : Form
+    {
+        private readonly TrayApp _app;
+        private readonly Label _queueLabel;
+        private readonly Label _fleetLabel;
+        private readonly ListView _lanes;
+        private readonly ListView _runningJobs;
+        private readonly ListView _waitingJobs;
+        private readonly Label _machineLabel;
+        private readonly Label _updateLabel;
+        private readonly Button _checkNow;
+        private readonly Button _updateNow;
+        private readonly System.Windows.Forms.Timer _timer;
+        private readonly Font _boldFont;
+
+        public StatusForm(TrayApp app)
+        {
+            _app = app;
+            _boldFont = new Font(Control.DefaultFont,
+                FontStyle.Bold);
+            Text = "Syncyard status";
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(800, 704);
+            MinimumSize = new Size(560, 480);
+
+            var grpFleet = new GroupBox();
+            grpFleet.Text = "Fleet";
+            grpFleet.Location = new Point(12, 10);
+            grpFleet.Size = new Size(776, 86);
+            grpFleet.Anchor = AnchorStyles.Top |
+                AnchorStyles.Left | AnchorStyles.Right;
+            _queueLabel = new Label();
+            _queueLabel.Location = new Point(12, 18);
+            _queueLabel.Size = new Size(752, 20);
+            _queueLabel.Anchor = AnchorStyles.Top |
+                AnchorStyles.Left | AnchorStyles.Right;
+            grpFleet.Controls.Add(_queueLabel);
+            _fleetLabel = new Label();
+            _fleetLabel.Location = new Point(12, 42);
+            _fleetLabel.Size = new Size(752, 36);
+            _fleetLabel.Anchor = AnchorStyles.Top |
+                AnchorStyles.Left | AnchorStyles.Right;
+            grpFleet.Controls.Add(_fleetLabel);
+            Controls.Add(grpFleet);
+
+            var grpQueues = new GroupBox();
+            grpQueues.Text = "Queues by lane";
+            grpQueues.Location = new Point(12, 104);
+            grpQueues.Size = new Size(776, 124);
+            grpQueues.Anchor = AnchorStyles.Top |
+                AnchorStyles.Left | AnchorStyles.Right;
+            _lanes = NewGrid(grpQueues, 12, 20, 752, 92);
+            _lanes.Columns.Add("Lane", 150);
+            _lanes.Columns.Add("Running", 110);
+            _lanes.Columns.Add("Waiting", 110);
+            _lanes.Columns.Add("State", 140);
+            Controls.Add(grpQueues);
+
+            var grpJobs = new GroupBox();
+            grpJobs.Text = "Jobs";
+            grpJobs.Location = new Point(12, 236);
+            grpJobs.Size = new Size(776, 204);
+            grpJobs.Anchor = AnchorStyles.Top |
+                AnchorStyles.Left | AnchorStyles.Right;
+            var lblRun = new Label();
+            lblRun.Text = "Running";
+            lblRun.Location = new Point(12, 18);
+            lblRun.AutoSize = true;
+            grpJobs.Controls.Add(lblRun);
+            _runningJobs = NewGrid(grpJobs, 12, 38, 752, 68);
+            _runningJobs.Columns.Add("Job", 300);
+            _runningJobs.Columns.Add("Program", 170);
+            _runningJobs.Columns.Add("Lane", 100);
+            _runningJobs.Columns.Add("Run", 130);
+            var lblWait = new Label();
+            lblWait.Text = "Waiting";
+            lblWait.Location = new Point(12, 114);
+            lblWait.AutoSize = true;
+            grpJobs.Controls.Add(lblWait);
+            _waitingJobs = NewGrid(grpJobs, 12, 134, 752, 58);
+            _waitingJobs.Columns.Add("Job", 300);
+            _waitingJobs.Columns.Add("Program", 170);
+            _waitingJobs.Columns.Add("Lane", 100);
+            _waitingJobs.Columns.Add("Held", 100);
+            Controls.Add(grpJobs);
+
+            var grpMachine = new GroupBox();
+            grpMachine.Text = "This machine";
+            grpMachine.Location = new Point(12, 448);
+            grpMachine.Size = new Size(776, 118);
+            grpMachine.Anchor = AnchorStyles.Top |
+                AnchorStyles.Left | AnchorStyles.Right;
+            _machineLabel = new Label();
+            _machineLabel.Location = new Point(12, 18);
+            _machineLabel.Size = new Size(752, 92);
+            _machineLabel.Anchor = AnchorStyles.Top |
+                AnchorStyles.Left | AnchorStyles.Right;
+            grpMachine.Controls.Add(_machineLabel);
+            Controls.Add(grpMachine);
+
+            var grpUpdates = new GroupBox();
+            grpUpdates.Text = "Updates";
+            grpUpdates.Location = new Point(12, 574);
+            grpUpdates.Size = new Size(776, 78);
+            grpUpdates.Anchor = AnchorStyles.Top |
+                AnchorStyles.Left | AnchorStyles.Right;
+            _updateLabel = new Label();
+            _updateLabel.Location = new Point(12, 16);
+            _updateLabel.Size = new Size(536, 52);
+            grpUpdates.Controls.Add(_updateLabel);
+            _checkNow = new Button();
+            _checkNow.Text = "Check now";
+            _checkNow.Location = new Point(556, 20);
+            _checkNow.Size = new Size(92, 26);
+            _checkNow.Click += delegate
+            {
+                _app.RequestUpdateCheck();
+                RefreshDynamic();
+            };
+            grpUpdates.Controls.Add(_checkNow);
+            _updateNow = new Button();
+            _updateNow.Text = "Update now";
+            _updateNow.Location = new Point(656, 20);
+            _updateNow.Size = new Size(92, 26);
+            _updateNow.Click += delegate
+            {
+                _app.RequestApplyUpdate();
+                RefreshDynamic();
+            };
+            grpUpdates.Controls.Add(_updateNow);
+            Controls.Add(grpUpdates);
+
+            var hint = new Label();
+            hint.Text = "Refreshes itself every 5 seconds " +
+                "while open.";
+            hint.Location = new Point(12, 668);
+            hint.AutoSize = true;
+            Controls.Add(hint);
+            var refresh = new Button();
+            refresh.Text = "Refresh";
+            refresh.Location = new Point(688, 662);
+            refresh.Size = new Size(100, 28);
+            refresh.Anchor = AnchorStyles.Top |
+                AnchorStyles.Right;
+            refresh.Click += delegate
+            {
+                try
+                {
+                    _app.ReloadSignals();
+                    RefreshDynamic();
+                }
+                catch { }
+            };
+            Controls.Add(refresh);
+
+            _timer = new System.Windows.Forms.Timer();
+            _timer.Interval = 5000;
+            _timer.Tick += delegate
+            {
+                try
+                {
+                    _app.ReloadSignals();
+                    RefreshDynamic();
+                }
+                catch { }
+            };
+            _timer.Start();
+            RefreshDynamic();
+        }
+
+        private static ListView NewGrid(Control parent, int x,
+            int y, int w, int h)
+        {
+            var lv = new ListView();
+            lv.View = View.Details;
+            lv.FullRowSelect = true;
+            lv.GridLines = true;
+            lv.HeaderStyle = ColumnHeaderStyle.Nonclickable;
+            lv.Location = new Point(x, y);
+            lv.Size = new Size(w, h);
+            lv.Anchor = AnchorStyles.Top | AnchorStyles.Left |
+                AnchorStyles.Right;
+            parent.Controls.Add(lv);
+            return lv;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (_timer != null) _timer.Dispose();
+                if (_boldFont != null) _boldFont.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
+        private static int LaneRank(string lane)
+        {
+            switch (lane)
+            {
+                case "quick": return 0;
+                case "normal": return 1;
+                case "long": return 2;
+                case "gpu": return 3;
+                case "laptop-quick": return 4;
+                case "laptop-long": return 5;
+                default: return 100;
+            }
+        }
+
+        private static string StateWord(string state)
+        {
+            if (string.IsNullOrEmpty(state)) return state;
+            return char.ToUpperInvariant(state[0]) +
+                state.Substring(1);
+        }
+
+        // Re-reads the tray's current state into the
+        // controls. Silent by contract: the caller (timer,
+        // tick) must never see an exception from a refresh.
+        public void RefreshDynamic()
+        {
+            var fleet = _app.Fleet;
+            var conn = _app.Connection;
+            var settings = _app.Settings;
+
+            bool alert = _app.QueueLineAlert();
+            _queueLabel.Text = _app.QueueLineText();
+            _queueLabel.Font = alert ? _boldFont : Font;
+            _queueLabel.ForeColor = alert
+                ? Color.FromArgb(192, 120, 0)
+                : SystemColors.ControlText;
+
+            if (fleet == null)
+                _fleetLabel.Text = "Fleet status: not loaded yet";
+            else if (!fleet.HasData)
+                _fleetLabel.Text = "Fleet status: unavailable (" +
+                    fleet.Problem + ")";
+            else
+            {
+                string mode = fleet.Draining &&
+                    fleet.Mode != "draining"
+                    ? fleet.Mode + " (draining)" : fleet.Mode;
+                string line = "Mode: " + mode;
+                if (fleet.Reason != null)
+                    line += " - " + fleet.Reason;
+                if (fleet.FocusPrograms.Count > 0)
+                    line += " - focus: " + string.Join(", ",
+                        fleet.FocusPrograms.ToArray());
+                line += "\r\nSnapshot: " +
+                    (fleet.HasGeneratedAt
+                        ? "generated " +
+                            FleetStatus.FormatAge(
+                                fleet.AgeSeconds) + " ago" +
+                            (fleet.Stale ? " - STALE" : "")
+                        : "no timestamp");
+                _fleetLabel.Text = line;
+            }
+
+            FillLanes(fleet);
+            FillJobs(fleet);
+
+            int up = 0;
+            foreach (var r in _app.Runners) if (r.Running) up++;
+            var lines = new List<string>();
+            lines.Add("Tray build " + _app.BuildStamp +
+                " - runners " + up + " of " + _app.Runners.Count +
+                " running");
+            lines.Add("Connection: " + (conn == null
+                ? "unknown (no signal seen yet)"
+                : conn.Line() +
+                    (conn.HasSignal &&
+                     conn.SignalDetail().Length > 0
+                        ? " (" + conn.SignalDetail() + ")"
+                        : "")));
+            double hbAge;
+            lines.Add("Backchannel heartbeat: " +
+                (ConnectionStatus.HeartbeatAgeSeconds(
+                    settings.ConnectionHeartbeatPath, out hbAge)
+                    ? FleetStatus.FormatAge(hbAge) + " ago"
+                    : "not seen"));
+            lines.Add("Fleet snapshot: " +
+                (fleet != null && fleet.HasData
+                    ? fleet.HasGeneratedAt
+                        ? FleetStatus.FormatAge(fleet.AgeSeconds) +
+                            " old" + (fleet.Stale
+                                ? " (stale)" : "")
+                        : "no timestamp"
+                    : "unavailable"));
+            var enabled = new List<string>();
+            foreach (var lane in TraySettings.Lanes)
+                if (settings.LaneEnabled(lane)) enabled.Add(lane);
+            lines.Add("Lanes enabled: " +
+                (enabled.Count > 0
+                    ? string.Join(", ", enabled.ToArray())
+                    : "(none)"));
+            lines.Add("Runner root: " + settings.RunnerRoot);
+            _machineLabel.Text = string.Join("\r\n",
+                lines.ToArray());
+
+            string upd = "Current version: " + _app.BuildStamp +
+                "\r\nLast check: " + _app.LastUpdateCheckLine();
+            if (_app.AvailableUpdateVersion != null)
+                upd += "\r\nUpdate available: v" +
+                    _app.AvailableUpdateVersion;
+            if (_app.UpdateDownloadingState)
+                upd += "\r\nDownloading the update...";
+            else if (_app.UpdateBusyState)
+                upd += "\r\nUpdate check in progress...";
+            _updateLabel.Text = upd;
+            _checkNow.Enabled = !_app.UpdateBusyState;
+            _updateNow.Enabled =
+                _app.AvailableUpdateVersion != null &&
+                !_app.UpdateBusyState;
+        }
+
+        private void FillLanes(FleetStatus fleet)
+        {
+            _lanes.BeginUpdate();
+            try
+            {
+                _lanes.Items.Clear();
+                if (fleet == null || !fleet.HasData ||
+                    fleet.Lanes.Count == 0)
+                {
+                    _lanes.Items.Add(new ListViewItem(
+                        "lane detail not published by " +
+                        "this snapshot"));
+                    return;
+                }
+                var lanes = new List<FleetLane>(fleet.Lanes);
+                lanes.Sort(delegate(FleetLane a, FleetLane b)
+                {
+                    int ra = LaneRank(a.Lane);
+                    int rb = LaneRank(b.Lane);
+                    if (ra != rb) return ra - rb;
+                    return string.Compare(a.Lane, b.Lane,
+                        StringComparison.Ordinal);
+                });
+                foreach (var l in lanes)
+                {
+                    var item = new ListViewItem(l.Lane);
+                    item.SubItems.Add(l.Running + " / " + l.Cap);
+                    item.SubItems.Add(l.Waiting.ToString(
+                        CultureInfo.InvariantCulture));
+                    item.SubItems.Add(StateWord(l.State));
+                    _lanes.Items.Add(item);
+                }
+            }
+            finally { _lanes.EndUpdate(); }
+        }
+
+        private void FillJobs(FleetStatus fleet)
+        {
+            _runningJobs.BeginUpdate();
+            try
+            {
+                _runningJobs.Items.Clear();
+                if (fleet == null || !fleet.HasData)
+                    _runningJobs.Items.Add(new ListViewItem(
+                        "(no fleet data)"));
+                else if (fleet.Active.Count == 0)
+                    _runningJobs.Items.Add(new ListViewItem(
+                        "(none running)"));
+                else
+                    foreach (var j in fleet.Active)
+                    {
+                        var item = new ListViewItem(j.Key);
+                        item.SubItems.Add(j.Program);
+                        item.SubItems.Add(j.Lane);
+                        item.SubItems.Add(j.RunId ?? "");
+                        _runningJobs.Items.Add(item);
+                    }
+            }
+            finally { _runningJobs.EndUpdate(); }
+            _waitingJobs.BeginUpdate();
+            try
+            {
+                _waitingJobs.Items.Clear();
+                if (fleet == null || !fleet.HasData)
+                    _waitingJobs.Items.Add(new ListViewItem(
+                        "(no fleet data)"));
+                else if (fleet.Waiting.Count == 0)
+                    _waitingJobs.Items.Add(new ListViewItem(
+                        "(none waiting)"));
+                else
+                    foreach (var j in fleet.Waiting)
+                    {
+                        var item = new ListViewItem(j.Key);
+                        item.SubItems.Add(j.Program);
+                        item.SubItems.Add(j.Lane);
+                        item.SubItems.Add(!j.HasHeld ? "unknown"
+                            : j.Held ? "HELD" : "");
+                        _waitingJobs.Items.Add(item);
+                    }
+            }
+            finally { _waitingJobs.EndUpdate(); }
+        }
+    }
+
+    // Consoles viewer (0.4.3.0): the replacement for the old
+    // Show-runner-consoles item, which un-hid windows by
+    // title and so could never show this fleet's runners -
+    // they run with no window at all (red team, 2026-11-05).
+    // What an operator actually wants from a runner's
+    // terminal is its output, and the runner already writes
+    // that continuously to its _diag logs. This viewer tails
+    // those files (plus the tray's own log, plus the
+    // backchannel agent's log where its path is known), one
+    // tab per stream, in a monospaced read-only box. It is
+    // READ-ONLY in the strong sense: it opens files for
+    // reading only, appends nothing, executes nothing,
+    // attaches to nothing, and offers no input path of any
+    // kind - no stdin, no keystroke forwarding, no control
+    // path back to a runner. Selection and copy work (that
+    // is the point of a log view); typing does not exist.
+    internal sealed class ConsolesForm : Form
+    {
+        private sealed class Tail
+        {
+            public string Path;        // file being tailed
+            public string RunnerDir;   // runner tabs only:
+                                       // the newest _diag log
+                                       // is re-resolved each
+                                       // pass, so a runner
+                                       // restart moves the
+                                       // tab to the new log
+            public TextBox Box;
+            public long Pos;           // next byte to read
+            public bool Primed;
+        }
+
+        private readonly TrayApp _app;
+        private readonly TabControl _tabs;
+        private readonly CheckBox _follow;
+        private readonly List<Tail> _tails = new List<Tail>();
+        private readonly System.Windows.Forms.Timer _timer;
+
+        // One shared terminal font for every tab, held for
+        // the process's life like the tray's alert font.
+        private static readonly Font MonoFont =
+            new Font(FontFamily.GenericMonospace, 9f);
+
+        public ConsolesForm(TrayApp app)
+        {
+            _app = app;
+            Text = "Syncyard consoles (read-only)";
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(900, 600);
+            MinimumSize = new Size(480, 320);
+
+            var top = new Panel();
+            top.Dock = DockStyle.Top;
+            top.Height = 36;
+            _follow = new CheckBox();
+            _follow.Text = "Follow output";
+            _follow.Checked = true;
+            _follow.AutoSize = true;
+            _follow.Location = new Point(10, 9);
+            top.Controls.Add(_follow);
+            var refresh = new Button();
+            refresh.Text = "Refresh now";
+            refresh.Location = new Point(122, 5);
+            refresh.Size = new Size(96, 26);
+            refresh.Click += delegate { BuildTabs(); };
+            top.Controls.Add(refresh);
+            var hint = new Label();
+            hint.Text = "Read-only: these are the runners' " +
+                "log files. Nothing here can reach a runner.";
+            hint.AutoSize = true;
+            hint.Location = new Point(230, 10);
+            top.Controls.Add(hint);
+            Controls.Add(top);
+
+            _tabs = new TabControl();
+            _tabs.Dock = DockStyle.Fill;
+            Controls.Add(_tabs);
+            _tabs.BringToFront();
+
+            BuildTabs();
+            _timer = new System.Windows.Forms.Timer();
+            _timer.Interval = 2000;
+            _timer.Tick += delegate
+            {
+                try { TailAll(); }
+                catch { }
+            };
+            _timer.Start();
+        }
+
+        protected override void OnFormClosed(
+            FormClosedEventArgs e)
+        {
+            if (_timer != null)
+            {
+                _timer.Stop();
+                _timer.Dispose();
+            }
+            base.OnFormClosed(e);
+        }
+
+        private void BuildTabs()
+        {
+            _tails.Clear();
+            var pages = new List<TabPage>();
+            foreach (TabPage p in _tabs.TabPages) pages.Add(p);
+            _tabs.TabPages.Clear();
+            foreach (var p in pages) p.Dispose();
+
+            foreach (var r in _app.Runners)
+            {
+                var tail = new Tail();
+                tail.RunnerDir = r.Dir;
+                AddTab("lane-" + r.Lane, tail);
+            }
+            var trayTail = new Tail();
+            trayTail.Path = _app.TrayLogPath;
+            AddTab("tray", trayTail);
+            string agent = _app.AgentLogPath();
+            if (agent != null)
+            {
+                var agentTail = new Tail();
+                agentTail.Path = agent;
+                AddTab("backchannel agent", agentTail);
+            }
+            TailAll();
+        }
+
+        private void AddTab(string title, Tail tail)
+        {
+            var page = new TabPage(title);
+            var box = new TextBox();
+            box.Multiline = true;
+            box.ReadOnly = true;
+            box.ScrollBars = ScrollBars.Both;
+            box.WordWrap = false;
+            box.HideSelection = false;
+            box.Dock = DockStyle.Fill;
+            box.Font = MonoFont;
+            page.Controls.Add(box);
+            tail.Box = box;
+            _tabs.TabPages.Add(page);
+            _tails.Add(tail);
+        }
+
+        private void TailAll()
+        {
+            foreach (var t in _tails) TailOne(t);
+        }
+
+        // One append-only read pass over one stream: prime
+        // with the last 64 KB on first sight (or when the
+        // file changes), then append only the bytes written
+        // since the last pass. A file that shrinks (log
+        // rotation) re-primes. A pass never writes.
+        private void TailOne(Tail t)
+        {
+            string path = t.RunnerDir != null
+                ? TrayApp.NewestDiagLog(t.RunnerDir)
+                : t.Path;
+            if (path == null || !File.Exists(path))
+            {
+                if (t.Box.TextLength == 0)
+                    t.Box.Text =
+                        "(no log file for this stream yet)";
+                t.Path = path;
+                t.Pos = 0;
+                t.Primed = false;
+                return;
+            }
+            // A live selection is the operator copying text
+            // out: leave the box (and the position) alone
+            // this pass and catch up when it clears.
+            if (t.Primed && path == t.Path &&
+                t.Box.SelectionLength > 0) return;
+            bool prime = !t.Primed || path != t.Path;
+            using (var fs = new FileStream(path, FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete))
+            {
+                long len = fs.Length;
+                if (len < t.Pos) prime = true;
+                if (prime)
+                {
+                    long start = len > 65536 ? len - 65536 : 0;
+                    fs.Seek(start, SeekOrigin.Begin);
+                    string text = ReadRest(fs);
+                    if (start > 0)
+                        text = "[... earlier output " +
+                            "omitted ...]\r\n" + text;
+                    t.Box.Text = text;
+                    t.Pos = len;
+                    t.Path = path;
+                    t.Primed = true;
+                }
+                else if (len > t.Pos)
+                {
+                    long want = len - t.Pos;
+                    string marker = "";
+                    if (want > 262144)
+                    {
+                        // Fell far behind (the window was
+                        // closed to a selection, or the
+                        // machine slept): jump to the newest
+                        // quarter megabyte and say so.
+                        fs.Seek(len - 262144,
+                            SeekOrigin.Begin);
+                        marker = "[... output skipped " +
+                            "...]\r\n";
+                    }
+                    else fs.Seek(t.Pos, SeekOrigin.Begin);
+                    string text = ReadRest(fs);
+                    t.Pos = len;
+                    Append(t, marker + text);
+                }
+            }
+            if (_follow.Checked && _tabs.SelectedTab != null &&
+                t.Box.Parent == _tabs.SelectedTab &&
+                t.Box.TextLength > 0)
+            {
+                t.Box.SelectionStart = t.Box.TextLength;
+                t.Box.ScrollToCaret();
+            }
+        }
+
+        private static string ReadRest(FileStream fs)
+        {
+            using (var sr = new StreamReader(fs,
+                System.Text.Encoding.UTF8, true, 4096, true))
+            {
+                return sr.ReadToEnd();
+            }
+        }
+
+        // Appends and keeps the box bounded: past roughly
+        // half a million characters the oldest lines are
+        // dropped at a line boundary (the file on disk
+        // keeps everything; the view is a window, not the
+        // record).
+        private static void Append(Tail t, string text)
+        {
+            if (text.Length == 0) return;
+            t.Box.AppendText(text);
+            if (t.Box.TextLength > 524288)
+            {
+                string all = t.Box.Text;
+                int cut = all.IndexOf('\n',
+                    all.Length - 393216);
+                if (cut > 0)
+                    t.Box.Text = "[... earlier output " +
+                        "trimmed ...]\r\n" +
+                        all.Substring(cut + 1);
+            }
+        }
+    }
+
+    // The settings dialog (spec 014 Part B): the tray's settings
+    // window, opened only from the tray menu, one instance
     // at a time. Checkboxes and fields are saved settings (applied
     // by Save through TrayApp.ApplySettings; Cancel discards them);
     // the lane buttons are immediate acts through the tray's

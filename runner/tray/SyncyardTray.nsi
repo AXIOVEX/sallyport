@@ -18,13 +18,13 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 
 !define PRODUCT "Syncyard Tray"
-!define VERSION "0.1.0"
+!define VERSION "0.4.3.0"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\SyncyardTray"
 
-VIProductVersion "0.4.2.0"
+VIProductVersion "0.4.3.0"
 VIAddVersionKey "ProductName" "Syncyard Tray"
 VIAddVersionKey "FileDescription" "Syncyard runner tray supervisor (spec 007)"
-VIAddVersionKey "FileVersion" "0.4.2.0"
+VIAddVersionKey "FileVersion" "0.4.3.0"
 VIAddVersionKey "CompanyName" "AXIOVEX"
 
 !insertmacro MUI_PAGE_WELCOME
