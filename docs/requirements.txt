@@ -1,0 +1,4 @@
+# Docs build dependency (spec 017 FR-006) - the only one.
+# Shared by Read the Docs, CI, and local builds so all three
+# render the same site.
+mkdocs>=1.5,<2

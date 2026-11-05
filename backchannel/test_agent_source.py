@@ -56,6 +56,30 @@ def main():
               "(spec 009 FR-004 charter line intact)",
               "The agent NEVER writes gatekeeper queue records."
               in SRC),
+        check("envelope timeout: non-digit values fall back to "
+              "the default (the digit guard is intact)",
+              'case "$timeout_s" in *[!0-9]*) '
+              'timeout_s="$DEFAULT_TIMEOUT_S" ;; esac' in SRC),
+        check("envelope timeout: a 10+ digit value is clamped on "
+              "length before any arithmetic (bash -gt errors on "
+              "19+ digits and reads as not-clamped)",
+              'if [ "${#timeout_s}" -gt 9 ]; then' in SRC),
+        check("envelope timeout: 0 falls back to the default "
+              "(GNU timeout treats a 0 duration as no timeout, "
+              "so a 0 envelope must never reach it)",
+              'if [ "$timeout_s" -eq 0 ]; then' in SRC
+              and 'timeout_s=0 is not a bound' in SRC),
+        check("replay guard: a lost guard file is re-seeded from "
+              "out.json before the execution gate compares ids "
+              "(FR-004(b) survives the guard file's loss)",
+              'json_get "$REPO_DIR/$CHANNEL_REL/out.json" id'
+              in SRC
+              and "replay guard restored from out.json" in SRC),
+        check("channel default: SYNCBC_CHANNEL unset means the "
+              "original syncyard-dev channel (PR #66); a second "
+              "machine must name its own",
+              'CHANNEL_REL="channels/${SYNCBC_CHANNEL:-'
+              'syncyard-dev}"' in SRC),
     ]
     print("AGENT_SOURCE %s" % ("OK" if all(results) else "FAILURES"))
     return 0 if all(results) else 1

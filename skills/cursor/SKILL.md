@@ -13,7 +13,9 @@ Syncyard is the one door between agents and the operator's own machines.
 Programs do not dispatch GitHub Actions workflows directly, and they
 never poll runs on their own. They submit job requests to the
 **gatekeeper** (`gatekeeper/gk.py`, also reachable as `gh syncyard …`
-when the gh extension is installed), which dispatches within the
+when the gh extension is installed, or as the `syncyard` command
+when the standalone package is installed — `pipx install syncyard`),
+which dispatches within the
 shared API budget, assigns lanes, watches every run in one batched
 sweep, and records verdicts. If you are an agent with work for the
 operator's machines, work through the gatekeeper.
@@ -34,7 +36,7 @@ organization-wide.
 ## Commands
 
 ```bash
-GK="python3 gatekeeper/gk.py"     # or: gh syncyard
+GK="python3 gatekeeper/gk.py"     # or: gh syncyard   # or: syncyard (standalone)
 
 # Submit a Windows PowerShell job
 $GK submit --program <your-program> --workflow run.yml \
