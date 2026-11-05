@@ -1,0 +1,8 @@
+# sdist contents beyond the package sources (spec 017).
+# VERSION is load-bearing: the package version is read from it
+# dynamically at build time, including when building from the
+# sdist itself.
+include VERSION
+include LICENSE
+include README.md
+include CHANGELOG.md

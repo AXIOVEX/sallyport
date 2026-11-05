@@ -30,6 +30,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   publish) unchanged. The PUBLISHED line now carries the
   source. VERSION is deliberately not bumped (the spec
   013 stack owns 0.4.0).
+- Spec 017: standalone distribution. Syncyard now builds as
+  a standalone Python package alongside the gh extension:
+  a root `pyproject.toml` defines the single distribution
+  `syncyard`, its version read dynamically from the repo
+  VERSION file (no packaging edit on a version bump), zero
+  runtime dependencies, and a `syncyard` console command
+  that is a direct entry point to the gatekeeper's own
+  `main()` — no re-implemented verbs. The package-dir
+  mapping installs the literal `gatekeeper/` and
+  `backchannel/` files as the `syncyard` and
+  `syncyard.backchannel` namespace packages, so the
+  packaged code is the checkout code byte-for-byte (the new
+  packaging battery compares them, installs the wheel into
+  a fresh venv offline, and smokes the console command and
+  the config load). A tag-triggered release workflow
+  builds, `twine check`s, smoke-installs, and publishes to
+  PyPI via OIDC trusted publishing — no stored tokens; a
+  manual dry run does everything except publish. The first
+  publish waits on the owner's one-time trusted-publisher
+  registration on pypi.org (the name `syncyard` was checked
+  available, 2026-11-02). Documentation gains a MkDocs
+  site (stock theme, strict build wired into CI) and a
+  `.readthedocs.yaml`, ready for the owner's Read the Docs
+  import; the site excludes the unsent pitch brief and
+  labels spec-stage features as specified, not shipped.
+  The skills pack and this repo's SKILL.md now name the
+  standalone route beside the checkout and `gh syncyard`
+  routes wherever a command form is given. VERSION is
+  deliberately not bumped in this change (the release
+  mechanics ride the next feature version).
 - Backchannel, one channel per machine: the agent's channel is now selected by the SYNCBC_CHANNEL environment variable (agent.sh) and the client's by --channel or SYNCBC_CHANNEL (bc.py), defaulting to the original syncyard-dev channel so TRISTEN-DESKTOP's install is unchanged. A second host (TRISTEN-LAPTOP, channels/syncyard-laptop) can now run its own agent against the same private backchannel repo without sharing cmd/out/heartbeat state. Install procedure for additional machines: backchannel/INSTALL.md (deploy key per machine, systemd user unit with the channel set, four-step verification from records).
 - Spec 023 (fleet tray convention): one shared surface for every project tray in the fleet (Syncyard, EdgeLab, RealLoom) — tooltip composed short under a 63-character budget with parts dropped whole and never chopped, one status vocabulary (up/down; linked / link stale / unlinked; N waiting), one menu order ending in an always-enabled Exit, Start/Stop as the only verbs for supervised things (Enable/Disable reserved for supervisor switches), greyed items meaning "unavailable in the current state" with the reason visible, status always from direct observation, and exit finality via a stopped-by-user marker every relauncher must honor. The spec carries a source-read conformance checklist for all three trays; the gaps it names (Syncyard tray watchdog ignoring a user exit, EdgeLab tooltip chop and missing Start item, RealLoom unbounded tooltip and unlogged quit, per-item greying gaps) are findings for each tray's own follow-on work, not changes in this spec.
 ### Fixed
