@@ -67,6 +67,16 @@ bound is 300 s; a 2-minute publish cadence plus the agent's
 Publishing goes through the GitHub contents API, the same
 channel bc.py uses: one GET for the current sha plus one PUT
 per cycle.
+
+Multi-channel (spec 024): --path is repeatable; one snapshot
+is built once and published byte-identically to every
+configured path, one per machine channel
+(channels/<channel>/fleet-status.json), so every host's tray
+can read its fleet panel from its own channel copy. With no
+--path the historical single default is published. The API
+base can be overridden with the FLEET_STATUS_API_BASE
+environment variable (a GitHub Enterprise base, or a local
+stand-in for install tests); the default is unchanged.
 """
 
 import argparse
@@ -83,6 +93,10 @@ from datetime import datetime, timezone
 DEFAULT_REPO = "tbitcs/syncyard-backchannel"
 DEFAULT_PATH = "channels/syncyard-dev/fleet-status.json"
 API_BASE = "https://api.github.com"
+
+
+def _api_base():
+    return os.environ.get("FLEET_STATUS_API_BASE") or API_BASE
 
 
 def now_iso():
@@ -255,7 +269,7 @@ class ContentsAPI:
 
     def _request(self, method, path, payload=None):
         url = "%s/repos/%s/contents/%s" % (
-            API_BASE, self.repo, urllib.parse.quote(path))
+            _api_base(), self.repo, urllib.parse.quote(path))
         data = None
         headers = {"Accept": "application/vnd.github+json"}
         if self.token:
@@ -282,7 +296,7 @@ class ContentsAPI:
         endpoint (which does not itself consume budget).
         Returns None when the check itself fails — a failed
         preflight must not block publishing."""
-        url = API_BASE + "/rate_limit"
+        url = _api_base() + "/rate_limit"
         headers = {"Accept": "application/vnd.github+json"}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
@@ -317,13 +331,17 @@ class BudgetSkip(Exception):
         self.remaining = remaining
 
 
-def publish(gk_dir, repo=DEFAULT_REPO, path=DEFAULT_PATH, api=None):
-    """Build the snapshot and put it at path in repo. Returns
-    the snapshot dict. Retries once on a sha conflict: the
-    blob sha is this file's alone, so a 409/422 means another
-    publisher run (an operator's manual run, an install's
-    gate publish) landed between our GET and PUT. Any other
-    failure propagates — a publish that did not land is never
+def publish(gk_dir, repo=DEFAULT_REPO, path=DEFAULT_PATH, api=None,
+            paths=None):
+    """Build the snapshot once and put it at every target path
+    in repo (a single path, or one per machine channel when
+    paths is given — the bodies are byte-identical, same
+    generated_at). Returns the snapshot dict. Each path
+    retries once on a sha conflict: the blob sha is that
+    file's alone, so a 409/422 means another publisher run
+    (an operator's manual run, an install's gate publish)
+    landed between our GET and PUT. Any other failure
+    propagates — a publish that did not land is never
     reported as one that did."""
     api = api or ContentsAPI(repo=repo)
     remaining = api.core_remaining()
@@ -331,18 +349,23 @@ def publish(gk_dir, repo=DEFAULT_REPO, path=DEFAULT_PATH, api=None):
         raise BudgetSkip(remaining)
     snap = build_snapshot(gk_dir)
     body = (json.dumps(snap, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    for attempt in (1, 2):
-        sha = api.get_sha(path)
-        try:
-            api.put_file(path, body, "fleet-status: %s mode=%s waiting=%d"
-                         % (snap["generated_at"], snap["mode"],
-                            len(snap["waiting"])), sha=sha)
-            return snap
-        except urllib.error.HTTPError as exc:
-            if exc.code in (409, 422) and attempt == 1:
-                continue
-            raise
-    raise RuntimeError("publish retry loop exited without a result")
+    message = ("fleet-status: %s mode=%s waiting=%d"
+               % (snap["generated_at"], snap["mode"],
+                  len(snap["waiting"])))
+    for target in (list(paths) if paths else [path]):
+        for attempt in (1, 2):
+            sha = api.get_sha(target)
+            try:
+                api.put_file(target, body, message, sha=sha)
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code in (409, 422) and attempt == 1:
+                    continue
+                raise
+        else:
+            raise RuntimeError(
+                "publish retry loop exited without a result")
+    return snap
 
 
 STATE_NAME = ".fleet-status-publisher.json"
@@ -401,10 +424,14 @@ def main(argv=None):
         os.path.abspath(__file__)),
         help="gatekeeper state directory (default: beside this file)")
     ap.add_argument("--repo", default=DEFAULT_REPO)
-    ap.add_argument("--path", default=DEFAULT_PATH)
+    ap.add_argument("--path", action="append", default=None,
+                    help="contents path to publish to; repeatable, "
+                         "one per machine channel (default: %s)"
+                         % DEFAULT_PATH)
     ap.add_argument("--print-only", action="store_true",
                     help="print the snapshot; publish nothing")
     args = ap.parse_args(argv)
+    paths = args.path or [DEFAULT_PATH]
     if args.print_only:
         print(json.dumps(build_snapshot(args.gk_dir), indent=2,
                          sort_keys=True))
@@ -415,7 +442,7 @@ def main(argv=None):
         return 0
     try:
         try:
-            snap = publish(args.gk_dir, repo=args.repo, path=args.path)
+            snap = publish(args.gk_dir, repo=args.repo, paths=paths)
         except BudgetSkip as skip:
             print("SKIPPED_BUDGET core_remaining=%s (floor %d)"
                   % (skip.remaining, BUDGET_FLOOR))
@@ -436,6 +463,8 @@ def main(argv=None):
         line = ("PUBLISHED %s mode=%s waiting=%d"
                 % (snap["generated_at"], snap["mode"],
                    len(snap["waiting"])))
+        if len(paths) > 1:
+            line += " paths=%d" % len(paths)
         if recovered:
             line += " recovered_after=%d" % recovered
         print(line)

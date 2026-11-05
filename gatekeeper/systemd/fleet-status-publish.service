@@ -1,0 +1,9 @@
+[Unit]
+Description=Syncyard fleet-status publisher (spec 014 FR-009)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=@ETC_DIR@/env
+ExecStart=/usr/bin/python3 @ETC_DIR@/fleet_status.py --gk-dir @GK_DIR@@PATH_ARGS@

@@ -258,5 +258,51 @@ class Publish(unittest.TestCase):
         self.assertEqual(api.puts, [])
 
 
+class MultiPathPublish(unittest.TestCase):
+    """Spec 024 FR-007: one snapshot, byte-identical bodies at
+    every configured channel path."""
+
+    def test_publish_multiple_paths_identical_bodies(self):
+        d = tempfile.mkdtemp()
+        os.mkdir(os.path.join(d, "queue"))
+        api = FakeAPI()
+        paths = ["channels/syncyard-dev/fleet-status.json",
+                 "channels/syncyard-laptop/fleet-status.json"]
+        snap = fleet_status.publish(d, api=api, paths=paths)
+        self.assertEqual([p[0] for p in api.puts], paths)
+        bodies = [p[1] for p in api.puts]
+        self.assertEqual(bodies[0], bodies[1])
+        self.assertEqual(json.loads(bodies[0].decode("utf-8")), snap)
+
+    def test_publish_paths_still_retries_per_path(self):
+        import urllib.error
+        d = tempfile.mkdtemp()
+        os.mkdir(os.path.join(d, "queue"))
+        conflict = urllib.error.HTTPError(
+            "https://api.github.com", 422, "conflict", None, None)
+        api = FakeAPI(fail_first_put_with=conflict)
+        fleet_status.publish(d, api=api, paths=["a/f.json", "b/f.json"])
+        # First path: conflict + retry = 2 puts; second path: 1.
+        self.assertEqual(len(api.puts), 3)
+
+
+class ApiBase(unittest.TestCase):
+    """Spec 024: FLEET_STATUS_API_BASE overrides the API base;
+    unset it is exactly the historical default."""
+
+    def test_api_base_default(self):
+        import unittest.mock
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(fleet_status._api_base(),
+                             "https://api.github.com")
+
+    def test_api_base_override(self):
+        import unittest.mock
+        env = {"FLEET_STATUS_API_BASE": "http://127.0.0.1:9/stub"}
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(fleet_status._api_base(),
+                             "http://127.0.0.1:9/stub")
+
+
 if __name__ == "__main__":
     unittest.main()

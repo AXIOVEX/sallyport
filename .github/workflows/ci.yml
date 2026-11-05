@@ -32,6 +32,7 @@ jobs:
           python3 gatekeeper/test_spec015.py
           python3 gatekeeper/test_spec016.py
           python3 gatekeeper/test_fleet_status.py
+          python3 gatekeeper/test_install_publisher.py
           python3 gatekeeper/test_dispatch_isolation.py
           python3 gatekeeper/test_per_host_cwd.py
           python3 gatekeeper/test_profile_suggest.py
