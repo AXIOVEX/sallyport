@@ -28,8 +28,9 @@ Validation (load time, all named errors):
   - reboot grace (spec 011 FR-015) a positive number
   - checkpoint contract (spec 013 FR-007): exit code an integer
     in 1..255, marker a valid marker token, env var a valid
-    name, holds_dir a mapping of declared workflows to
-    non-empty venue directories
+    name, holds_dir a mapping of declared workflows to either
+    a non-empty venue directory (valid on every host) or a
+    per-host mapping of host name to non-empty venue directory
   - drain (spec 011 FR-005/FR-007): the host drain window a
     positive number of seconds, per-lane overrides keyed by
     declared lanes with positive values, and the guard
@@ -91,12 +92,22 @@ DEFAULTS = {
     # exports that path to the job's script as the env var
     # named here. A job that polls the file stops at its next
     # checkpoint, prints the marker, and exits with exit_code.
+    # A holds_dir entry is either one venue directory valid on
+    # every host, or a per-host mapping {host: directory} —
+    # run.yml needs the mapping because the desktop's holds
+    # tree lives under its own Windows profile, a path the
+    # laptop's runner identity cannot create (field case
+    # 2026-11-05: every laptop run.yml job died in the door
+    # wrapper on 'Access to the path C:\Users\trist\...').
     "checkpoint": {
         "exit_code": 86,
         "marker": "CHECKPOINT_PAUSED",
         "env_var": "SYNCYARD_HOLD_FILE",
         "holds_dir": {
-            "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
+            "run.yml": {
+                "desktop": r"C:\Users\trist\Development\Syncyard\holds",
+                "laptop": r"D:\Development\Syncyard\holds",
+            },
             "wsl.yml": "/home/tpierson/.syncyard/holds",
         },
     },
@@ -455,10 +466,29 @@ def validate(cfg):
             raise ConfigError(
                 f"checkpoint.holds_dir: workflow {wname!r} is not "
                 f"in the top-level workflows list")
-        if not (isinstance(wdir, str) and wdir):
+        if isinstance(wdir, dict):
+            # Per-host mapping: {host: venue directory}. Host
+            # names are not required to be declared in this
+            # file — an overlay may declare hosts the defaults
+            # do not know, and an entry for an undeclared host
+            # is simply inert.
+            if not wdir:
+                raise ConfigError(
+                    f"checkpoint.holds_dir.{wname} per-host "
+                    f"mapping must not be empty")
+            for hname, hdir in wdir.items():
+                if not (isinstance(hname, str) and hname):
+                    raise ConfigError(
+                        f"checkpoint.holds_dir.{wname}: host "
+                        f"names must be non-empty strings")
+                if not (isinstance(hdir, str) and hdir):
+                    raise ConfigError(
+                        f"checkpoint.holds_dir.{wname}.{hname} "
+                        f"must be a non-empty venue directory path")
+        elif not (isinstance(wdir, str) and wdir):
             raise ConfigError(
                 f"checkpoint.holds_dir.{wname} must be a non-empty "
-                f"venue directory path")
+                f"venue directory path or a per-host mapping")
     lk = cfg.get("lock") or {}
     for lkey in ("default_ttl_min", "max_ttl_min"):
         lval = lk.get(lkey)

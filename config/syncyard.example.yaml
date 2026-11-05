@@ -80,13 +80,21 @@ reboot:
 # marker that is not a marker token, an invalid env var name,
 # or a holds_dir naming an undeclared workflow fails closed
 # at load. A workflow with no holds_dir entry gets no hold
-# file (gk hold refuses it by name).
+# file (gk hold refuses it by name). A holds_dir entry is
+# either one directory valid on every host, or a per-host
+# mapping {host: directory} resolved through the job's lane
+# host — run.yml needs the mapping because each Windows
+# machine's holds tree lives in its own profile/layout, and
+# one machine's path is not creatable by the other's runner
+# identity.
 checkpoint:
   exit_code: 86
   marker: CHECKPOINT_PAUSED
   env_var: SYNCYARD_HOLD_FILE
   holds_dir:
-    run.yml: "C:\\Users\\trist\\Development\\Syncyard\\holds"
+    run.yml:
+      desktop: "C:\\Users\\trist\\Development\\Syncyard\\holds"
+      laptop: "D:\\Development\\Syncyard\\holds"
     wsl.yml: /home/tpierson/.syncyard/holds
 
 # Host drain (spec 011 FR-005/FR-007). `gk drain --host <host>`

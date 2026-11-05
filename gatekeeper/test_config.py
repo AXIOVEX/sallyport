@@ -69,7 +69,9 @@ check("golden checkpoint contract (spec 013 FR-007)",
       and cfg["checkpoint"]["marker"] == "CHECKPOINT_PAUSED"
       and cfg["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE"
       and cfg["checkpoint"]["holds_dir"] == {
-          "run.yml": r"C:\Users\trist\Development\Syncyard\holds",
+          "run.yml": {
+              "desktop": r"C:\Users\trist\Development\Syncyard\holds",
+              "laptop": r"D:\Development\Syncyard\holds"},
           "wsl.yml": "/home/tpierson/.syncyard/holds"})
 check("golden drain (spec 011 FR-005/FR-007)",
       cfg["drain"]["window_s"] == 120
@@ -212,6 +214,15 @@ expect_error("reject checkpoint holds_dir for undeclared workflow",
              "checkpoint:\n  holds_dir:\n    teleport.yml: /tmp/holds\n")
 expect_error("reject empty checkpoint holds_dir value",
              "checkpoint:\n  holds_dir:\n    run.yml: ''\n")
+expect_error("reject checkpoint holds_dir per-host for undeclared workflow",
+             "checkpoint:\n  holds_dir:\n    teleport.yml:\n"
+             "      laptop: /tmp/holds\n")
+expect_error("reject empty checkpoint holds_dir per-host value",
+             "checkpoint:\n  holds_dir:\n    run.yml:\n"
+             "      laptop: ''\n")
+expect_error("reject non-string checkpoint holds_dir per-host value",
+             "checkpoint:\n  holds_dir:\n    run.yml:\n"
+             "      laptop: 5\n")
 expect_error("reject zero drain window",
              "drain:\n  window_s: 0\n")
 expect_error("reject negative drain window",
