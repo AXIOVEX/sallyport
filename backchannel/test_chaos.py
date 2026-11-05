@@ -36,6 +36,35 @@ channel repo and subjects it to the failure cases:
      cycle, the remote file lands in the working tree, the
      heartbeat reports sync ok, no rebase is left in progress,
      and an oversized envelope timeout is clamped agent-side
+ 14. push rejected (pre-receive hook), pull healthy: the
+     agent keeps beating locally, the REMOTE heartbeat freezes
+     at the last delivered beat (the honest staleness signal
+     consumers judge by), the rejection is logged, and when
+     the rejection clears the backlog delivers
+ 15. envelope timeout edges: 0 (GNU timeout treats a 0
+     duration as no timeout - an unbounded body would stall
+     the loop), negative, and a 29-digit value (bash -gt
+     errors on it and reads as not-clamped) all end up
+     bounded agent-side
+ 16. SSH transport failure (deploy-key route, dead port):
+     the agent stays alive and beats locally, the heartbeat
+     reports sync not-ok and the self-test reports the repo
+     unreachable - a dead transport is visible, not silent
+ 17. replay-guard loss: with .last_executed_id deleted and
+     the same cmd.json re-pushed, the guard is re-seeded
+     from out.json and the command is NOT replayed
+     (FR-004(b) survives the guard file's loss)
+ 18. kill during execution: the interrupted command is
+     re-run from the top after the restart (at-least-once
+     semantics, pinned deliberately), and its result lands
+ 19. STOP arriving mid-execution: the running command is
+     NOT interrupted (the spec gates new commands); the
+     next command is halted and the heartbeat reports
+     stopped
+ 20. channel isolation (SYNCBC_CHANNEL, PR #66): an agent
+     pointed at a second channel (syncyard-laptop) executes
+     there, heartbeats there, and leaves the default
+     channel's state untouched
 
 Everything lives in a temp dir; the agent is pointed at it via
 SYNCBC_BASE / SYNCBC_REPO_URL / SYNCBC_POLL_S=1. Stdlib only.
@@ -206,6 +235,21 @@ def main():
         hb = wait_for(lambda: rig.read_chan_json("heartbeat.json"),
                       60, "first heartbeat")
         check("start: heartbeat written", hb is not None)
+        # The startup beat is written BEFORE the startup
+        # self-test runs (0.2.2: the beat never waits on a git
+        # operation - the self-test's own ls-remote is one), so
+        # the first heartbeat on disk legitimately carries no
+        # self_test yet. Assert on a beat that carries a passing
+        # self-test, not on first appearance (the scenario-7
+        # lesson; a first-appearance read here flaked once in
+        # three full runs, 2026-11-04).
+        def passing_selftest_hb():
+            h = rig.read_chan_json("heartbeat.json") or {}
+            return h if (h.get("self_test") or {}).get("ok") is True \
+                else None
+
+        hb = wait_for(passing_selftest_hb, 60,
+                      "passing self-test heartbeat") or hb
         st = (hb or {}).get("self_test") or {}
         check("start: self-test present and ok", st.get("ok") is True,
               f"self_test={st}")
@@ -562,6 +606,309 @@ def main():
               and "clamped to SYNCBC_MAX_TIMEOUT_S=600"
               in rig.agent_log_text(),
               f"out={out}")
+
+        # 14: push rejected, pull healthy. A pre-receive hook
+        # on the bare remote refuses every push while pulls
+        # keep working - the GitHub-side shape of a revoked
+        # credential or a protected branch. The agent must
+        # keep cycling and beating locally; the remote
+        # heartbeat freezes at the last delivered beat, which
+        # is exactly the staleness consumers judge by; and
+        # once the rejection clears, the stacked local commits
+        # deliver in order.
+        hook = os.path.join(rig.remote, "hooks", "pre-receive")
+        with open(hook, "w") as fh:
+            fh.write("#!/bin/sh\nexit 1\n")
+        os.chmod(hook, 0o755)
+
+        def remote_hb_ts():
+            run(["git", "-C", rig.driver, "fetch", "-q", "origin"],
+                env=rig.env)
+            r = run(["git", "-C", rig.driver, "show",
+                     "origin/main:" + CHANNEL + "/heartbeat.json"],
+                    env=rig.env)
+            if r.returncode != 0:
+                return None
+            try:
+                return json.loads(r.stdout).get("ts")
+            except ValueError:
+                return None
+
+        frozen_ts = remote_hb_ts()
+        local_before = (rig.read_chan_json("heartbeat.json")
+                        or {}).get("ts")
+
+        def local_beat_after(prev):
+            ts = (rig.read_chan_json("heartbeat.json") or {}).get("ts")
+            return ts if ts and prev and ts > prev else None
+
+        adv1 = wait_for(lambda: local_beat_after(local_before), 45,
+                        "local beat under push rejection")
+        adv2 = wait_for(lambda: local_beat_after(adv1), 45,
+                        "second local beat under push rejection") \
+            if adv1 else None
+        check("pushfail: agent keeps beating locally while every "
+              "push is rejected", adv2 is not None)
+        check("pushfail: remote heartbeat frozen at the last "
+              "delivered beat (honest staleness for consumers)",
+              frozen_ts is not None and remote_hb_ts() == frozen_ts,
+              f"frozen={frozen_ts} now={remote_hb_ts()}")
+        check("pushfail: the rejection is logged",
+              "push failed" in rig.agent_log_text())
+        check("pushfail: agent process alive",
+              rig.proc.poll() is None)
+        os.unlink(hook)
+
+        def remote_advanced():
+            ts = remote_hb_ts()
+            return ts if ts and frozen_ts and ts > frozen_ts \
+                else None
+
+        caught = wait_for(remote_advanced, 60,
+                          "remote catch-up after hook removal")
+        check("pushfail: delivery resumes when the rejection "
+              "clears", caught is not None,
+              f"frozen={frozen_ts} now={remote_hb_ts()}")
+
+        # 15: envelope timeout edges. Restart with a 4s default
+        # so a fallen-back execution is quick to observe.
+        rig.kill_agent(sig=signal.SIGTERM)
+        time.sleep(1)
+        rig.agent_env["SYNCBC_TIMEOUT_S"] = "4"
+        rig.start_agent()
+        rig.push_cmd("chaos-t0", "sleep 30; echo ZERO_LATE",
+                     timeout_s=0)
+        out = wait_for(lambda: (rig.read_chan_json("out.json") or {}).get("id") == "chaos-t0"
+                       and rig.read_chan_json("out.json"), 45,
+                       "chaos-t0 out")
+        check("timeout0: a 0 envelope cannot disable the bound "
+              "(falls back to the default, killed at 124)",
+              out is not None and out.get("exit_code") == 124
+              and "ZERO_LATE" not in (out.get("stdout_tail") or "")
+              and "timeout_s=0 is not a bound"
+              in rig.agent_log_text(),
+              f"out={out}")
+        rig.push_cmd("chaos-tneg", "sleep 30; echo NEG_LATE",
+                     timeout_s=-5)
+        out = wait_for(lambda: (rig.read_chan_json("out.json") or {}).get("id") == "chaos-tneg"
+                       and rig.read_chan_json("out.json"), 45,
+                       "chaos-tneg out")
+        check("timeoutneg: a negative envelope falls back to "
+              "the default (killed at 124)",
+              out is not None and out.get("exit_code") == 124
+              and "NEG_LATE" not in (out.get("stdout_tail") or ""),
+              f"out={out}")
+        rig.push_cmd("chaos-thuge", "echo HUGE_OK",
+                     timeout_s=99999999999999999999999999999)
+        out = wait_for(lambda: (rig.read_chan_json("out.json") or {}).get("id") == "chaos-thuge"
+                       and rig.read_chan_json("out.json"), 45,
+                       "chaos-thuge out")
+        # The clamp assertion names this command's own value:
+        # the generic clamp line already sits in the log from
+        # scenario 13's 9999 case, so only the value-specific
+        # line proves THIS envelope was clamped.
+        check("timeoutbig: a 29-digit envelope is clamped on "
+              "length and the command still runs",
+              out is not None and out.get("exit_code") == 0
+              and "HUGE_OK" in (out.get("stdout_tail") or "")
+              and "timeout_s=99999999999999999999999999999 "
+              "clamped to SYNCBC_MAX_TIMEOUT_S=600"
+              in rig.agent_log_text(),
+              f"out={out}")
+
+        # 16: SSH transport failure - the deploy-key route a
+        # second machine uses (backchannel/INSTALL.md), pointed
+        # at a dead port. Connection refused is instant, so the
+        # cycles stay fast; what matters is the shape: the
+        # agent stays up, keeps beating locally, and both the
+        # sync state and the self-test SAY the transport is
+        # down instead of the failure going silent.
+        rig.kill_agent(sig=signal.SIGTERM)
+        time.sleep(1)
+        clone = os.path.join(rig.base, "repo")
+        run(["git", "-C", clone, "remote", "set-url", "origin",
+             "ssh://git@127.0.0.1:1/chan.git"], env=rig.env)
+        rig.agent_env["SYNCBC_TIMEOUT_S"] = "30"
+        rig.agent_env["SYNCBC_SELFTEST_EVERY"] = "1"
+        rig.start_agent()
+
+        def ssh_dead_visible():
+            hb = rig.read_chan_json("heartbeat.json") or {}
+            st = hb.get("self_test") or {}
+            checks = st.get("checks") or {}
+            if (hb.get("sync") or {}).get("ok") is False \
+                    and checks.get("repo_reachable") is False:
+                return hb
+            return None
+
+        hb16 = wait_for(ssh_dead_visible, 60,
+                        "sync/self-test failure visibility")
+        check("sshfail: heartbeat reports sync not-ok and the "
+              "self-test reports the repo unreachable",
+              hb16 is not None, f"hb={hb16}")
+        check("sshfail: agent process alive on a dead transport",
+              rig.proc.poll() is None)
+        ts16a = (rig.read_chan_json("heartbeat.json") or {}).get("ts")
+        ts16b = wait_for(lambda: local_beat_after(ts16a), 45,
+                         "local beat on a dead transport")
+        check("sshfail: local heartbeat keeps advancing",
+              ts16b is not None)
+        rig.kill_agent(sig=signal.SIGTERM)
+        time.sleep(1)
+        run(["git", "-C", clone, "remote", "set-url", "origin",
+             "file://" + rig.remote], env=rig.env)
+        rig.agent_env["SYNCBC_SELFTEST_EVERY"] = "15"
+
+        # 17: replay-guard loss (FR-004(b)). The guard file is
+        # local state outside the repo; lose it (a wiped base,
+        # a reinstall that kept the clone) and re-push the very
+        # cmd.json that already executed. The guard must be
+        # re-seeded from out.json and the command must not run
+        # a second time.
+        rig.start_agent()
+        rig.push_cmd("chaos-g1", "echo GUARD_ONE")
+        out = wait_for(lambda: (rig.read_chan_json("out.json") or {}).get("id") == "chaos-g1"
+                       and rig.read_chan_json("out.json"), 45,
+                       "chaos-g1 out")
+        check("guardloss: setup command executed",
+              out is not None and out.get("exit_code") == 0)
+        rig.kill_agent(sig=signal.SIGTERM)
+        time.sleep(1)
+        os.unlink(os.path.join(rig.base, ".last_executed_id"))
+        rig.start_agent()
+        rig.push_cmd("chaos-g1", "echo GUARD_ONE")
+        restored = wait_for(
+            lambda: "replay guard restored from out.json"
+            in rig.agent_log_text() or None, 30, "guard restore")
+        check("guardloss: guard re-seeded from out.json",
+              bool(restored))
+        time.sleep(8)
+        check("guardloss: the executed command is not replayed",
+              rig.agent_log_text().count("executing id=chaos-g1")
+              == 1)
+        rig.push_cmd("chaos-g2", "echo GUARD_TWO")
+        out = wait_for(lambda: (rig.read_chan_json("out.json") or {}).get("id") == "chaos-g2"
+                       and rig.read_chan_json("out.json"), 45,
+                       "chaos-g2 out")
+        check("guardloss: fresh commands still execute",
+              out is not None
+              and "GUARD_TWO" in (out.get("stdout_tail") or ""))
+
+        # 18: kill during execution - at-least-once, pinned on
+        # purpose. The replay guard is written only after an
+        # execution completes, so a command interrupted by the
+        # agent's death re-runs from the top after the restart;
+        # senders must write idempotent bodies. The counter
+        # file proves the double run; out.json proves the
+        # second run's result is the one that lands.
+        counter = os.path.join(rig.root, "chaos18-counter.txt")
+
+        def counter_runs():
+            try:
+                with open(counter) as fh:
+                    return fh.read().count("RUN")
+            except OSError:
+                return 0
+
+        rig.push_cmd("chaos-18",
+                     "echo RUN >> %s; sleep 8; echo EIGHTEEN_DONE"
+                     % counter, timeout_s=30)
+        began = wait_for(lambda: counter_runs() >= 1 or None, 45,
+                         "chaos-18 first run")
+        check("atleastonce: first run began", began is not None)
+        rig.kill_agent(signal.SIGKILL)
+        time.sleep(1)
+        rig.start_agent()
+        out = wait_for(lambda: (rig.read_chan_json("out.json") or {}).get("id") == "chaos-18"
+                       and rig.read_chan_json("out.json"), 90,
+                       "chaos-18 out")
+        check("atleastonce: the interrupted command re-runs "
+              "from the top and its result lands",
+              out is not None and out.get("exit_code") == 0
+              and "EIGHTEEN_DONE" in (out.get("stdout_tail") or "")
+              and counter_runs() == 2,
+              f"out={out} runs={counter_runs()}")
+
+        # 19: STOP arriving mid-execution. The spec's kill
+        # switch gates NEW commands (FR-004(c) acceptance);
+        # the running body is not interrupted - it finishes
+        # and reports honestly - and the next command is the
+        # one that halts.
+        rig.push_cmd("chaos-19", "sleep 10; echo STOP_SURVIVOR",
+                     timeout_s=30)
+        began = wait_for(
+            lambda: "executing id=chaos-19" in rig.agent_log_text()
+            or None, 45, "chaos-19 executing")
+        check("stopmid: command began", began is not None)
+        rig.push({CHANNEL + "/STOP": "chaos test\n"})
+        out = wait_for(lambda: (rig.read_chan_json("out.json") or {}).get("id") == "chaos-19"
+                       and rig.read_chan_json("out.json"), 60,
+                       "chaos-19 out")
+        check("stopmid: the running command is not interrupted",
+              out is not None and out.get("exit_code") == 0
+              and "STOP_SURVIVOR" in (out.get("stdout_tail") or ""),
+              f"out={out}")
+        rig.push_cmd("chaos-19b", "echo SHOULD_NOT_RUN")
+        stopped = wait_for(lambda: (rig.read_chan_json("heartbeat.json") or {}).get("stopped") is True,
+                           30, "stopped heartbeat (mid-execution STOP)")
+        time.sleep(3)
+        out = rig.read_chan_json("out.json") or {}
+        check("stopmid: the next command is halted while STOP "
+              "is present", bool(stopped)
+              and out.get("id") != "chaos-19b")
+        rig.push({CHANNEL + "/STOP": None})
+
+        # 20: channel isolation (PR #66). Restart the agent
+        # pointed at a second channel in the same repo - the
+        # TRISTEN-LAPTOP shape. It must execute and heartbeat
+        # on ITS channel only, and the default channel's
+        # recorded state must not move. (The replay guard is
+        # per-BASE in the rig; each real machine has its own
+        # base, and the probe id differs from the guard value,
+        # so the switch is exercised cleanly.)
+        rig.kill_agent(sig=signal.SIGTERM)
+        time.sleep(1)
+        rig.agent_env["SYNCBC_CHANNEL"] = "syncyard-laptop"
+        laptop_rel = "channels/syncyard-laptop"
+        dev_out_before = (rig.read_chan_json("out.json")
+                          or {}).get("id")
+        rig.start_agent()
+        doc = {"id": "chaos-laptop-1",
+               "body": "echo LAPTOP_CHANNEL_OK",
+               "sha256": hashlib.sha256(
+                   b"echo LAPTOP_CHANNEL_OK").hexdigest(),
+               "created_at": "2026-11-04T00:00:00Z"}
+        rig.push({laptop_rel + "/cmd.json":
+                  json.dumps(doc, indent=1)})
+
+        def laptop_json(name):
+            try:
+                with open(os.path.join(rig.base, "repo",
+                                       laptop_rel, name)) as fh:
+                    return json.load(fh)
+            except Exception:
+                return None
+
+        out = wait_for(
+            lambda: (laptop_json("out.json") or {}).get("id")
+            == "chaos-laptop-1" and laptop_json("out.json"),
+            45, "laptop channel out")
+        check("channel: a SYNCBC_CHANNEL agent executes on its "
+              "own channel",
+              out is not None
+              and "LAPTOP_CHANNEL_OK"
+              in (out.get("stdout_tail") or ""),
+              f"out={out}")
+        hb20 = laptop_json("heartbeat.json")
+        check("channel: the second channel carries its own "
+              "heartbeat", hb20 is not None
+              and bool(hb20.get("ts")))
+        out_dev = rig.read_chan_json("out.json") or {}
+        check("channel: the default channel is untouched by "
+              "the second agent",
+              out_dev.get("id") == dev_out_before,
+              f"dev out={out_dev.get('id')} before={dev_out_before}")
+        rig.agent_env.pop("SYNCBC_CHANNEL", None)
     finally:
         rig.cleanup()
 
