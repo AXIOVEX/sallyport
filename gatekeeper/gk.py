@@ -1681,10 +1681,26 @@ def hold_signal_path(job):
     when its workflow runs on no signal-capable venue
     (grab.yml). The path is passed to the job at dispatch as
     the `hold_file` workflow input and reaches the job's
-    environment as $SYNCYARD_HOLD_FILE (FR-007)."""
-    directory = CHECKPOINT_HOLDS_DIR.get(job.get("workflow"))
-    if not directory:
+    environment as $SYNCYARD_HOLD_FILE (FR-007).
+
+    A holds_dir entry is either one venue directory valid on
+    every host, or a per-host mapping resolved through the
+    job's lane host (LANE_HOST — the same derivation routing
+    uses). A per-host mapping that names no directory for the
+    job's host yields None: the job has no hold-signal venue
+    on that host, never another host's directory (a laptop
+    job handed the desktop's profile-tree path dies in the
+    door wrapper before its payload runs)."""
+    entry = CHECKPOINT_HOLDS_DIR.get(job.get("workflow"))
+    if not entry:
         return None
+    if isinstance(entry, dict):
+        host = LANE_HOST.get(job.get("lane"))
+        directory = entry.get(host) if host else None
+        if not directory:
+            return None
+    else:
+        directory = entry
     sep = "\\" if job.get("workflow") == "run.yml" else "/"
     return directory + sep + job["id"] + ".hold"
 
