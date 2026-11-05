@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Gatekeeper-emitted fleet snapshot + publisher v2 (spec
+  014 FR-008/FR-009, the spec 013 fleet deploy's step 2).
+  New `gk snapshot` command: the FR-008 snapshot as one
+  JSON object on stdout, derived by the gatekeeper's own
+  code paths — the FR-001-normalized pause record, the
+  FR-012 dispatch order the sweep itself uses, the sweep's
+  admission rule for the held marks (stop / pause / focus
+  with the maintenance exemption, plus host dispatch holds
+  with the FR-015 signal-job exemption), and the
+  host-state file for draining. One derivation, two
+  surfaces: `gk status` at the terminal, the tray panel
+  via the publisher. fleet_status.py becomes the
+  transporter: it runs the snapshot command
+  ($SYNCYARD_GK_SNAPSHOT_CMD, else the gk.py beside it)
+  under a bounded timeout, validates the JSON against the
+  contract, and publishes it verbatim with a top-level
+  `source: "gatekeeper"` label; on any failure it falls
+  back to the v1.1 state-file derivation, labeled
+  `source: "fallback"`, with all v1.1 behavior (budget
+  preflight, failure counters, lockfile, contents-API
+  publish) unchanged. The PUBLISHED line now carries the
+  source. VERSION is deliberately not bumped (the spec
+  013 stack owns 0.4.0).
 - Spec 017: standalone distribution. Syncyard now builds as
   a standalone Python package alongside the gh extension:
   a root `pyproject.toml` defines the single distribution
@@ -37,8 +60,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   routes wherever a command form is given. VERSION is
   deliberately not bumped in this change (the release
   mechanics ride the next feature version).
-
+- Backchannel, one channel per machine: the agent's channel is now selected by the SYNCBC_CHANNEL environment variable (agent.sh) and the client's by --channel or SYNCBC_CHANNEL (bc.py), defaulting to the original syncyard-dev channel so TRISTEN-DESKTOP's install is unchanged. A second host (TRISTEN-LAPTOP, channels/syncyard-laptop) can now run its own agent against the same private backchannel repo without sharing cmd/out/heartbeat state. Install procedure for additional machines: backchannel/INSTALL.md (deploy key per machine, systemd user unit with the channel set, four-step verification from records).
+- Spec 023 (fleet tray convention): one shared surface for every project tray in the fleet (Syncyard, EdgeLab, RealLoom) — tooltip composed short under a 63-character budget with parts dropped whole and never chopped, one status vocabulary (up/down; linked / link stale / unlinked; N waiting), one menu order ending in an always-enabled Exit, Start/Stop as the only verbs for supervised things (Enable/Disable reserved for supervisor switches), greyed items meaning "unavailable in the current state" with the reason visible, status always from direct observation, and exit finality via a stopped-by-user marker every relauncher must honor. The spec carries a source-read conformance checklist for all three trays; the gaps it names (Syncyard tray watchdog ignoring a user exit, EdgeLab tooltip chop and missing Start item, RealLoom unbounded tooltip and unlogged quit, per-item greying gaps) are findings for each tray's own follow-on work, not changes in this spec.
+### Fixed
+- Tray tooltip no longer reads as cut off: the old composition concatenated the full connection and fleet lines and chopped the result at the 63-character NotifyIcon limit mid-word. The tooltip is now composed short (runner count, the connection as one word, the waiting count, the stale flag) and a segment that would cross the limit is dropped whole; nothing is truncated. Tray build stamp moves to 0.4.1.0.
+- Tray menu header trimmed (owner ruling): the per-job "Next:" line and the connection signal-detail line are removed from the menu's grayed header, which is now the build line, the fleet summary, and the connection line. The signal detail remains in the Settings dialog.
+- Tray updater: the apply-update thread start is now wrapped in an explicit ThreadStart. The in-box .NET Framework csc (C# 5) rejects the bare anonymous method as ambiguous between ThreadStart and ParameterizedThreadStart (CS0121), which failed the r13 tray build on both fleet machines; the method-group start used by the update check was unaffected.
+- Per-host default cwd: the gatekeeper built its default
+  working directory by merging every host's cwd map into one
+  global dict, so the last host in the config set the default
+  for all of them. The day TRISTEN-LAPTOP enrolled as a
+  second Windows host, desktop run.yml jobs submitted without
+  --cwd inherited the laptop's directory and their payloads
+  never ran. default_cwd() now resolves per machine (the
+  lane's host, then its `via` hosts, then the built-in
+  table); --lane auto submits defer the resolution to the
+  routing pass. Battery: gatekeeper/test_per_host_cwd.py.
+- Dispatch isolation: a job whose script file is missing or
+  unreadable at dispatch time (classically staged in /tmp and
+  wiped by a VM replacement between submit and dispatch) no
+  longer kills the sweep. dispatch_one catches the read error,
+  returns the job to submitted with the error recorded as a
+  dispatch_failed_retryable ledger event, and the pass continues
+  to the next waiting job; a restaged script revives the job on
+  a later sweep with no operator surgery. Field case
+  2026-11-04: spec053-f0-build-repair-2026-11-04 (sweep exit 1,
+  record wedged in dispatching, repaired by hand). Battery:
+  gatekeeper/test_dispatch_isolation.py.
 ### Added
+- Spec 016 follow-on (2026-11-04): `gk profile suggest
+  [--host H] [--name P] [--out FILE]` drafts a lane profile
+  for one host from its recorded capability snapshot, with
+  the reasoning printed as YAML comments in the fragment.
+  Deterministic rules: quick and long always; normal only
+  when the snapshot measures cpu_cores >= 8 and
+  ram_total_mb >= 16384; gpu only when a GPU is actually
+  measured present (name or VRAM), with the largest VRAM
+  named; concurrency 1 everywhere, a starting draft an
+  operator merges by hand. Unknown fields justify nothing.
+  A missing or stale snapshot is refused (exit 2) with the
+  probe refresh named. The command never applies anything:
+  it writes only to an explicit --out path, refused when
+  the path exists or is the live config file. Note:
+  specs/016-adaptive-lanes/profile-suggest.md. Battery:
+  gatekeeper/test_profile_suggest.py.
+- Spec 021 (2026-11-04): tray self-update. The tray now
+  carries a build stamp (assembly version 0.4.0.0, shown as
+  a disabled header item in the menu and written to the
+  tray log at startup) and a "Check for updates" menu item:
+  on the owner's click it reads the `tray-update.json`
+  manifest published with the project's GitHub releases,
+  and when a newer build is published the item becomes
+  "Update to v<version>". Applying an update downloads the
+  exe, verifies its SHA-256 against the manifest before
+  anything is swapped (a mismatch deletes the download and
+  aborts), then hands off to a UI-free `--apply-update`
+  helper mode of the same exe, which waits for the old tray
+  to exit, renames the installed exe to `.bak`, renames the
+  verified download into place, and relaunches, with
+  rollback to the `.bak` if the swap fails. Checks happen
+  only on an explicit click; the tray never polls for
+  updates, and the spec 018 connection indicator is
+  unchanged. The runner root the tray supervises is now a
+  per-machine setting (`runnerRoot`, defaulting to the
+  original desktop layout) so the same build runs on a
+  second machine whose lanes live elsewhere.
+- Spec 016 (2026-11-02): adaptive lanes. Lanes now live in
+  named **profiles** (`lanes.profiles.<name>` in config, one
+  `lanes.active_profile`): a profile is a lane table, and a
+  lane may be defined from scratch with a host, runner label,
+  concurrency, watermarks, a resource class (`cpu`|`gpu`|
+  `any`), an expected-duration band, an optional workflow pin,
+  and an enabled flag — validation is fail-closed, and the
+  pre-016 flat `lanes:` shape now fails at load with the
+  migration named. Three profiles ship: `fleet-default`
+  (today's four lanes with today's numbers — the resolved
+  table and watermarks are unchanged), `single-host-light`,
+  and `gpu-farm`. `gk profile --list` / `gk profile --show
+  [name]` render them; switching is a config edit that takes
+  effect at the next sweep. **Auto routing**: `gk submit
+  --lane auto` (or a lane-less submit under the new
+  `lanes.auto_default`, default off) lets the sweep pick the
+  lane from the job's declared hints (new `--needs-cpu`,
+  `--needs-ram-mb`, `--needs-storage-mb`, `--needs-gpu
+  [VRAM_MB]`, `--venue` flags), the program's recorded
+  history (median actual duration + dominant resource class
+  of its last ten completed jobs), current queue load, and
+  the host's **capability snapshot** — scored by a
+  deterministic pure function whose full input snapshot is
+  written onto the job record and ledgered (`auto_routed`).
+  Auto never overrides an explicit lane, a lock (spec 015),
+  focus (spec 013), a host hold, or the budget guard; a hard
+  hint no lane can meet waits with `auto_no_fit` and the
+  unmet reasons on the record, never a silent downgrade.
+  Estimates are advisory: nothing is killed, cancelled, or
+  migrated for overrunning. Capability snapshots come from
+  `gk probe-host` — dispatched as a maintenance probe job
+  where the door has a transport (Windows, WSL2), or
+  `--ingest` of a report from the shipped per-platform probe
+  scripts (`gatekeeper/probes/`, Windows CIM + nvidia-smi,
+  Linux /proc, macOS sysctl + system_profiler; Apple-silicon
+  GPUs record as unified memory, never discrete) — stored in
+  hosts.json with a timestamp; a snapshot older than
+  `lanes.capability_max_age_min` (default 60) degrades auto
+  to band routing with the degradation ledgered, and unknown
+  fields are neutral, never zero. `gk status` renders the
+  active profile, a CAPABILITY section, and each auto job's
+  resolved lane + score or no-fit reasons. New scenario
+  battery `gatekeeper/test_spec016.py` (54 checks), wired
+  into CI. VERSION unchanged — spec 013 owns 0.4.0 on this
+  stack. Repo-side only: fleet deployment (including
+  converting the fleet config to the profiles shape) is a
+  separate, later act.
+- Spec 018: tray connection indicator. The tray icon gains a
+  second dimension beside runner health: a link mark in the
+  icon's corner (solid when connected, hollow amber when
+  stale, broken with the mark desaturated when disconnected)
+  judged only from signals already present on the host — the
+  backchannel agent's heartbeat file (its embedded `ts`; the
+  deployed agent's WSL path is the default, reached through
+  the `\\wsl.localhost` share) and, when a publisher exists,
+  the fleet snapshot's stamp — newest signal wins. Three
+  states from signal age with tray-settings thresholds
+  (`connectionStaleSeconds` 180, `connectionDownSeconds` 900,
+  the down bound mirroring the gatekeeper's host liveness
+  limit); no signal ever seen reads as disconnected on the
+  icon and "unknown" in words. The menu, tooltip, and the
+  settings dialog's new Connection section state the state
+  in words and name the exact signal set (until the spec 014
+  FR-009 publisher ships: "backchannel heartbeat only").
+  Every transition is logged to tray.log with its signal
+  age. Rendering stays render-on-change, now keyed on the
+  (runner, connection) pair; the runner slash geometry and
+  semantics are untouched, and the link mark is primitives
+  on the existing bitmap (no new handle churn). Display
+  only: no network probe, no signal-file writes, no gating
+  of supervision. VERSION is deliberately not bumped (the
+  spec 013 stack owns 0.4.0).
 - Spec 014: tray settings UI and dynamic fleet display. The
   tray gains a single-instance Settings dialog (opened from
   the tray menu — the only window it ever shows) managing the
@@ -85,6 +243,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   patterns. Spec 007.
 
 ### Added
+- Spec 011 Phases 2–3 (2026-11-02, Amendment 2 — the owner's
+  speed directive): the host drain and the shutdown guard.
+  `gk drain --host` signals a host's running
+  checkpoint-capable jobs through spec 013's hold machinery,
+  sets a per-host **drain hold** distinct from the FR-006
+  going-down hold (`gk host-resume` clears both), waits out
+  each lane's checkpoint window driving the sweep's own
+  harvest, and prints a per-job CLEAN / INTERRUPTING verdict
+  (exit 0/1; 2 = unknown host). New `drain` config section
+  (`window_s` 120, `per_lane_window_s`,
+  `guard_stale_after_s` 180), fail-closed validated and
+  mirrored in the example config. The guard
+  (`runner/guard/SyncyardGuard.cs` + installer + source
+  battery): a windowless tray sibling with no UI and no exit
+  command that pre-registers the OS shutdown block while
+  checkpoint-capable jobs run (discovered from the
+  running-job registry the run/wsl workflows now maintain),
+  and on a session-end signal writes the going-down record
+  first — verified write, the Phase 1 shape — raises hold
+  files locally, vetoes, drains, then releases the block and
+  re-issues the pending action (restart unless logoff). The
+  backchannel agent merges the guard's `going_down` and
+  `guard` files into the heartbeat payload (the ingest
+  contract's fastest channel; reader unchanged), the
+  runbook's message-set section documents both fields, and
+  a stale guard beat ledgers `guard_stale` and shows in
+  `gk status`. Enabling fix: the gatekeeper's own
+  `gk-hold-*`/`gk-unhold-*` signal jobs now flow under a
+  host hold, as `gk-reboot-*` already did. Batteries:
+  `gatekeeper/test_spec011.py`, `runner/guard/
+  test_guard_source.py`, `backchannel/test_agent_source.py`.
+  Repo-side only — T008 (production deploy) and T005's
+  owner oracle pass remain field steps. Spec 011.
+- Spec 015 (2026-11-02): lane priority lock. `gk lock
+  --lane <lane> --program <program> [--ttl-min N]
+  [--reason TEXT]` gives one program exclusive dispatch on
+  a lane; while the lock is ACTIVE only the holder's jobs
+  are dispatch-eligible there, and priority never trumps a
+  lock (a non-holder's human priority 200 waits; the
+  holder's auto priority 0 dispatches). Non-holder jobs are
+  not refused or reordered — they wait, watermarks
+  escalating. State lives in `LOCKS.json` beside
+  `PAUSED.json`, written only through the FR-013
+  verified-write path (a failed write leaves the prior
+  state byte-identical; no file = no locks = pre-015
+  behavior). One holder per lane: a second acquire is
+  refused (exit 3) naming holder, state, and expiry;
+  same-holder re-acquire renews the TTL and preserves
+  state. `gk unlock` releases by the holder, or by the
+  operator with `--force` (ledgered
+  `lock_released_override`, holder notified via the
+  outbox); `gk lock --suspend` / `--resume` pause and
+  restore enforcement without surrendering the claim (a
+  suspended lock still refuses new acquires). Every lock
+  expires on its TTL (new config `lock.default_ttl_min`
+  240, `lock.max_ttl_min` 1440), evaluated at dispatch
+  time and behaving exactly like a release (`lock_expired`
+  ledgered, holder notified), suspended locks included.
+  Maintenance jobs bypass locks as they bypass the pause,
+  each bypass ledgered `lock_bypassed`. Fleet pause/focus
+  never mutate lock state; host drains neither block nor
+  clear locks. `gk status` renders a LOCKS section in all
+  modes plus a `[lock-held by ...]` waiting mark;
+  `gk lock --list` prints it standalone. New scenario
+  battery `gatekeeper/test_spec015.py` (25 checks), wired
+  into CI. VERSION unchanged — spec 013 owns 0.4.0 on this
+  stack. Repo-side only: fleet deployment is a separate,
+  owner-gated act.
 - Spec 011 Amendment 1 (2026-10-31): owner ruling on boot
   autonomy. The FR-009 owner gate is satisfied by directive —
   Syncyard must start automatically on boot with **no
@@ -188,6 +414,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   137, cooperative timeout 124, TERM-ignoring body bounded),
   and a genuine-mismatch refusal case proving the security
   property survived the fix.
+
+## [0.4.0] - 2026-11-02
+### Added
+- Spec 013 — live priority and pause control for the
+  gatekeeper. **Focus mode** (`gk focus --except-key /
+  --except-program / --except-chat`, repeatable selectors):
+  pause everything except the named jobs; the pause record's
+  schema is a superset of the legacy shape, and a legacy
+  single-`except_key` record (the fleet's 2026-11-01 pause)
+  reads as a one-key focus with identical effect for the
+  standing fleet queue. **Live priorities**: a `priority`
+  field on every job record, settable at submit
+  (`--priority`) and changeable while the job waits
+  (`gk priority`; dispatched or finished jobs refuse, exit 3).
+  **Auto-optimization with human precedence** (FR-012):
+  waiting jobs without a human-set priority are ordered by a
+  deterministic optimizer (declared expectation, lane fit,
+  +1 per 10 minutes of aging, capped at 100); human values
+  are pinned, win ties against auto values, and values above
+  the cap outrank every auto job permanently. **Drain**
+  (`gk pause --drain`, `gk focus --drain`): executing work
+  finishes, nothing new starts outside the admitted set, and
+  the sweep settles the record itself. **Checkpoint holds**
+  (`gk hold`, `gk resume --job`): a per-job hold-signal file
+  whose path reaches the job as `$SYNCYARD_HOLD_FILE` (new
+  optional `hold_file` input on the run/wsl workflows); a job
+  that polls it, prints `CHECKPOINT_PAUSED`, and exits 86 is
+  harvested as the new state `held_at_checkpoint` — never
+  reported as a completion or a failure. The signal contract
+  is the file, not the writer: a host-local actor (the spec
+  011 host guard, when a shutdown is imminent) can create
+  the same per-job file directly with no gatekeeper
+  round-trip, and the harvest is identical either way. All
+  mutations ride
+  the FR-013 verified writes and are ledgered; `gk status`
+  shows the pipeline mode (RUNNING / PAUSED / FOCUSED /
+  DRAINING), the waiting set in effective dispatch order with
+  priorities and sources, and held-at-checkpoint jobs.
+  Battery: `gatekeeper/test_spec013.py` (wired into CI), plus
+  config, golden, and workflow-contract extensions. Not yet
+  deployed to the fleet gatekeeper; that follows owner review
+  of the spec 013 PR.
 
 ## [0.3.0] - 2026-10-31
 ### Added
