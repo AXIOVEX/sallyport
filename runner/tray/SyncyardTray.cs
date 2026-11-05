@@ -65,8 +65,8 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyCompany("Axiovex Systems, LLC")]
 [assembly: System.Reflection.AssemblyProduct("Syncyard Tray")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) Axiovex Systems, LLC")]
-[assembly: System.Reflection.AssemblyVersion("0.4.1.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.4.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.4.2.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.4.2.0")]
 
 namespace SyncyardTray
 {
@@ -1055,6 +1055,12 @@ namespace SyncyardTray
         private Icon _currentIcon;
         private int _iconState = -1;
         private int _iconConnState = -1;
+        // The one menu strip for the tray's whole lifetime:
+        // created once in the constructor, bound to the icon
+        // once, and never replaced or disposed while the tray
+        // lives; RebuildMenu rebuilds its items in place (see
+        // the note there for the disposed-strip crash this
+        // invariant exists to prevent).
         private ContextMenuStrip _menu;
         private bool _menuOpen;
         private bool _menuDirty;
@@ -1074,7 +1080,7 @@ namespace SyncyardTray
         // misjudge). All other fields are UI-thread state,
         // written by the posted completions of the two worker
         // threads below; the workers never touch the menu.
-        private const string BuildId = "0.4.1.0";
+        private const string BuildId = "0.4.2.0";
         private const string UpdateManifestUrl =
             "https://github.com/AXIOVEX/syncyard/releases/latest/download/tray-update.json";
         private string _updateVersion;     // newer build, if any
@@ -1138,6 +1144,17 @@ namespace SyncyardTray
             _icon.Text = "Syncyard runners";
             _icon.Visible = true;
             _icon.DoubleClick += delegate { RebuildMenu(); };
+
+            // The menu strip is created and bound ONCE, here;
+            // RebuildMenu only ever rebuilds its items.
+            _menu = new ContextMenuStrip();
+            _menu.Opened += delegate { _menuOpen = true; };
+            _menu.Closed += delegate
+            {
+                _menuOpen = false;
+                if (_menuDirty) { _menuDirty = false; RebuildMenu(); }
+            };
+            _icon.ContextMenuStrip = _menu;
 
             if (TraySettings.LastNote != null)
                 Log("settings: " + TraySettings.LastNote);
@@ -1827,19 +1844,31 @@ namespace SyncyardTray
 
         private void RebuildMenu()
         {
-            // Never replace the menu while the owner has it open:
+            // The strip itself is never replaced and never
+            // disposed; only its items are rebuilt, in place.
+            // The previous shape built a new strip per rebuild,
+            // assigned it to the icon, and disposed the old one -
+            // and the deferred rebuild inside the old strip's own
+            // Closed handler ran while WinForms' modal menu
+            // filter still held that strip as the active menu, so
+            // the next activation change reparented a disposed
+            // object and the tray died with an unhandled
+            // ObjectDisposedException ('ContextMenuStrip',
+            // TRISTEN-LAPTOP 2026-11-04). Items are the only
+            // things a rebuild may dispose, and only once they
+            // are detached from the strip (end of this method).
+            //
+            // Never rebuild while the owner has the menu open:
             // the 5 s supervision tick calls this every tick, and
-            // swapping + disposing the strip under an open menu is
-            // what dismissed it mid-use (owner report 2026-11-04).
-            // Defer; the Closed handler rebuilds once on close.
+            // mutating the items under an open menu would dismiss
+            // it mid-use (owner report 2026-11-04). Defer; the
+            // Closed handler rebuilds once on close.
             if (_menuOpen) { _menuDirty = true; return; }
-            var menu = new ContextMenuStrip();
-            menu.Opened += delegate { _menuOpen = true; };
-            menu.Closed += delegate
-            {
-                _menuOpen = false;
-                if (_menuDirty) { _menuDirty = false; RebuildMenu(); }
-            };
+            var menu = _menu;
+            var stale = new List<ToolStripItem>();
+            foreach (ToolStripItem item in menu.Items)
+                stale.Add(item);
+            menu.Items.Clear();
             var buildLine = new ToolStripMenuItem(
                 "Syncyard Tray v" + BuildId);
             buildLine.Enabled = false;
@@ -1928,10 +1957,9 @@ namespace SyncyardTray
                 Application.Exit();
             };
             menu.Items.Add(exit);
-            var oldMenu = _menu;
-            _menu = menu;
-            _icon.ContextMenuStrip = menu;
-            if (oldMenu != null) oldMenu.Dispose();
+            // The previous items, detached by the Clear() above
+            // and held by no strip: safe to dispose now.
+            foreach (var item in stale) item.Dispose();
 
             int iconState = AnyFaulted() || running == 0 ? 2
                           : running == _runners.Count ? 0 : 1;

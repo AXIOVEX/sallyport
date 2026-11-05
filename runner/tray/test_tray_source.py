@@ -34,6 +34,18 @@ manifest check, the hash verified before the swap is armed, and
 the helper mode running before the singleton mutex with no UI in
 its code path.
 
+The menu-lifetime section guards the 2026-11-04 laptop crash:
+RebuildMenu used to build a new ContextMenuStrip per rebuild,
+assign it to the NotifyIcon, and dispose the previous strip - and
+the deferred rebuild inside the old strip's own Closed handler
+disposed it while WinForms' modal menu filter still held it as
+the active menu, so the next activation change reparented a
+disposed object and the tray died with an unhandled
+ObjectDisposedException. The strip is now created once, bound
+once, and never disposed; only detached items are. CI cannot run
+WinForms, so the battery pins that shape at source level - the
+strongest drive the harness has.
+
 These are source-shape checks: they fail if the leak patterns, the
 missing exception guards, or a settings/fleet regression ever come
 back.
@@ -107,6 +119,8 @@ def main():
                      "// --- settings surface")
     helper = region("private static int ApplyUpdateHelper",
                     "private static void Main")
+    rebuild = region("private void RebuildMenu()",
+                     "private string TooltipText")
     updworker = region("private void ApplyUpdateWorker",
                        "private void EndUpdateBusy")
     written, read = settings_keys()
@@ -130,9 +144,17 @@ def main():
               "(Icon)borrowed.Clone();" in body),
         check("no bare FromHandle assignment remains",
               "_currentIcon = Icon.FromHandle(" not in SRC),
-        # The per-tick menu rebuild disposes the previous menu.
-        check("RebuildMenu disposes the previous menu",
-              "oldMenu.Dispose();" in SRC),
+        # The per-tick menu rebuild leaks nothing. This check
+        # replaces "RebuildMenu disposes the previous menu":
+        # disposing the strip itself turned out to be the
+        # 2026-11-04 crash (menu-lifetime section below), so
+        # the leak guard now rides on the rebuild capturing the
+        # items it replaces and clearing them off the one
+        # long-lived strip; their disposal once detached is
+        # pinned by the menu-lifetime checks.
+        check("RebuildMenu captures and clears replaced items",
+              "var stale = new List<ToolStripItem>();" in rebuild
+              and "menu.Items.Clear();" in rebuild),
         # Supervision ticks are guarded: log, never the modal dialog.
         check("OnTick guards TickCore",
               "try { TickCore(); }" in SRC
@@ -384,11 +406,11 @@ def main():
               and 'Log("tray alive")' in SRC),
 
         # ---- spec 021: build stamp and self-update ----------------
-        check("assembly version is the 0.4.1.0 build stamp",
-              'AssemblyVersion("0.4.1.0")' in SRC
-              and 'AssemblyFileVersion("0.4.1.0")' in SRC),
+        check("assembly version is the 0.4.2.0 build stamp",
+              'AssemblyVersion("0.4.2.0")' in SRC
+              and 'AssemblyFileVersion("0.4.2.0")' in SRC),
         check("BuildId constant carries the stamp",
-              'BuildId = "0.4.1.0"' in SRC),
+              'BuildId = "0.4.2.0"' in SRC),
         check("menu header shows the build stamp",
               '"Syncyard Tray v" + BuildId' in SRC),
         check("startup log carries the build stamp",
@@ -452,6 +474,36 @@ def main():
               SRC.find("_settings = TraySettings.Load();") >= 0
               and SRC.find("_settings = TraySettings.Load();")
               < SRC.find("_runners.Add")),
+        # ---- menu lifetime: the disposed-strip crash ------------
+        # The 2026-11-04 laptop crash (see the module docstring):
+        # the modal menu filter must never be left holding a
+        # strip this process disposed. The strip is created once,
+        # bound once, and never disposed; RebuildMenu rebuilds
+        # its items in place and disposes only detached items.
+        check("the menu strip is created exactly once",
+              SRC.count("new ContextMenuStrip()") == 1),
+        check("the icon is bound to the strip once, in the ctor",
+              SRC.count("_icon.ContextMenuStrip =") == 1
+              and "_icon.ContextMenuStrip = _menu;" in ctor),
+        check("the Opened/Closed wiring lives in the constructor",
+              "_menu.Opened +=" in ctor
+              and "_menu.Closed +=" in ctor
+              and ".Opened +=" not in rebuild
+              and ".Closed +=" not in rebuild),
+        check("RebuildMenu creates, swaps, and disposes no strip",
+              "new ContextMenuStrip()" not in rebuild
+              and "_icon.ContextMenuStrip" not in rebuild
+              and "oldMenu" not in rebuild
+              and not re.search(r"\b\w*[Mm]enu\w*\.Dispose\(\)",
+                                SRC)),
+        check("RebuildMenu rebuilds the items in place",
+              "var menu = _menu;" in rebuild
+              and "menu.Items.Clear();" in rebuild
+              and "foreach (var item in stale) item.Dispose();"
+              in rebuild),
+        check("the open-menu rebuild deferral survives",
+              "if (_menuOpen) { _menuDirty = true; return; }"
+              in rebuild),
     ]
     print("TRAY_SOURCE %s" % ("OK" if all(results) else "FAILURES"))
     return 0 if all(results) else 1
