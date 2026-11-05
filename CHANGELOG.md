@@ -30,6 +30,117 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   publish) unchanged. The PUBLISHED line now carries the
   source. VERSION is deliberately not bumped (the spec
   013 stack owns 0.4.0).
+- Backchannel, one channel per machine: the agent's channel is now selected by the SYNCBC_CHANNEL environment variable (agent.sh) and the client's by --channel or SYNCBC_CHANNEL (bc.py), defaulting to the original syncyard-dev channel so TRISTEN-DESKTOP's install is unchanged. A second host (TRISTEN-LAPTOP, channels/syncyard-laptop) can now run its own agent against the same private backchannel repo without sharing cmd/out/heartbeat state. Install procedure for additional machines: backchannel/INSTALL.md (deploy key per machine, systemd user unit with the channel set, four-step verification from records).
+### Fixed
+- Tray tooltip no longer reads as cut off: the old composition concatenated the full connection and fleet lines and chopped the result at the 63-character NotifyIcon limit mid-word. The tooltip is now composed short (runner count, the connection as one word, the waiting count, the stale flag) and a segment that would cross the limit is dropped whole; nothing is truncated. Tray build stamp moves to 0.4.1.0.
+- Tray menu header trimmed (owner ruling): the per-job "Next:" line and the connection signal-detail line are removed from the menu's grayed header, which is now the build line, the fleet summary, and the connection line. The signal detail remains in the Settings dialog.
+- Tray updater: the apply-update thread start is now wrapped in an explicit ThreadStart. The in-box .NET Framework csc (C# 5) rejects the bare anonymous method as ambiguous between ThreadStart and ParameterizedThreadStart (CS0121), which failed the r13 tray build on both fleet machines; the method-group start used by the update check was unaffected.
+- Per-host default cwd: the gatekeeper built its default
+  working directory by merging every host's cwd map into one
+  global dict, so the last host in the config set the default
+  for all of them. The day TRISTEN-LAPTOP enrolled as a
+  second Windows host, desktop run.yml jobs submitted without
+  --cwd inherited the laptop's directory and their payloads
+  never ran. default_cwd() now resolves per machine (the
+  lane's host, then its `via` hosts, then the built-in
+  table); --lane auto submits defer the resolution to the
+  routing pass. Battery: gatekeeper/test_per_host_cwd.py.
+- Dispatch isolation: a job whose script file is missing or
+  unreadable at dispatch time (classically staged in /tmp and
+  wiped by a VM replacement between submit and dispatch) no
+  longer kills the sweep. dispatch_one catches the read error,
+  returns the job to submitted with the error recorded as a
+  dispatch_failed_retryable ledger event, and the pass continues
+  to the next waiting job; a restaged script revives the job on
+  a later sweep with no operator surgery. Field case
+  2026-11-04: spec053-f0-build-repair-2026-11-04 (sweep exit 1,
+  record wedged in dispatching, repaired by hand). Battery:
+  gatekeeper/test_dispatch_isolation.py.
+### Added
+- Spec 016 follow-on (2026-11-04): `gk profile suggest
+  [--host H] [--name P] [--out FILE]` drafts a lane profile
+  for one host from its recorded capability snapshot, with
+  the reasoning printed as YAML comments in the fragment.
+  Deterministic rules: quick and long always; normal only
+  when the snapshot measures cpu_cores >= 8 and
+  ram_total_mb >= 16384; gpu only when a GPU is actually
+  measured present (name or VRAM), with the largest VRAM
+  named; concurrency 1 everywhere, a starting draft an
+  operator merges by hand. Unknown fields justify nothing.
+  A missing or stale snapshot is refused (exit 2) with the
+  probe refresh named. The command never applies anything:
+  it writes only to an explicit --out path, refused when
+  the path exists or is the live config file. Note:
+  specs/016-adaptive-lanes/profile-suggest.md. Battery:
+  gatekeeper/test_profile_suggest.py.
+- Spec 021 (2026-11-04): tray self-update. The tray now
+  carries a build stamp (assembly version 0.4.0.0, shown as
+  a disabled header item in the menu and written to the
+  tray log at startup) and a "Check for updates" menu item:
+  on the owner's click it reads the `tray-update.json`
+  manifest published with the project's GitHub releases,
+  and when a newer build is published the item becomes
+  "Update to v<version>". Applying an update downloads the
+  exe, verifies its SHA-256 against the manifest before
+  anything is swapped (a mismatch deletes the download and
+  aborts), then hands off to a UI-free `--apply-update`
+  helper mode of the same exe, which waits for the old tray
+  to exit, renames the installed exe to `.bak`, renames the
+  verified download into place, and relaunches, with
+  rollback to the `.bak` if the swap fails. Checks happen
+  only on an explicit click; the tray never polls for
+  updates, and the spec 018 connection indicator is
+  unchanged. The runner root the tray supervises is now a
+  per-machine setting (`runnerRoot`, defaulting to the
+  original desktop layout) so the same build runs on a
+  second machine whose lanes live elsewhere.
+- Spec 016 (2026-11-02): adaptive lanes. Lanes now live in
+  named **profiles** (`lanes.profiles.<name>` in config, one
+  `lanes.active_profile`): a profile is a lane table, and a
+  lane may be defined from scratch with a host, runner label,
+  concurrency, watermarks, a resource class (`cpu`|`gpu`|
+  `any`), an expected-duration band, an optional workflow pin,
+  and an enabled flag — validation is fail-closed, and the
+  pre-016 flat `lanes:` shape now fails at load with the
+  migration named. Three profiles ship: `fleet-default`
+  (today's four lanes with today's numbers — the resolved
+  table and watermarks are unchanged), `single-host-light`,
+  and `gpu-farm`. `gk profile --list` / `gk profile --show
+  [name]` render them; switching is a config edit that takes
+  effect at the next sweep. **Auto routing**: `gk submit
+  --lane auto` (or a lane-less submit under the new
+  `lanes.auto_default`, default off) lets the sweep pick the
+  lane from the job's declared hints (new `--needs-cpu`,
+  `--needs-ram-mb`, `--needs-storage-mb`, `--needs-gpu
+  [VRAM_MB]`, `--venue` flags), the program's recorded
+  history (median actual duration + dominant resource class
+  of its last ten completed jobs), current queue load, and
+  the host's **capability snapshot** — scored by a
+  deterministic pure function whose full input snapshot is
+  written onto the job record and ledgered (`auto_routed`).
+  Auto never overrides an explicit lane, a lock (spec 015),
+  focus (spec 013), a host hold, or the budget guard; a hard
+  hint no lane can meet waits with `auto_no_fit` and the
+  unmet reasons on the record, never a silent downgrade.
+  Estimates are advisory: nothing is killed, cancelled, or
+  migrated for overrunning. Capability snapshots come from
+  `gk probe-host` — dispatched as a maintenance probe job
+  where the door has a transport (Windows, WSL2), or
+  `--ingest` of a report from the shipped per-platform probe
+  scripts (`gatekeeper/probes/`, Windows CIM + nvidia-smi,
+  Linux /proc, macOS sysctl + system_profiler; Apple-silicon
+  GPUs record as unified memory, never discrete) — stored in
+  hosts.json with a timestamp; a snapshot older than
+  `lanes.capability_max_age_min` (default 60) degrades auto
+  to band routing with the degradation ledgered, and unknown
+  fields are neutral, never zero. `gk status` renders the
+  active profile, a CAPABILITY section, and each auto job's
+  resolved lane + score or no-fit reasons. New scenario
+  battery `gatekeeper/test_spec016.py` (54 checks), wired
+  into CI. VERSION unchanged — spec 013 owns 0.4.0 on this
+  stack. Repo-side only: fleet deployment (including
+  converting the fleet config to the profiles shape) is a
+  separate, later act.
 - Spec 018: tray connection indicator. The tray icon gains a
   second dimension beside runner health: a link mark in the
   icon's corner (solid when connected, hollow amber when

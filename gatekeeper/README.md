@@ -17,6 +17,12 @@ with a version bump and a changelog entry.
 ```text
 gatekeeper/
   gk.py               the CLI (Python 3, standard library only)
+  config.py           the configuration loader (spec 010/016)
+  probes/             host capability probe scripts (spec 016:
+                      probe-windows.ps1, probe-linux.sh,
+                      probe-darwin.sh — same bytes as the
+                      constants in gk.py, drift-pinned by
+                      test_spec016.py)
   queue/<job-id>.json one JSON per job (state of record per job)
   ledger.jsonl        append-only event log (submitted / adopted /
                       dispatched / state_change / watermark_breach /
@@ -53,8 +59,10 @@ watermark tables) live beside them, in one place, with comments.
 
 ```bash
 python3 gk.py submit --program NAME --workflow run.yml|wsl.yml|grab.yml \
-    --lane quick|normal|long|gpu --script PATH --cwd DIR \
-    [--expected-min N] --key UNIQUE-KEY
+    --lane quick|normal|long|gpu|auto --script PATH --cwd DIR \
+    [--expected-min N] [--needs-cpu N] [--needs-ram-mb N] \
+    [--needs-gpu [VRAM_MB]] [--venue auto|native|wsl|docker] \
+    --key UNIQUE-KEY
 python3 gk.py adopt  --run-id ID --program NAME --workflow WF \
     --lane LANE [--expected-min N] --key UNIQUE-KEY
 python3 gk.py sweep
@@ -70,6 +78,13 @@ python3 gk.py lock --lane LANE --program P [--ttl-min N] [--reason T]
                                # spec 015: acquire/renew a lane lock (--suspend/--resume, --list)
 python3 gk.py unlock --lane LANE [--program P] [--force]
                                # spec 015: release a lane lock (holder, or operator override)
+python3 gk.py profile --list|--show [NAME]
+                               # spec 016: render the lane profiles (switching = config edit)
+python3 gk.py profile suggest [--host H] [--name P] [--out FILE]
+                               # spec 016 follow-on: draft a lane profile for one host from its
+                               # capability snapshot, reasoning printed as comments; applies nothing
+python3 gk.py probe-host --host H [--ingest REPORT]
+                               # spec 016: record a host capability snapshot for auto routing
 python3 gk.py stop [--reason TEXT]     # hard halt: sweeps no-op until start
 python3 gk.py start                    # clear stop + pause: fully running
 python3 gk.py purge [--older-than-days N] [--ledger] [--yes]  # dry-run default
@@ -84,6 +99,26 @@ python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host re
   dispatched / watching) already carries the same `--key`, submit
   refuses and prints the existing job id (exit 3). This is the local
   half of the duplicate-dispatch pre-check.
+- **Lane profiles + auto routing (spec 016).** Lanes are defined
+  by the active profile in config (`lanes.profiles.<name>`, one
+  `lanes.active_profile`); `fleet-default` reproduces the pre-016
+  table exactly, and profiles may define lanes from scratch
+  (resource class, duration band, optional workflow pin). Submit
+  with `--lane auto` — plus optional hints `--needs-cpu N`,
+  `--needs-ram-mb N`, `--needs-storage-mb N`, `--needs-gpu
+  [VRAM_MB]`, `--venue auto|native|wsl|docker` — and the sweep
+  resolves the lane at dispatch time by a deterministic score
+  over hints, the program's recorded history, queue load, lock
+  and hold state, and the host capability snapshot; the full
+  evaluation is stored on the job record (`auto_routed`). A hard
+  hint nothing can meet waits as `auto_no_fit` with reasons —
+  never a silent downgrade — and a resolved job is never
+  re-resolved or moved. Capability snapshots are recorded by
+  `gk probe-host` (a maintenance probe job where the door has a
+  transport; `--ingest` of a report from `probes/` otherwise)
+  into `hosts.json`; snapshots older than
+  `lanes.capability_max_age_min` (default 60) degrade routing to
+  bands + load, ledgered as `auto_degraded`.
 - **adopt** registers an already-dispatched run for watching (no
   dispatch). It refuses if the key or the run id is already tracked by
   an active job.
