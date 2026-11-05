@@ -83,6 +83,8 @@ A scheduled `gk.py sweep` (every 5 minutes) dispatches within budget, watches al
 
 Prefer the GitHub CLI? Syncyard ships as an extension: `gh extension install AXIOVEX/gh-syncyard`, then `gh syncyard status` drives the same gatekeeper.
 
+Prefer a standalone install? Syncyard also ships as a Python package (spec 017): `pipx install syncyard` (or `pip install syncyard` in a venv), then the `syncyard` command drives the same gatekeeper — the packaged code is the checkout code, byte for byte, with zero runtime dependencies. An installed gatekeeper keeps its state beside the installed package and takes its fleet config from `SYNCYARD_CONFIG` or a `syncyard.yaml` beside the code; see the documentation's installation page for the details and the trade-offs.
+
 ### Windows host
 
 - **Prerequisites:** a Windows machine signed in as the user jobs should run as; PowerShell; the `gh` CLI signed in with write access to your (private) door repository.
@@ -169,7 +171,9 @@ Driving Syncyard from the GitHub CLI instead: `gh extension install AXIOVEX/gh-s
 | `config/` | The checked-in example configuration expressing the founding fleet |
 | `skills/` | The per-agent skill editions and their shared source |
 | `clients/` | Convenience shell clients for interactive one-offs (gatekeeper submission is the preferred route) |
-| `docs/` | The fleet standard and the migration/cutover plan |
+| `docs/` | The fleet standard, the migration/cutover plan, and the documentation site source (MkDocs; spec 017) |
+| `packaging/` | The standalone-distribution battery (spec 017): builds, byte-identity, and clean-install smokes |
+| `pyproject.toml` | The standalone package definition (spec 017): distribution `syncyard`, version from `VERSION` |
 | `specs/` | The numbered specifications every behavior traces to |
 | `assets/` | Logo |
 

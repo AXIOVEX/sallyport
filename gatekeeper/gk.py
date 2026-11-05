@@ -1980,6 +1980,22 @@ def dispatch_one(job, jobs):
     return False
 
 
+def _signal_hold_exempt(job):
+    """FR-015 route 2 exception: the gatekeeper's own signal
+    jobs (maintenance jobs keyed gk-reboot-*, gk-hold-* or
+    gk-unhold-*) are exempt from a host dispatch hold. The
+    hold exists to stop NEW work starting on a host that is
+    going down; a signal job is not new work, it IS the
+    going-down / drain mechanism — if the hold blocked it,
+    the maintenance route could never deliver its own
+    signal, and a drain could never deliver the checkpoint
+    holds it exists to raise. One predicate, shared by the
+    dispatch pass and the fleet snapshot's held marks."""
+    return bool(job.get("maintenance")) and str(
+        job.get("key") or "").startswith(
+            (REBOOT_KEY_PREFIX, "gk-hold-", "gk-unhold-"))
+
+
 # --- Adaptive lanes: capability, history, auto routing (spec 016) -----------
 
 def _run_duration_min(job):
@@ -2343,18 +2359,8 @@ def dispatch_pass(jobs, runs_by_id):
     # (held_hosts itself is computed at the head of the pass —
     # spec 016: auto routing must exclude the same held set,
     # drain holds included.)
-    # FR-015 route 2 exception: the gatekeeper's own signal jobs
-    # (maintenance jobs keyed gk-reboot-*, gk-hold-* or
-    # gk-unhold-*) are exempt from the host hold. The hold exists
-    # to stop NEW work starting on a host that is going down; a
-    # signal job is not new work, it IS the going-down / drain
-    # mechanism — if the hold blocked it, the maintenance route
-    # could never deliver its own signal, and a drain could
-    # never deliver the checkpoint holds it exists to raise.
-    def _hold_exempt(job):
-        return bool(job.get("maintenance")) and str(
-            job.get("key") or "").startswith(
-                (REBOOT_KEY_PREFIX, "gk-hold-", "gk-unhold-"))
+    # FR-015 route 2 exception: the gatekeeper's own signal
+    # jobs are exempt from the host hold (_signal_hold_exempt).
     lanes_live = os.path.isfile(LANES_LIVE_FILE)
     for job in waiting:
         if job.get("lane") is None:
@@ -2364,7 +2370,7 @@ def dispatch_pass(jobs, runs_by_id):
             if prec is None or focus_match(job, prec) is None:
                 continue  # held by the pause/focus/stop gate
         if LANE_HOST.get(job["lane"]) in held_hosts \
-                and not _hold_exempt(job):
+                and not _signal_hold_exempt(job):
             continue  # host going down: held (see status board)
         # Lane priority lock (spec 015 FR-002): while the lane
         # is ACTIVE-locked by another program, a non-maintenance
@@ -4592,6 +4598,102 @@ def cmd_status(args):
     return 0
 
 
+# --- fleet snapshot (spec 014 FR-008, gatekeeper-emitted) -------------------
+
+def snapshot_held(job, prec, stopped, held_hosts):
+    """Whether a waiting job is held, by the sweep's own
+    admission rules. Under a stop the sweep itself no-ops, so
+    nothing dispatches and every waiting job is held,
+    maintenance included. Under a pause/focus (spec 013
+    FR-002) a job is held when no selector admits it, except
+    maintenance jobs, which a pause never holds. A job whose
+    lane's host carries a dispatch hold (spec 011 FR-006)
+    waits too, except the gatekeeper's own signal jobs
+    (FR-015, _signal_hold_exempt). Lane locks, the active
+    cap, lane serialization and duplicate-script skips are
+    pass state, not record state, and are not marks here —
+    `gk status` likewise renders lock-held as a separate
+    mark from held."""
+    if stopped:
+        return True
+    held = False
+    if prec is not None and not job.get("maintenance"):
+        held = focus_match(job, prec) is None
+    if LANE_HOST.get(job.get("lane")) in held_hosts \
+            and not _signal_hold_exempt(job):
+        held = True
+    return held
+
+
+def build_snapshot():
+    """The spec 014 FR-008 fleet snapshot, derived from this
+    gatekeeper's own state by its own code paths: the
+    FR-001-normalized pause record (pause_record), the stop
+    record (stop_state), the host-state file
+    (load_hosts_state), the FR-012 dispatch order
+    (dispatch_sort_key, evaluated once against a single
+    instant, exactly as the dispatch pass orders), and the
+    sweep's admission rule (snapshot_held). One derivation,
+    two surfaces: `gk status` for the operator at the
+    terminal, this JSON for the tray feed, transported by
+    fleet_status.py (publisher v2). Pure reads; writes
+    nothing."""
+    stop = stop_state()
+    prec = pause_record()
+    held_hosts = {h for h, r in load_hosts_state().items()
+                  if r.get("hold") or r.get("drain_hold")}
+    if stop is not None:
+        mode = "stopped"
+        reason = stop.get("reason") or ""
+    elif prec is not None:
+        mode = prec["mode"]
+        reason = prec.get("reason") or ""
+    else:
+        mode = "running"
+        reason = ""
+    focus = {"keys": [], "programs": [], "chats": []}
+    draining = bool(held_hosts)
+    if prec is not None:
+        focus = {"keys": list(prec["except_keys"]),
+                 "programs": list(prec["except_programs"]),
+                 "chats": list(prec["except_chats"])}
+        draining = draining or bool(prec.get("drain"))
+    now = now_dt()
+    waiting_jobs = sorted(
+        [j for j in load_jobs() if j["state"] == "submitted"],
+        key=lambda j: dispatch_sort_key(j, now))
+    waiting = []
+    for job in waiting_jobs:
+        entry = {
+            "key": job.get("key") or "",
+            "program": job.get("program") or "",
+            "lane": job.get("lane") or "",
+            "held": snapshot_held(job, prec, stop is not None,
+                                  held_hosts),
+        }
+        for opt in ("priority", "priority_source"):
+            if job.get(opt) is not None:
+                entry[opt] = job[opt]
+        waiting.append(entry)
+    return {
+        "generated_at": now_iso(),
+        "mode": mode,
+        "draining": draining,
+        "reason": reason,
+        "focus": focus,
+        "waiting": waiting,
+    }
+
+
+def cmd_snapshot(_args):
+    """Print the FR-008 fleet snapshot as a single JSON
+    object on stdout — the fleet-status publisher's primary
+    source (publisher v2). Nothing else prints to stdout;
+    unreadable job records warn on stderr as everywhere."""
+    print(json.dumps(build_snapshot(), indent=2, sort_keys=True))
+    return 0
+
+
 # --- CLI ----------------------------------------------------------------------
 
 def main(argv=None):
@@ -4844,6 +4946,15 @@ def main(argv=None):
     p.add_argument("--repo", action="store_true",
                    help="also show project-repo CI + Dependabot health")
     p.set_defaults(fn=cmd_status)
+
+    p = sub.add_parser("snapshot",
+                       help="print the spec 014 FR-008 fleet "
+                            "snapshot as one JSON object on "
+                            "stdout, derived by the gatekeeper's "
+                            "own ordering and admission code "
+                            "(the fleet-status publisher's "
+                            "primary source)")
+    p.set_defaults(fn=cmd_snapshot)
 
     p = sub.add_parser("profile",
                        help="render the lane profiles (spec 016 "
