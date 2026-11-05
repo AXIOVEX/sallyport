@@ -2917,7 +2917,7 @@ namespace SyncyardTray
                     line += " - focus: " + string.Join(", ",
                         fleet.FocusPrograms.ToArray());
                 line += "\r\nSnapshot: " +
-                    (fleet.HasGeneratedAt
+                    (fleet.AgeSeconds >= 0
                         ? "generated " +
                             FleetStatus.FormatAge(
                                 fleet.AgeSeconds) + " ago" +
@@ -2950,7 +2950,7 @@ namespace SyncyardTray
                     : "not seen"));
             lines.Add("Fleet snapshot: " +
                 (fleet != null && fleet.HasData
-                    ? fleet.HasGeneratedAt
+                    ? fleet.AgeSeconds >= 0
                         ? FleetStatus.FormatAge(fleet.AgeSeconds) +
                             " old" + (fleet.Stale
                                 ? " (stale)" : "")
