@@ -41,6 +41,14 @@ The spec 027 section pins one version truth at the source: the
 BuildId string are extracted and asserted equal, so the stamps
 the gatekeeper's drift judge compares can only move together.
 
+The invisibility follow-through section (2026-11-06) pins the
+stray-console hider's owner-and-class decision, the guarded
+WindowsTerminal branch, and the silent duplicate launch: the
+desktop window audit proved the old title-substring test blind
+to the window classes that actually appear, and the duplicate
+launch's modal dialog was itself a visible window in the
+owner's session.
+
 The menu-lifetime section guards the 2026-11-04 laptop crash:
 RebuildMenu used to build a new ContextMenuStrip per rebuild,
 assign it to the NotifyIcon, and dispose the previous strip - and
@@ -143,6 +151,10 @@ def main():
     tickcore = region("private void TickCore()",
                       "// The one fleet read plus")
     written, read = settings_keys()
+    strays = region("private void SetStrayConsoles(int cmd)",
+                    "private void HideStrayConsoles()")
+    dupmain = region("private static void Main",
+                     "private static void ProgramLog")
     # Spec 027 (H3) FR-004: the tray's version truths, EXTRACTED
     # rather than literal-pinned — the drift judge compares the
     # beat's build against the published release, so the stamps
@@ -709,6 +721,69 @@ def main():
         check("the open-menu rebuild deferral survives",
               "if (_menuOpen) { _menuDirty = true; return; }"
               in rebuild),
+
+        # ---- invisibility follow-through (2026-11-06) ----------
+        # The desktop window audit (run 42239836804) found the
+        # two visible consoles were classes the old title-only
+        # test could not see: an empty-title PseudoConsoleWindow
+        # and a Terminal-hosted CASCADIA window. The hider now
+        # decides by owner process and window class, with the
+        # terminal host itself guarded (below).
+        check("stray hider: the console-class set is pinned "
+              "(classic, pseudoconsole, Terminal hosting)",
+              '"ConsoleWindowClass"' in SRC
+              and '"PseudoConsoleWindow"' in SRC
+              and '"CASCADIA_HOSTING_WINDOW_CLASS"' in SRC
+              and "FleetConsoleWindowClasses" in SRC),
+        check("stray hider: window class is read via GetClassName",
+              "GetClassName(hWnd, sb, sb.Capacity)" in SRC
+              and "WindowClassName(p.MainWindowHandle)" in strays),
+        check("stray hider: owner-based branch hides a fleet "
+              "console process on class alone, title or class",
+              "FleetConsoleProcesses" in SRC
+              and 'new[] { "conhost", "cmd", "powershell", "pwsh" }'
+              in SRC
+              and "IsConsoleWindowClass(cls) ||" in strays
+              and "TitleMatchesFleet(title))" in strays),
+        check("stray hider: the original title matches survive",
+              "TitleMatchesFleet" in SRC
+              and '"actions-runner"' in SRC
+              and '"run.cmd"' in SRC),
+        check("stray hider: WindowsTerminal guard present - the "
+              "terminal host is consulted separately and hidden "
+              "only on a fleet title match",
+              'Process.GetProcessesByName("WindowsTerminal")'
+              in strays
+              and strays.find(
+                  'Process.GetProcessesByName("WindowsTerminal")')
+              > strays.find("FleetConsoleProcesses")
+              and "if (TitleMatchesFleet(title))" in strays),
+        check("stray hider: each hide logs process, pid, class "
+              "and title",
+              '"hid stray console \'"' in SRC
+              and '"\' process=" + p.ProcessName' in SRC
+              and '" pid=" + p.Id' in SRC
+              and '" class=" + cls' in SRC),
+        check("stray hider: cadence and setting are unchanged",
+              "if (_tick % 6 == 0 && _settings.HideStrayConsoles)"
+              in SRC
+              and "private void HideStrayConsoles() "
+              "{ SetStrayConsoles(SW_HIDE); }" in SRC),
+
+        # ---- duplicate launch silence (2026-11-06) -------------
+        # A duplicate launch used to raise a modal MessageBox in
+        # the owner's session (the field popups); it now logs one
+        # line through ProgramLog and returns. The mutex logic
+        # itself is untouched.
+        check("duplicate launch logs and exits silently",
+              'ProgramLog("duplicate launch: tray already " +'
+              in dupmain
+              and '"running, exiting silently");' in dupmain),
+        check("duplicate launch shows no dialog",
+              'MessageBox.Show("Syncyard Tray is already running."'
+              not in SRC
+              and "SyncyardTraySingleton" in dupmain
+              and "if (!created)" in dupmain),
     ]
     print("TRAY_SOURCE %s" % ("OK" if all(results) else "FAILURES"))
     return 0 if all(results) else 1
