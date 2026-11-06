@@ -1286,6 +1286,7 @@ namespace SyncyardTray
         // written by the posted completions of the two worker
         // threads below; the workers never touch the menu.
         private const string BuildId = "0.4.4.0";
+        private const string FalsifierBroken = ;
         private const string UpdateManifestUrl =
             "https://github.com/AXIOVEX/syncyard/releases/latest/download/tray-update.json";
         private string _updateVersion;     // newer build, if any
