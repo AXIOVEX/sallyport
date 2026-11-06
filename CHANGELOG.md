@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Tray hardening batch, specs 025-031 (ratified 2026-11-05):
+  spec 025 tray liveness heartbeat (H1), spec 026 CI compiles
+  the tray (H2 remainder), spec 027 version drift detection
+  (H3), spec 028 settings resilience with the per-machine
+  lane-set fix and multi-instance runner supervision (H4),
+  spec 029 one packaged tray watchdog (H5), spec 030 the
+  gatekeeper queue-starvation fix, and spec 031 the gh
+  extension refresh (stub). Spec files only in this entry;
+  implementation lands per spec, H1 first.
 - Tray 0.4.3.0: update check at launch, queue line, status
   window, consoles viewer. A few seconds after startup the
   tray now runs the same update check the menu item runs
