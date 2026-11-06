@@ -111,11 +111,13 @@ stand-in for install tests); the default is unchanged.
 
 import argparse
 import base64
+import http.client
 import json
 import os
 import shlex
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -490,13 +492,26 @@ class ContentsAPI:
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(url, data=data, headers=headers,
                                      method=method)
-        try:
-            with urllib.request.urlopen(req, timeout=30) as res:
-                return json.loads(res.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            if exc.code == 404 and method == "GET":
-                return None
-            raise
+        # The egress proxy intermittently truncates response bodies
+        # (http.client.IncompleteRead on the read, observed 2026-11-06:
+        # nine consecutive publish cycles lost to it). A truncated read
+        # means the response never arrived intact, so retry GETs (which
+        # are idempotent) up to 3 attempts. PUTs keep a single attempt:
+        # a truncated PUT response leaves the commit outcome unknown,
+        # and the next cycle's GET-sha read reconciles it.
+        attempts = 3 if method == "GET" else 1
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as res:
+                    return json.loads(res.read().decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404 and method == "GET":
+                    return None
+                raise
+            except http.client.IncompleteRead:
+                if attempt + 1 >= attempts:
+                    raise
+                time.sleep(2 * (attempt + 1))
 
     def get_sha(self, path):
         res = self._request("GET", path)

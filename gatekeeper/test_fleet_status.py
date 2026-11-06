@@ -761,5 +761,78 @@ class ApiBase(unittest.TestCase):
                              "http://127.0.0.1:9/stub")
 
 
+class _FakeResponse:
+    """A urlopen result whose read() truncates (IncompleteRead)
+    a set number of times before returning the body."""
+
+    def __init__(self, body, truncations):
+        self.body = body
+        self.truncations = truncations
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        import http.client
+        if self.truncations > 0:
+            self.truncations -= 1
+            raise http.client.IncompleteRead(b"partial", 5)
+        return self.body
+
+
+class ContentsAPIReadRetry(unittest.TestCase):
+    """The publisher's contents-API GET reads retry truncated
+    responses (2026-11-06: nine consecutive publish cycles lost
+    to IncompleteRead through the egress proxy). PUTs stay
+    single-attempt and HTTP errors are never retried."""
+
+    def _api(self):
+        return fleet_status.ContentsAPI(token="test-token")
+
+    def test_get_succeeds_after_one_truncation(self):
+        import unittest.mock
+        res = _FakeResponse(b'{"sha": "abc"}', truncations=1)
+        with unittest.mock.patch("urllib.request.urlopen",
+                                 return_value=res) as mock_open, \
+                unittest.mock.patch("fleet_status.time.sleep"):
+            self.assertEqual(self._api().get_sha("p"), "abc")
+            self.assertEqual(mock_open.call_count, 2)
+
+    def test_get_gives_up_after_three_attempts(self):
+        import http.client
+        import unittest.mock
+        res = _FakeResponse(b"{}", truncations=99)
+        with unittest.mock.patch("urllib.request.urlopen",
+                                 return_value=res) as mock_open, \
+                unittest.mock.patch("fleet_status.time.sleep"):
+            with self.assertRaises(http.client.IncompleteRead):
+                self._api().get_sha("p")
+            self.assertEqual(mock_open.call_count, 3)
+
+    def test_put_is_not_retried(self):
+        import http.client
+        import unittest.mock
+        res = _FakeResponse(b"{}", truncations=99)
+        with unittest.mock.patch("urllib.request.urlopen",
+                                 return_value=res) as mock_open, \
+                unittest.mock.patch("fleet_status.time.sleep"):
+            with self.assertRaises(http.client.IncompleteRead):
+                self._api()._request("PUT", "p", payload={"x": 1})
+            self.assertEqual(mock_open.call_count, 1)
+
+    def test_get_404_returns_none_without_retry(self):
+        import unittest.mock
+        import urllib.error
+        err = urllib.error.HTTPError("u", 404, "Not Found", None, None)
+        with unittest.mock.patch("urllib.request.urlopen",
+                                 side_effect=err) as mock_open, \
+                unittest.mock.patch("fleet_status.time.sleep"):
+            self.assertIsNone(self._api()._request("GET", "p"))
+            self.assertEqual(mock_open.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
