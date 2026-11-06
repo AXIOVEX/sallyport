@@ -54,7 +54,7 @@ Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
     -Name "SyncyardTray" -Value "`"$exe`""
 
 Write-Host "Launching the tray (windowless)"
-Start-Process -FilePath $exe -WorkingDirectory $InstallDir
+Start-Process -FilePath $exe -WorkingDirectory $InstallDir -WindowStyle Hidden
 
 $size = (Get-Item $exe).Length
 Write-Host "TRAY_INSTALLED exe=$exe bytes=$size run_key=HKCU\...\Run\SyncyardTray"
