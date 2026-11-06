@@ -93,7 +93,7 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyProduct("Syncyard Tray")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) Axiovex Systems, LLC")]
 [assembly: System.Reflection.AssemblyVersion("0.4.4.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.4.4.0")]
+[assembly: System.Reflection.AssemblyFileVersion("9.9.9.9")]
 
 namespace SyncyardTray
 {
