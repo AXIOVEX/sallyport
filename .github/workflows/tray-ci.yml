@@ -1,0 +1,245 @@
+# Syncyard tray CI (spec 026, hardening H2 remainder) -
+# GitHub-HOSTED runners only, always.
+# This workflow must never run on the self-hosted fleet (see SECURITY.md).
+#
+# Until this spec, CI never compiled the tray: the tray battery
+# (runner/tray/test_tray_source.py) is source level because CI
+# had no .NET Framework compiler, so compile failures (the
+# 0.4.3.0 CS2005/CS1061 class) were found by the field build
+# venue, not by any check that runs before a human does. This
+# workflow closes that gap on every pull request touching
+# runner/tray/, and on the tray release path (tray-v* tags):
+#
+#   1. Compile runner/tray/SyncyardTray.cs with the in-box
+#      Framework csc route the field builds use (the compile
+#      line in the source header), producing the exe as a job
+#      artifact. A csc failure fails the check (FR-001).
+#   2. Assert the built exe's identity stamps (assembly
+#      version, file version, product, company) equal the
+#      source's assembly attributes, that the source's own
+#      stamps (AssemblyVersion, AssemblyFileVersion, and the
+#      spec 021 BuildId) agree with each other, and - on a
+#      tray-v* tag - that they equal the release version being
+#      built. Any mismatch fails the build (FR-002).
+#   3. Smoke-run the built exe against scratch state (its own
+#      settings file beside the scratch exe copy, a stub runner
+#      root, no fleet path anywhere), observe its startup from
+#      its own records (the tray log's start lines and its
+#      first tray-heartbeat.json, spec 025), and stop it. A
+#      build that compiles but cannot start fails the job
+#      (FR-003).
+#
+# The tray source battery keeps running unchanged in ci.yml;
+# this workflow adds the compiler and the run, it does not
+# replace source-level pins (FR-004). Release publishing is
+# out of scope: releases stay the owner's pull model.
+name: Tray CI
+
+on:
+  pull_request:
+    paths:
+      - "runner/tray/**"
+      - "assets/logo.png"
+      - ".github/workflows/tray-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "runner/tray/**"
+      - "assets/logo.png"
+      - ".github/workflows/tray-ci.yml"
+    tags: ["tray-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tray-build:
+    name: tray-build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compile the tray (in-box csc, the field build route)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = Join-Path $env:RUNNER_TEMP "tray-build"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item "runner/tray/SyncyardTray.cs" $stage
+          Copy-Item "runner/tray/logo.ico" $stage
+          Copy-Item "assets/logo.png" $stage
+          $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+          if (-not (Test-Path $csc)) {
+            $csc = "$env:WINDIR\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+          }
+          if (-not (Test-Path $csc)) {
+            Write-Host "TRAY_CI_COMPILE_FAIL csc.exe not found on this runner"
+            exit 1
+          }
+          $exe = Join-Path $stage "SyncyardTray.exe"
+          Push-Location $stage
+          try {
+            & $csc /nologo /target:winexe /out:$exe `
+              /win32icon:logo.ico `
+              /resource:logo.png,SyncyardLogo.png `
+              /reference:System.Windows.Forms.dll `
+              /reference:System.Drawing.dll SyncyardTray.cs
+            $rc = $LASTEXITCODE
+          } finally {
+            Pop-Location
+          }
+          if ($rc -ne 0) {
+            Write-Host "TRAY_CI_COMPILE_FAIL csc exited with code $rc"
+            exit 1
+          }
+          $size = (Get-Item $exe).Length
+          Write-Host "TRAY_CI_COMPILE_OK exe=$exe bytes=$size"
+
+      - name: Upload the built exe as a job artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: SyncyardTray-exe
+          path: ${{ runner.temp }}/tray-build/SyncyardTray.exe
+          if-no-files-found: error
+
+      - name: Assert the built exe's identity stamps (FR-002)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $src = Get-Content "runner/tray/SyncyardTray.cs" -Raw
+          function Source-Attr([string]$name) {
+            $m = [regex]::Match($src, "Assembly" + $name + '\("([^"]+)"\)')
+            if (-not $m.Success) {
+              Write-Host "TRAY_CI_IDENTITY_FAIL source has no Assembly$name attribute"
+              exit 1
+            }
+            return $m.Groups[1].Value
+          }
+          $asmVer  = Source-Attr "Version"
+          $fileVer = Source-Attr "FileVersion"
+          $product = Source-Attr "Product"
+          $company = Source-Attr "Company"
+          $bm = [regex]::Match($src, 'BuildId = "([^"]+)"')
+          if (-not $bm.Success) {
+            Write-Host "TRAY_CI_IDENTITY_FAIL source has no BuildId stamp"
+            exit 1
+          }
+          $buildId = $bm.Groups[1].Value
+          # The source's own stamps must agree with each other:
+          # a release keeps AssemblyVersion, AssemblyFileVersion
+          # and the BuildId in step (the source header's rule).
+          if (-not ($asmVer -eq $fileVer -and $asmVer -eq $buildId)) {
+            Write-Host "TRAY_CI_IDENTITY_FAIL source stamps disagree: AssemblyVersion=$asmVer AssemblyFileVersion=$fileVer BuildId=$buildId"
+            exit 1
+          }
+          # On the release path, the stamps must equal the
+          # release version being built (tag tray-v<version>).
+          if ($env:GITHUB_REF -like "refs/tags/tray-v*") {
+            $tagVer = $env:GITHUB_REF -replace '^refs/tags/tray-v', ''
+            if ($tagVer -ne $asmVer) {
+              Write-Host "TRAY_CI_IDENTITY_FAIL tag version $tagVer != source version $asmVer"
+              exit 1
+            }
+            Write-Host "release tag version $tagVer matches the source stamps"
+          }
+          $exe = Join-Path $env:RUNNER_TEMP "tray-build\SyncyardTray.exe"
+          $fv = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          $an = [System.Reflection.AssemblyName]::GetAssemblyName($exe)
+          $bad = 0
+          if ($an.Version.ToString() -ne ([version]$asmVer).ToString()) {
+            Write-Host "TRAY_CI_IDENTITY_FAIL exe assembly version $($an.Version) != source $asmVer"; $bad = 1
+          }
+          if ($fv.FileVersion -ne $fileVer) {
+            Write-Host "TRAY_CI_IDENTITY_FAIL exe file version $($fv.FileVersion) != source $fileVer"; $bad = 1
+          }
+          if ($fv.ProductName -ne $product) {
+            Write-Host "TRAY_CI_IDENTITY_FAIL exe product '$($fv.ProductName)' != source '$product'"; $bad = 1
+          }
+          if ($fv.CompanyName -ne $company) {
+            Write-Host "TRAY_CI_IDENTITY_FAIL exe company '$($fv.CompanyName)' != source '$company'"; $bad = 1
+          }
+          if ($bad) { exit 1 }
+          Write-Host "TRAY_CI_IDENTITY_OK version=$asmVer product=$product company=$company"
+
+      - name: Smoke-run the built exe against scratch state (FR-003)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $scratch = Join-Path $env:RUNNER_TEMP "tray-smoke"
+          $appDir  = Join-Path $scratch "app"
+          $stubRoot = Join-Path $scratch "runners-stub"
+          New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $stubRoot -Force | Out-Null
+          $stage = Join-Path $env:RUNNER_TEMP "tray-build"
+          Copy-Item (Join-Path $stage "SyncyardTray.exe") $appDir
+          Copy-Item (Join-Path $stage "logo.ico") $appDir
+          Copy-Item (Join-Path $stage "logo.png") $appDir
+          # Scratch settings beside the scratch exe copy: stub
+          # runner root, no fleet path anywhere, autostart off,
+          # stray-console hiding off (nothing to hide here).
+          $settings = [ordered]@{
+            autostart = $false
+            supervisionEnabled = $true
+            maxRestartsPerHour = 3
+            tickSeconds = 5
+            hideStrayConsoles = $false
+            fleetStatusPath = (Join-Path $scratch "no-fleet-status.json")
+            fleetStaleSeconds = 300
+            runnerRoot = $stubRoot
+            connectionHeartbeatPath = (Join-Path $scratch "no-agent-heartbeat.json")
+            connectionStaleSeconds = 180
+            connectionDownSeconds = 900
+            heartbeatHost = "ci-smoke"
+          }
+          ($settings | ConvertTo-Json) |
+            Set-Content -Path (Join-Path $appDir "tray-settings.json") -Encoding UTF8
+          # The tray writes its log and heartbeat under its own
+          # state dir (%LOCALAPPDATA%\SyncyardTray in this hosted
+          # session). Clear any prior files so what appears can
+          # only be this run's own records.
+          $stateDir = Join-Path $env:LOCALAPPDATA "SyncyardTray"
+          $logPath = Join-Path $stateDir "tray.log"
+          $hbPath  = Join-Path $stateDir "tray-heartbeat.json"
+          Remove-Item $logPath -Force -ErrorAction SilentlyContinue
+          Remove-Item $hbPath -Force -ErrorAction SilentlyContinue
+          $exe = Join-Path $appDir "SyncyardTray.exe"
+          $proc = Start-Process -FilePath $exe -WorkingDirectory $appDir -PassThru
+          Write-Host "smoke launched pid=$($proc.Id) exe=$exe"
+          $started = $false
+          $deadline = (Get-Date).AddSeconds(90)
+          try {
+            while ((Get-Date) -lt $deadline) {
+              $proc.Refresh()
+              if ((Test-Path $hbPath) -and (Test-Path $logPath) -and
+                  ((Get-Content $logPath -Raw) -match "tray started")) {
+                $started = $true
+                break
+              }
+              if ($proc.HasExited) {
+                Write-Host "smoke: tray exited early with code $($proc.ExitCode)"
+                break
+              }
+              Start-Sleep -Seconds 2
+            }
+          } finally {
+            $proc.Refresh()
+            if (-not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force
+              Write-Host "smoke: tray stopped by the job"
+            }
+          }
+          if (-not $started) {
+            if (Test-Path $logPath) {
+              Write-Host "---- tray.log (tail) ----"
+              Get-Content $logPath -Tail 30 | ForEach-Object { Write-Host $_ }
+            } else {
+              Write-Host "smoke: no tray.log appeared at $logPath"
+            }
+            Write-Host "TRAY_CI_SMOKE_FAIL no heartbeat + log start lines within 90 s"
+            exit 1
+          }
+          Write-Host "---- tray-heartbeat.json ----"
+          Get-Content $hbPath | ForEach-Object { Write-Host $_ }
+          Write-Host "TRAY_CI_SMOKE_OK heartbeat and log start lines observed"
