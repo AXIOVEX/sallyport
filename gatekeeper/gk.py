@@ -45,6 +45,11 @@ HOLDS_DIR = os.path.join(BASE, "holds")
 STOP_FILE = os.path.join(BASE, "STOPPED.json")
 OUTBOX_CURSOR = os.path.join(BASE, "outbox-cursor.json")
 HOSTS_FILE = os.path.join(BASE, "hosts.json")   # host liveness (spec 011)
+# Tray release cache (spec 027): the sweep's last read of the
+# release manifest the tray updater itself consumes, cached at
+# sweep cadence beside the host records; `status` renders drift
+# from the host record and never reads the network for it.
+TRAY_RELEASE_FILE = os.path.join(BASE, "tray-release.json")
 LOCKS_FILE = os.path.join(BASE, "LOCKS.json")   # lane locks (spec 015)
 LANES_LIVE_FILE = os.path.join(BASE, "LANES_LIVE")
 
@@ -2744,6 +2749,11 @@ def cmd_sweep(_args):
         # just-ingested hold blocks this same pass. A liveness
         # failure is ledgered inside and never breaks the sweep.
         sweep_liveness(jobs)
+        # Tray drift judgement (spec 027): one release-manifest
+        # read on this same sweep cadence, judged against the
+        # recorded tray beats; fail-soft inside, never breaks
+        # the sweep.
+        sweep_tray_drift()
         dispatched = 0
         if not standdown and not lerr:
             dispatched = dispatch_pass(jobs, runs_by_id)
@@ -2944,7 +2954,7 @@ def _host_record(state, host):
         "hold": False, "hold_since": None, "going_down": None,
         "drain_hold": False, "drain_since": None,
         "guard": None, "guard_stale": False,
-        "tray": None, "tray_stale": False})
+        "tray": None, "tray_stale": False, "tray_drift": None})
 
 
 def heartbeat_hosts():
@@ -3100,6 +3110,173 @@ def _record_tray_beat(tray, hb_ts):
                tray_ts=tray.get("ts"))
 
 
+# --- Tray version drift (spec 027, H3) --------------------------------------
+#
+# Spec 025 made a dead tray visible; nothing made an OLD tray
+# visible — the laptop sat two builds behind with a broken
+# update click path, so it could neither catch up nor be
+# caught. This pass judges every recorded tray beat against
+# the current published tray release and stores the verdict
+# on the host record:
+#
+#   tray_drift = {"state": "current" | "behind" | "unknown",
+#                 "build": <the beat's running build>,
+#                 "release": <the release version judged
+#                             against, or None>,
+#                 "judged_at": <ISO ts of this judgement>}
+#
+# `current` — the running build is the published release (or
+# newer: a build ahead of the feed is not behind it);
+# `behind` — the running build is older than the release;
+# `unknown` — no judgement was possible: no usable beat build,
+# or the release-manifest read failed. An unread manifest is
+# NEVER read as "everyone is current" (FR-002, the failure
+# this spec exists to prevent).
+
+def _version_tuple(text):
+    """Parse a dotted version stamp ("0.4.4.0", optional
+    leading "v") into a comparable tuple of ints, or None when
+    any part is not a number. The tray's stamps (spec 021) and
+    the manifest's version field both use this shape."""
+    if not isinstance(text, str):
+        return None
+    t = text.strip()
+    if t[:1] in ("v", "V"):
+        t = t[1:]
+    if not t:
+        return None
+    parts = []
+    for part in t.split("."):
+        if not part.isdigit():
+            return None
+        parts.append(int(part))
+    return tuple(parts)
+
+
+def _version_cmp(a, b):
+    n = max(len(a), len(b))
+    a = a + (0,) * (n - len(a))
+    b = b + (0,) * (n - len(b))
+    return (a > b) - (a < b)
+
+
+def fetch_tray_release_version():
+    """(version, error) — the current published tray release
+    version, read from the release manifest the updater itself
+    consumes (spec 021's tray-update.json asset on the latest
+    release of the project repo). Two API calls: the release
+    record, then the manifest asset. Any failure returns
+    (None, error); the caller judges drift unknown."""
+    rel, err = gh_json(["api", "repos/%s/releases/latest"
+                        % PROJECT_REPO])
+    if err or not isinstance(rel, dict):
+        return None, err or "empty release response"
+    asset_id = None
+    for asset in rel.get("assets") or []:
+        if asset.get("name") == "tray-update.json":
+            asset_id = asset.get("id")
+            break
+    if asset_id is None:
+        return None, ("latest release carries no "
+                      "tray-update.json asset")
+    rc, out, rerr = run_cmd(
+        ["gh", "api", "repos/%s/releases/assets/%s"
+         % (PROJECT_REPO, asset_id),
+         "-H", "Accept: application/octet-stream"], timeout=60)
+    if rc != 0:
+        return None, "manifest asset read failed rc=%d: %s" % (
+            rc, (rerr or "").strip()[:300])
+    try:
+        version = json.loads(out)["version"]
+    except (ValueError, KeyError, TypeError):
+        return None, "tray-update.json unreadable or has no version"
+    if _version_tuple(version) is None:
+        return None, "manifest version %r is not a version" % (version,)
+    return version, None
+
+
+def load_tray_release_cache():
+    try:
+        with open(TRAY_RELEASE_FILE, encoding="utf-8") as f:
+            cache = json.load(f)
+        return cache if isinstance(cache, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_tray_release_cache(cache):
+    _write_text_file(TRAY_RELEASE_FILE,
+                     json.dumps(cache, indent=2, sort_keys=True))
+
+
+def sweep_tray_drift():
+    """The sweep's tray drift pass (spec 027 FR-001/002/005).
+
+    The manifest read rides this sweep: at most one read per
+    sweep, only when some host carries a tray beat, and the
+    read's outcome is cached to tray-release.json — no
+    per-status or per-minute poll is added, and `gk status`
+    renders from the host record alone. The judge uses only
+    this sweep's read: a failed or absent read judges every
+    beaten host `unknown` for this sweep, never `current`
+    (FR-002); a stale cache is never judged from.
+
+    Transitions ledger exactly once, after the record save
+    (the spec 025 pattern): `tray_drift` carrying both
+    versions when a host enters `behind`, `tray_current` when
+    it enters `current`. Entering `unknown` is recorded on
+    the host record but ledgers nothing — the spec names no
+    event for it. Fail-soft like the liveness pass: a failure
+    here is logged and never breaks the sweep."""
+    try:
+        state = load_hosts_state()
+        beats = {h: r for h, r in state.items()
+                 if isinstance(r, dict) and r.get("tray")}
+        if not beats:
+            return
+        version, err = fetch_tray_release_version()
+        try:
+            save_tray_release_cache({"version": version,
+                                     "fetched_at": now_iso(),
+                                     "error": err})
+        except (IOError, OSError) as exc:
+            hlog("TRAY_RELEASE_SAVE_FAILED %s" % exc)
+        if err:
+            ledger("api_error", where="tray_release_manifest",
+                   error=err)
+        release_t = _version_tuple(version)
+        pending = []
+        for host, rec in beats.items():
+            build = (rec.get("tray") or {}).get("build")
+            build_t = _version_tuple(build)
+            if release_t is None or build_t is None:
+                new = "unknown"
+            elif _version_cmp(build_t, release_t) < 0:
+                new = "behind"
+            else:
+                new = "current"
+            prev = (rec.get("tray_drift") or {}).get("state")
+            rec["tray_drift"] = {"state": new, "build": build,
+                                 "release": version,
+                                 "judged_at": now_iso()}
+            if new == "behind" and prev != "behind":
+                pending.append(("tray_drift", host, build, version))
+            elif new == "current" and prev != "current":
+                pending.append(("tray_current", host, build, version))
+        try:
+            save_hosts_state(state)
+        except (IOError, OSError) as exc:
+            hlog("HOSTS_SAVE_FAILED %s" % exc)
+            return
+        for event, host, build, version in pending:
+            ledger(event, host=host, build=build, release=version)
+            hlog("TRAY %s host=%s build=%s release=%s"
+                 % ("DRIFT" if event == "tray_drift" else "CURRENT",
+                    host, build, version))
+    except Exception as exc:  # fail-soft: never break the sweep
+        hlog("TRAY_DRIFT_PASS_FAILED %s" % exc)
+
+
 def ingest_going_down(record, jobs=None):
     """Ingest one going-down record (spec 011 FR-003 gatekeeper
     side + FR-006). The host side writes the record at the START
@@ -3235,6 +3412,22 @@ def host_status_lines(state=None):
                 tray.get("ts"), tray.get("build"),
                 " TRAY STALE (agent alive, tray not reporting)"
                 if rec.get("tray_stale") else "")
+            # Drift (spec 027 FR-003): the judged state rides
+            # beside the beat. A beat never yet judged renders
+            # unknown — the honest word, and never "current"
+            # without a successful manifest read behind it
+            # (FR-002).
+            drift = rec.get("tray_drift") or {}
+            dstate = drift.get("state")
+            if dstate == "behind":
+                line += (" — tray drift BEHIND (running %s, "
+                         "current %s)"
+                         % (drift.get("build"),
+                            drift.get("release")))
+            elif dstate == "current":
+                line += " — tray drift current"
+            else:
+                line += " — tray drift unknown"
         out.append(line)
     return out
 

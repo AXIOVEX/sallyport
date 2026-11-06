@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Tray version drift detection (spec 027, H3): each sweep,
+  the gatekeeper reads the release manifest the tray updater
+  itself consumes (tray-update.json on the latest release,
+  one read per sweep, cached to tray-release.json) and judges
+  every host's recorded tray beat (spec 025) against the
+  published version, storing tray_drift (current / behind /
+  unknown, with both versions) on the host record. Entering
+  behind ledgers tray_drift once, entering current ledgers
+  tray_current once, and a failed or absent manifest read
+  judges unknown, never current. `gk status` shows the drift
+  beside the beat on the host line (BEHIND with both versions
+  when behind). The tray source battery additionally
+  extracts the .nsi VERSION define, both assembly version
+  attributes, and the BuildId string and asserts they are
+  one value, so the stamps the judge compares can only move
+  together. Scenario coverage: gatekeeper/test_spec027.py.
 - Gatekeeper snapshot queue fields on the primary path:
   gk.py's build_snapshot now emits the tray queue model
   (active, lanes, queue_state, running_total,
