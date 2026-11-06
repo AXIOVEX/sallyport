@@ -11,6 +11,12 @@ recorder read (`going_down`, `guard`), from the paths the
 guard writes, and a bad or absent file can never fail the
 heartbeat.
 
+The spec 025 section pins the tray liveness merge: the
+tray's heartbeat file rides the same verbatim merge under
+the key `tray`, from SYNCBC_TRAY_FILE (fleet default: the
+desktop's %LOCALAPPDATA% tray directory under /mnt/c), and
+under the same never-fail contract.
+
 Run: python3 backchannel/test_agent_source.py
 """
 import pathlib
@@ -41,7 +47,16 @@ def main():
               '"$GOING_DOWN_FILE" "$GUARD_FILE"' in SRC),
         check("merge keys are the ingest contract's keys",
               '(("going_down", going_down_path),' in SRC
-              and '("guard", guard_path))' in SRC),
+              and '("guard", guard_path),' in SRC
+              and '("tray", tray_path))' in SRC),
+        check("tray heartbeat source path (SYNCBC_TRAY_FILE "
+              "override, fleet default is the tray's log dir "
+              "under /mnt/c)",
+              'TRAY_FILE="${SYNCBC_TRAY_FILE:-'
+              '/mnt/c/Users/trist/AppData/Local/SyncyardTray/'
+              'tray-heartbeat.json}"' in SRC),
+        check("write_heartbeat receives the tray source path",
+              '"$GUARD_FILE" "$SYNC_FILE" "$TRAY_FILE"' in SRC),
         check("only non-empty objects are merged (a cleared "
               "record rides as no field at all)",
               "if isinstance(extra, dict) and extra:" in SRC),

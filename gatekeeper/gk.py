@@ -158,6 +158,9 @@ def default_cwd(lane, workflow):
     return DEFAULT_CWD.get(workflow)
 MARKER_RE = re.compile(_CFG["markers"]["pattern"])
 LIVENESS_DOWN_AFTER_S = _CFG["liveness"]["down_after_s"]
+# Tray liveness (spec 025): the staleness bound for the tray
+# beats the backchannel agent merges into its heartbeat.
+TRAY_STALE_AFTER_S = _CFG["liveness"]["tray_stale_after_s"]
 REBOOT_GRACE_S = _CFG["reboot"]["grace_s"]
 # Checkpoint hold (spec 013 FR-007): the cooperative job-level
 # pause contract — per-job venue hold file, the marker a held
@@ -2940,7 +2943,8 @@ def _host_record(state, host):
         "last_seen": None, "last_heartbeat_ts": None, "down": False,
         "hold": False, "hold_since": None, "going_down": None,
         "drain_hold": False, "drain_since": None,
-        "guard": None, "guard_stale": False})
+        "guard": None, "guard_stale": False,
+        "tray": None, "tray_stale": False})
 
 
 def heartbeat_hosts():
@@ -2997,6 +3001,9 @@ def sweep_liveness(jobs):
     guard = hb.get("guard")
     if isinstance(guard, dict) and guard:
         _record_guard_beat(guard, hb.get("ts"))
+    tray = hb.get("tray")
+    if isinstance(tray, dict) and tray:
+        _record_tray_beat(tray, hb.get("ts"))
     return state
 
 
@@ -3041,6 +3048,56 @@ def _record_guard_beat(guard, hb_ts):
     elif was and not stale:
         ledger("guard_recovered", host=host,
                guard_ts=guard.get("ts"))
+
+
+def _record_tray_beat(tray, hb_ts):
+    """Record the tray's latest beat (spec 025, H1). The tray
+    beats into a host file; the backchannel agent merges it
+    into the heartbeat payload as `tray` ({host, build, pid,
+    session, started_at, ts, tick, lanes}) and this pass
+    stores it on the host's liveness record. Staleness is
+    judged against the heartbeat carrying the beat — both
+    timestamps come from the host's own clock, so the
+    comparison needs no trust in the gatekeeper's clock: a
+    beat older than liveness.tray_stale_after_s relative to
+    its carrier means the agent is alive and the tray is
+    dead. (A dead agent freezes the carrier too, so this
+    judge never fires for a down host — that state is the
+    liveness rule's DOWN.) Transitions ledger exactly once
+    (tray_stale / tray_recovered), so a dead tray is a
+    standing, visible defect — never a discovery the owner
+    makes at the taskbar."""
+    host = tray.get("host")
+    if not host:
+        return
+    state = load_hosts_state()
+    rec = _host_record(state, host)
+    rec["tray"] = {"ts": tray.get("ts"),
+                   "build": tray.get("build"),
+                   "pid": tray.get("pid"),
+                   "started_at": tray.get("started_at"),
+                   "tick": tray.get("tick"),
+                   "lanes": tray.get("lanes"),
+                   "seen_at": now_iso()}
+    tts = parse_iso(tray.get("ts"))
+    hts = parse_iso(hb_ts)
+    stale = bool(tts is not None and hts is not None
+                 and (hts - tts).total_seconds() > TRAY_STALE_AFTER_S)
+    was = bool(rec.get("tray_stale"))
+    rec["tray_stale"] = stale
+    try:
+        save_hosts_state(state)
+    except (IOError, OSError) as exc:
+        hlog("HOSTS_SAVE_FAILED %s" % exc)
+        return
+    if stale and not was:
+        ledger("tray_stale", host=host, tray_ts=tray.get("ts"),
+               heartbeat_ts=hb_ts, build=tray.get("build"))
+        hlog("TRAY STALE host=%s tray_ts=%s heartbeat_ts=%s"
+             % (host, tray.get("ts"), hb_ts))
+    elif was and not stale:
+        ledger("tray_recovered", host=host,
+               tray_ts=tray.get("ts"))
 
 
 def ingest_going_down(record, jobs=None):
@@ -3172,6 +3229,12 @@ def host_status_lines(state=None):
                 guard.get("ts"),
                 " STALE (protection not reporting)"
                 if rec.get("guard_stale") else "")
+        tray = rec.get("tray")
+        if tray:
+            line += " — tray beat %s build %s%s" % (
+                tray.get("ts"), tray.get("build"),
+                " TRAY STALE (agent alive, tray not reporting)"
+                if rec.get("tray_stale") else "")
         out.append(line)
     return out
 
