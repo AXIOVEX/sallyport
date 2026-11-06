@@ -50,6 +50,9 @@ jobs:
       - name: Guard source battery (spec 011 Phase 3)
         run: python3 runner/guard/test_guard_source.py
 
+      - name: Launch discipline battery (no visible consoles, 2026-11-06)
+        run: python3 runner/test_launch_discipline.py
+
       - name: Backchannel batteries (unit + chaos)
         run: |
           (cd backchannel && python3 test_bc.py)

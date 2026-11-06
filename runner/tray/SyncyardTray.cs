@@ -1506,9 +1506,14 @@ namespace SyncyardTray
             {
                 if (!created)
                 {
-                    MessageBox.Show("Syncyard Tray is already running.",
-                        "Syncyard Tray", MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                    // Duplicate launch (owner hard constraint,
+                    // 2026-11-06): a modal dialog is a visible
+                    // window in the owner's session, and duplicate
+                    // launches are routine (the watchdog, the Run
+                    // key and a manual start can race). Log the
+                    // line and exit silently instead.
+                    ProgramLog("duplicate launch: tray already " +
+                        "running, exiting silently");
                     return;
                 }
                 Application.EnableVisualStyles();
@@ -1581,6 +1586,11 @@ namespace SyncyardTray
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool DestroyIcon(IntPtr hIcon);
+
+        [DllImport("user32.dll", SetLastError = true,
+            CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr hWnd,
+            StringBuilder lpClassName, int nMaxCount);
 
         private readonly NotifyIcon _icon;
         private readonly System.Windows.Forms.Timer _timer;
@@ -2850,10 +2860,78 @@ namespace SyncyardTray
         }
 
         // --- stray console hiding ----------------------------------------
+        //
+        // Invisibility follow-through (owner hard constraint,
+        // 2026-11-06; desktop window audit run 42239836804):
+        // the title-only test this replaces could not see the
+        // windows that actually appear. The audit's two visible
+        // consoles were a PseudoConsoleWindow with an EMPTY
+        // title (a powershell launched WITH the hidden flag,
+        // whose window still surfaced) and a Terminal-hosted
+        // window whose title matched neither substring. The
+        // hider now decides by OWNER PROCESS and WINDOW CLASS:
+        // any process in the fleet console set whose main
+        // window is a console-class window is hidden, whatever
+        // its title says; the original title matches still hide
+        // as before. The one guarded owner is WindowsTerminal
+        // itself: the terminal host is also the owner's own
+        // interactive terminal, so its windows are hidden ONLY
+        // when the title carries a fleet substring. Fleet
+        // consoles hosted inside Terminal are covered where
+        // Windows exposes the tenant process's own handle, and
+        // where it does not, launch-side discipline (hidden
+        // flags, pinned by the launch-discipline battery) is
+        // the fix, not hiding the owner's terminal.
+
+        private static readonly string[] FleetConsoleProcesses =
+            new[] { "conhost", "cmd", "powershell", "pwsh" };
+
+        private static readonly string[] FleetConsoleWindowClasses =
+            new[] { "ConsoleWindowClass", "PseudoConsoleWindow",
+                    "CASCADIA_HOSTING_WINDOW_CLASS" };
+
+        private static bool TitleMatchesFleet(string title)
+        {
+            return title.IndexOf("actions-runner",
+                       StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   title.IndexOf("run.cmd",
+                       StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string WindowClassName(IntPtr hWnd)
+        {
+            try
+            {
+                var sb = new StringBuilder(256);
+                if (GetClassName(hWnd, sb, sb.Capacity) > 0)
+                    return sb.ToString();
+            }
+            catch { }
+            return "";
+        }
+
+        private static bool IsConsoleWindowClass(string cls)
+        {
+            foreach (var c in FleetConsoleWindowClasses)
+                if (string.Equals(cls, c,
+                        StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        private void HideOneStray(Process p, string title,
+            string cls, int cmd)
+        {
+            ShowWindow(p.MainWindowHandle, cmd);
+            if (cmd == SW_HIDE)
+                Log("hid stray console '" + title +
+                    "' process=" + p.ProcessName +
+                    " pid=" + p.Id + " class=" + cls);
+        }
 
         private void SetStrayConsoles(int cmd)
         {
-            foreach (var name in new[] { "conhost", "cmd", "powershell", "pwsh" })
+            foreach (var name in FleetConsoleProcesses)
             {
                 Process[] procs;
                 try { procs = Process.GetProcessesByName(name); }
@@ -2864,19 +2942,36 @@ namespace SyncyardTray
                     {
                         if (p.MainWindowHandle == IntPtr.Zero) continue;
                         string title = p.MainWindowTitle ?? "";
-                        if (title.IndexOf("actions-runner",
-                                StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            title.IndexOf("run.cmd",
-                                StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            ShowWindow(p.MainWindowHandle, cmd);
-                            if (cmd == SW_HIDE)
-                                Log("hid stray console '" + title + "'");
-                        }
+                        string cls = WindowClassName(p.MainWindowHandle);
+                        if (IsConsoleWindowClass(cls) ||
+                            TitleMatchesFleet(title))
+                            HideOneStray(p, title, cls, cmd);
                     }
                     catch { }
                 }
             }
+            // The terminal host, guarded: never hide the
+            // owner's own interactive terminal. A Terminal
+            // window is hidden only when its title carries a
+            // fleet substring, exactly the pre-existing test.
+            try
+            {
+                foreach (var p in
+                    Process.GetProcessesByName("WindowsTerminal"))
+                {
+                    try
+                    {
+                        if (p.MainWindowHandle == IntPtr.Zero) continue;
+                        string title = p.MainWindowTitle ?? "";
+                        if (TitleMatchesFleet(title))
+                            HideOneStray(p, title,
+                                WindowClassName(p.MainWindowHandle),
+                                cmd);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
         }
 
         private void HideStrayConsoles() { SetStrayConsoles(SW_HIDE); }

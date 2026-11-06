@@ -137,7 +137,7 @@ try {
     }
 
     Write-WatchLog "relaunching tray (no process for $TrayExe)"
-    $proc = Start-Process -FilePath $TrayExe -PassThru
+    $proc = Start-Process -FilePath $TrayExe -PassThru -WindowStyle Hidden
     Start-Sleep -Seconds 3
     if (Test-TrayRunning) {
         $recent += $nowUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
