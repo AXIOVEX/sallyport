@@ -41,6 +41,20 @@ The spec 027 section pins one version truth at the source: the
 BuildId string are extracted and asserted equal, so the stamps
 the gatekeeper's drift judge compares can only move together.
 
+The spec 028 section pins settings resilience: the save is
+atomic with a .bak and the load falls back live file -> .bak
+-> machine profile -> compiled defaults, logging the source
+that won; the profile is read as installed data beside the
+exe (never compiled constants naming another machine); the
+machine profiles shipped in profiles/ are parsed and checked
+(the laptop names only its own lanes, the desktop's normal
+lane names its three instances); the runner table is built
+from the settings' lane set with per-instance directories;
+the supervising-nothing note rides the menu header and the
+heartbeat; restart state persists beside the log; and
+listener identity is the exact runner directory in the tray
+and in runner/runner-watchdog.ps1.
+
 The menu-lifetime section guards the 2026-11-04 laptop crash:
 RebuildMenu used to build a new ContextMenuStrip per rebuild,
 assign it to the NotifyIcon, and dispose the previous strip - and
@@ -57,6 +71,7 @@ These are source-shape checks: they fail if the leak patterns, the
 missing exception guards, or a settings/fleet regression ever come
 back.
 """
+import json
 import pathlib
 import re
 import sys
@@ -65,6 +80,15 @@ SRC = pathlib.Path(__file__).with_name("SyncyardTray.cs").read_text(
     encoding="utf-8")
 NSI = pathlib.Path(__file__).with_name("SyncyardTray.nsi").read_text(
     encoding="utf-8")
+RUNNER_WATCHDOG = (pathlib.Path(__file__).parent.parent /
+    "runner-watchdog.ps1").read_text(encoding="utf-8")
+_TRAY_DIR = pathlib.Path(__file__).parent
+PROFILE_DESKTOP = json.loads((_TRAY_DIR /
+    "profiles/desktop/tray-profile.json").read_text(
+    encoding="utf-8"))
+PROFILE_LAPTOP = json.loads((_TRAY_DIR /
+    "profiles/laptop/tray-profile.json").read_text(
+    encoding="utf-8"))
 WATCHDOG = pathlib.Path(__file__).with_name(
     "tray-watchdog.ps1").read_text(encoding="utf-8")
 TASKXML = pathlib.Path(__file__).with_name(
@@ -91,6 +115,29 @@ def seticon_body():
         r"private void SetIcon\(int state, int conn\)\n(.*?)\n        \}\n",
         SRC, re.S)
     return m.group(1) if m else ""
+
+
+def profile_lanes(profile):
+    return {entry["lane"]: entry["instances"]
+            for entry in profile["lanes"]}
+
+
+def region_of(class_marker, start_marker, end_marker=None):
+    """A slice of SRC inside one class: from start_marker at or
+    after class_marker to end_marker (the spec 028 regions must
+    not leak across class boundaries - the heartbeat writer and
+    the restart-state writer share the TrayApp class body, so
+    their regions are cut inside it)."""
+    base = SRC.find(class_marker)
+    if base < 0:
+        return ""
+    i = SRC.find(start_marker, base)
+    if i < 0:
+        return ""
+    if end_marker is None:
+        return SRC[i:]
+    j = SRC.find(end_marker, i + len(start_marker))
+    return SRC[i:] if j < 0 else SRC[i:j]
 
 
 def settings_keys():
@@ -142,6 +189,27 @@ def main():
                        "// The one fleet read plus")
     tickcore = region("private void TickCore()",
                       "// The one fleet read plus")
+    # Spec 028 regions, cut inside their owning classes.
+    save028 = region_of("internal sealed class TraySettings",
+                        "public void Save()",
+                        "public string Serialize()")
+    load028 = region_of("internal sealed class TraySettings",
+                        "public static TraySettings Load()",
+                        "private static void ParseInto(")
+    profile028 = region("internal sealed class TrayProfile",
+                        "internal sealed class TraySettings")
+    supervise028 = region_of("internal sealed class TrayApp",
+                             "internal string SupervisionNote()",
+                             "private void LoadRestartState()")
+    restart028 = region_of("internal sealed class TrayApp",
+                           "private void LoadRestartState()",
+                           "private void OnTick(")
+    refresh028 = region_of("internal sealed class TrayApp",
+                           "private void RefreshStates()",
+                           "private static string SafePath(")
+    beat028 = region_of("internal sealed class TrayApp",
+                        "private void WriteTrayHeartbeat()",
+                        "private static string IsoUtc(")
     written, read = settings_keys()
     # Spec 027 (H3) FR-004: the tray's version truths, EXTRACTED
     # rather than literal-pinned — the drift judge compares the
@@ -227,17 +295,20 @@ def main():
         check("settings values are clamped on load",
               ", 1, 20)" in settings and ", 2, 60)" in settings
               and ", 30, 3600)" in settings),
-        # The settings save, the tray heartbeat, and the
-        # stopped-by-user marker (spec 025) are the ONLY
-        # WriteAllText sites in the tray: the fleet snapshot
-        # and everything else stay read-only.
-        check("three WriteAllText sites only: TraySettings.Save, "
+        # The settings save, the tray heartbeat, the
+        # stopped-by-user marker (spec 025), and the persisted
+        # restart state (spec 028) are the ONLY WriteAllText
+        # sites in the tray: the fleet snapshot and everything
+        # else stay read-only. Spec 028 widened the count from
+        # three to four for the restart-state store, the same
+        # way spec 025 widened it for the marker.
+        check("four WriteAllText sites only: TraySettings.Save, "
               "the tray heartbeat writer, the stopped-by-user "
-              "marker",
-              SRC.count("File.WriteAllText(") == 3
+              "marker, the restart-state store",
+              SRC.count("File.WriteAllText(") == 4
               and "File.WriteAllText(" in settings
               and "File.WriteAllText(" in heartbeat
-              and "File.WriteAllText(" in SRC),
+              and "File.WriteAllText(" in restart028),
 
         # ---- spec 014 FR-002/FR-004/FR-006: live application ------
         check("timer interval comes from settings (ctor + apply)",
@@ -578,12 +649,15 @@ def main():
               and '@"C:\\Users\\trist\\Development\\Syncyard\\runners"'
               in SRC
               and '"runnerRoot"' in SRC),
-        check("lane dirs are built from the settings runner root",
-              'Path.Combine(_settings.RunnerRoot, "long")' in SRC
-              and 'Path.Combine(_settings.RunnerRoot, "quick")' in SRC
-              and 'Path.Combine(_settings.RunnerRoot, "normal")' in SRC
-              and 'Path.Combine(_settings.RunnerRoot, "gpu")' in SRC
-              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\long"'
+        # Spec 028 FR-004/FR-005 supersedes the four hardcoded
+        # Combine calls this check used to pin: instance dirs
+        # are built from the settings runner root and the
+        # machine's instance names, in the runner-table loop
+        # (pinned in the spec 028 section below). The guard
+        # that matters from the original check stands: no
+        # hardcoded desktop lane path may come back.
+        check("no hardcoded desktop lane paths remain",
+              '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\long"'
               not in SRC
               and '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\gpu"'
               not in SRC),
@@ -679,6 +753,153 @@ def main():
               and "-WindowStyle Hidden" in TASKXML
               and "__USER_SID__" in TASKXML
               and "__TRAY_DIR__" in TASKXML),
+        # ---- spec 028: settings resilience, per-machine lane
+        # ---- sets, multi-instance supervision -----------------
+        # FR-001: the save is atomic (temp beside the live file,
+        # replace with the previous file kept as .bak), and the
+        # live path itself is never written in place.
+        check("spec 028: settings save writes a temp file, "
+              "never the live path in place",
+              'string tmp = FilePath + ".tmp";' in save028
+              and "File.WriteAllText(tmp, Serialize());" in save028
+              and "File.WriteAllText(FilePath" not in SRC),
+        check("spec 028: settings save replaces, keeping the "
+              "previous file as .bak, and moves when absent",
+              'File.Replace(tmp, FilePath, FilePath + ".bak");'
+              in save028
+              and "File.Move(tmp, FilePath);" in save028),
+        check("spec 028: load falls back live file -> .bak -> "
+              "machine profile -> compiled defaults",
+              'string bak = FilePath + ".bak";' in load028
+              and "ParseInto(b, File.ReadAllText(bak));" in load028
+              and "BaseSettings()" in load028),
+        check("spec 028: the fallback source is logged whenever "
+              "it is not the live file",
+              '"); last good .bak in use"' in load028
+              and '"machine profile"' in load028
+              and '"no settings file; "' in load028),
+        # FR-002: the profile is installed data beside the exe,
+        # read tolerantly; nothing compiled names another
+        # machine's shape as the fallback.
+        check("spec 028: the profile file lives beside the exe",
+              "internal sealed class TrayProfile" in SRC
+              and '"tray-profile.json"' in profile028
+              and "BaseDirectory" in profile028),
+        check("spec 028: the profile carries the FR-002 fields",
+              all(k in profile028 for k in (
+                  '"runnerRoot"', '"fleetStatusPath"',
+                  '"connectionHeartbeatPath"', '"heartbeatHost"',
+                  '"fleetStaleSeconds"',
+                  '"connectionStaleSeconds"',
+                  '"connectionDownSeconds"', '"lanes"',
+                  '"instances"'))),
+        check("spec 028: the installer installs and removes "
+              "the profile",
+              'File "tray-profile.json"' in NSI
+              and 'Delete "$INSTDIR\\tray-profile.json"' in NSI),
+        check("spec 028: the shipped profiles parse with the "
+              "FR-002 fields",
+              all(k in PROFILE_DESKTOP and k in PROFILE_LAPTOP
+                  for k in ("runnerRoot", "fleetStatusPath",
+                            "connectionHeartbeatPath",
+                            "heartbeatHost", "fleetStaleSeconds",
+                            "connectionStaleSeconds",
+                            "connectionDownSeconds", "lanes"))),
+        check("spec 028: the laptop profile names only its "
+              "own lanes (no normal, no gpu)",
+              set(profile_lanes(PROFILE_LAPTOP))
+              == {"long", "quick"}
+              and PROFILE_LAPTOP["heartbeatHost"] == "laptop"),
+        check("spec 028: the desktop profile carries four "
+              "lanes and the three-instance normal lane",
+              set(profile_lanes(PROFILE_DESKTOP))
+              == {"long", "quick", "normal", "gpu"}
+              and profile_lanes(PROFILE_DESKTOP)["normal"]
+              == ["normal", "normal2", "normal3"]),
+        # FR-004/FR-005: the runner table comes from the
+        # settings' lane set and instance map.
+        check("spec 028: the runner table is built from the "
+              "machine lane set, per instance directory",
+              "foreach (var lane in _settings.Lanes)" in ctor
+              and "foreach (var inst in "
+                  "_settings.LaneInstances(lane))" in ctor
+              and "Dir = Path.Combine(_settings.RunnerRoot, inst)"
+              in ctor),
+        check("spec 028: the compiled floor is the fallback "
+              "only, and directory derivation strips instance "
+              "digits",
+              "public static readonly string[] DefaultLanes ="
+              in settings
+              and "DeriveLaneSetFromDirs" in settings
+              and "TrimEnd(" in settings),
+        check("spec 028: the settings dialog draws the "
+              "machine's lanes, not the compiled floor",
+              "_lanes = app.Settings.Lanes;" in SRC
+              and "TraySettings.Lanes" not in SRC),
+        # FR-003: supervising nothing is said, in the menu
+        # header and in the heartbeat, and the icon never
+        # presents all-up under it.
+        check("spec 028: the supervising-nothing note names "
+              "the missing runner root",
+              '"supervising nothing: runner root missing"'
+              in supervise028),
+        check("spec 028: the menu header carries the "
+              "supervising-nothing note",
+              "var supLine = new ToolStripMenuItem(supNote);"
+              in rebuild),
+        check("spec 028: the heartbeat carries the supervision "
+              "state on every beat",
+              '\\"supervision\\"' in beat028
+              and "SupervisionNote()" in beat028),
+        check("spec 028: the icon never shows all-up while "
+              "supervising nothing",
+              "SupervisionNote() != null ? 2" in rebuild),
+        # FR-005: the heartbeat reports each instance, with
+        # its lane, instance name, and directory.
+        check("spec 028: the heartbeat reports per-instance "
+              "state under its lane",
+              '\\"instance\\"' in beat028
+              and '\\"dir\\"' in beat028
+              and "foreach (var r in _runners)" in beat028),
+        check("spec 028: the dialog lane buttons act on every "
+              "instance of the lane",
+              "foreach (var r in RunnersOf(captured))" in SRC
+              and "_app.LaneStart(r);" in SRC
+              and "_app.LaneStop(r);" in SRC
+              and "_app.LaneRestart(r);" in SRC),
+        check("spec 028: the dialog lane state aggregates "
+              "the lane's instances",
+              "_app.LaneStateText(_lanes[i])" in SRC
+              and '" instances running"' in SRC),
+        # FR-006: restart history and Faulted persist beside
+        # the log, restored at startup and saved on change.
+        check("spec 028: restart state lives beside the log",
+              '"tray-restart-state.json"' in ctor
+              and "LoadRestartState();" in ctor),
+        check("spec 028: restart state restores history and "
+              "Faulted per instance directory",
+              'MiniJson.GetObjects(text,' in restart028
+              and '"faulted"' in restart028
+              and "r.RestartTimes.Add(t);" in restart028
+              and "r.Faulted = true;" in restart028),
+        check("spec 028: restart state is saved on start and "
+              "on fault",
+              SRC.count("SaveRestartState();") >= 5),
+        # FR-007: listener identity is the exact directory,
+        # in the tray and in runner/runner-watchdog.ps1.
+        check("spec 028: tray listener identity is the exact "
+              "runner directory, never a prefix",
+              "Path.GetDirectoryName(path)" in refresh028
+              and "string.Equals(parent, dir," in refresh028
+              and "StartsWith(r.Dir" not in SRC
+              and "ListenerInDir(p, r.Dir)" in SRC),
+        check("spec 028: runner watchdog listener identity "
+              "is the exact directory too",
+              "Split-Path -Parent $p.ExecutablePath"
+              in RUNNER_WATCHDOG
+              and ".Equals($Dir," in RUNNER_WATCHDOG
+              and "StartsWith($Dir" not in RUNNER_WATCHDOG),
+
         # ---- menu lifetime: the disposed-strip crash ------------
         # The 2026-11-04 laptop crash (see the module docstring):
         # the modal menu filter must never be left holding a

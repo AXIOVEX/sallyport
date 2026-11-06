@@ -51,9 +51,17 @@ function Get-RestartHistory {
 }
 
 function Test-ListenerAlive($Dir) {
+    # Listener identity is the exact runner directory (spec 028
+    # FR-007, red team H14): the listener exe's own directory must
+    # EQUAL the runner directory - never a path-prefix match,
+    # under which the listener of a longer sibling directory
+    # (for example runners\normal2) also counted as the shorter
+    # directory's (runners\normal) listener, and a dead runner
+    # was reported alive.
     $procs = Get-CimInstance Win32_Process -Filter "Name = 'Runner.Listener.exe'" -ErrorAction SilentlyContinue
     foreach ($p in $procs) {
-        if ($p.ExecutablePath -and $p.ExecutablePath.StartsWith($Dir, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if ($p.ExecutablePath -and
+            (Split-Path -Parent $p.ExecutablePath).Equals($Dir, [System.StringComparison]::OrdinalIgnoreCase)) {
             return $true
         }
     }
