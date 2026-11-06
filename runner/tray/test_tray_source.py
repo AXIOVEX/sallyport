@@ -36,6 +36,11 @@ manifest check, the hash verified before the swap is armed, and
 the helper mode running before the singleton mutex with no UI in
 its code path.
 
+The spec 027 section pins one version truth at the source: the
+.nsi VERSION define, both assembly version attributes, and the
+BuildId string are extracted and asserted equal, so the stamps
+the gatekeeper's drift judge compares can only move together.
+
 The menu-lifetime section guards the 2026-11-04 laptop crash:
 RebuildMenu used to build a new ContextMenuStrip per rebuild,
 assign it to the NotifyIcon, and dispose the previous strip - and
@@ -138,6 +143,29 @@ def main():
     tickcore = region("private void TickCore()",
                       "// The one fleet read plus")
     written, read = settings_keys()
+    # Spec 027 (H3) FR-004: the tray's version truths, EXTRACTED
+    # rather than literal-pinned — the drift judge compares the
+    # beat's build against the published release, so the stamps
+    # it reads meaning from can only be trusted if they cannot
+    # move apart. All five stamps must extract and must be one
+    # value; any one moving alone fails, all moving together
+    # passes (the literal build-value pins above stay as the
+    # spec 021 record of the current build).
+    def _grab(pattern, text):
+        m = re.search(pattern, text)
+        return m.group(1) if m else None
+
+    version_truths = {
+        "nsi VERSION define": _grab(
+            r'!define VERSION "([^"]+)"', NSI),
+        "nsi VIProductVersion": _grab(
+            r'VIProductVersion "([^"]+)"', NSI),
+        "AssemblyVersion": _grab(
+            r'AssemblyVersion\("([^"]+)"\)', SRC),
+        "AssemblyFileVersion": _grab(
+            r'AssemblyFileVersion\("([^"]+)"\)', SRC),
+        "BuildId": _grab(r'BuildId = "([^"]+)"', SRC),
+    }
     results = [
         # ---- spec 007: the GDI leak and exception guards ----------
         check("SetIcon exists", bool(body)),
@@ -613,6 +641,20 @@ def main():
               and 'BuildId = "0.4.4.0"' in SRC
               and '!define VERSION "0.4.4.0"' in NSI
               and 'VIProductVersion "0.4.4.0"' in NSI),
+        # ---- spec 027: one version truth, extracted (FR-004) --
+        # The value-independent form of the pin above: extract
+        # every stamp the fleet reads meaning from (the .nsi
+        # VERSION define that becomes the installer's
+        # DisplayVersion, both assembly attributes, the BuildId
+        # the beats and update comparisons carry) and assert
+        # they are ONE value. Fails when any one moves alone;
+        # passes when all move together to a new build.
+        check("spec 027: every version stamp extracts (nsi "
+              "define, assembly attributes, BuildId)",
+              all(v is not None for v in version_truths.values())),
+        check("spec 027: all extracted version stamps are equal "
+              "(one version truth)",
+              len(set(version_truths.values())) == 1),
         check("packaged watchdog: a missing exe is an "
               "owner-needed marker, never a launch attempt",
               "tray-watchdog-owner-needed.json" in WATCHDOG
