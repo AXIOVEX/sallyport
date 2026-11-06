@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Tray liveness heartbeat (spec 025, H1): tray 0.4.4.0 writes
+  tray-heartbeat.json beside its log about every 30 s and at
+  startup (host, build, pid, session, started_at, tick,
+  per-lane running/faulted), atomically; the backchannel
+  agent merges it into its heartbeat as `tray`
+  (SYNCBC_TRAY_FILE); the gatekeeper stores the beat per
+  host and judges tray staleness against the carrying
+  heartbeat past liveness.tray_stale_after_s (300 s),
+  ledgering tray_stale / tray_recovered and marking the
+  status host line TRAY STALE when the agent is alive and
+  the tray is not reporting. The owner's Exit now writes a
+  stopped-by-user marker any tray start clears, and the
+  tray package gains tray-watchdog.ps1 plus its scheduled
+  task template: a bounded restart (about 60 s via the
+  1-minute task) with a 5-per-hour relaunch cap and an
+  owner-needed marker past the cap or when the exe is
+  missing. Not yet field-deployed; the owner pulls tray
+  updates himself.
 - Tray 0.4.3.0: update check at launch, queue line, status
   window, consoles viewer. A few seconds after startup the
   tray now runs the same update check the menu item runs

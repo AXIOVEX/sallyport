@@ -29,6 +29,7 @@ jobs:
           python3 gatekeeper/test_golden.py
           python3 gatekeeper/test_spec013.py
           python3 gatekeeper/test_spec011.py
+          python3 gatekeeper/test_spec025.py
           python3 gatekeeper/test_spec015.py
           python3 gatekeeper/test_spec016.py
           python3 gatekeeper/test_fleet_status.py

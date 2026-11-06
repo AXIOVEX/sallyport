@@ -79,7 +79,12 @@ DEFAULTS = {
     # host's heartbeat on its sweep cadence and keeps its own
     # last-seen record; a host whose heartbeat is older than this
     # many seconds is shown DOWN.
-    "liveness": {"down_after_s": 900},
+    # tray_stale_after_s (spec 025): the tray on each host beats
+    # into a file the backchannel agent merges into its
+    # heartbeat; a tray beat older than this (relative to the
+    # heartbeat carrying it — both stamps are the host's own
+    # clock) means the agent is alive and the tray is dead.
+    "liveness": {"down_after_s": 900, "tray_stale_after_s": 300},
     # Controlled reboot (spec 011 FR-015): `gk reboot` signals
     # the host OS with this grace delay in seconds unless
     # --delay overrides it, so in-flight uploads and log
@@ -432,6 +437,13 @@ def validate(cfg):
             or down_after <= 0):
         raise ConfigError(
             "liveness.down_after_s must be a positive number of seconds")
+    tray_stale = (cfg.get("liveness") or {}).get("tray_stale_after_s")
+    if (isinstance(tray_stale, bool)
+            or not isinstance(tray_stale, (int, float))
+            or tray_stale <= 0):
+        raise ConfigError(
+            "liveness.tray_stale_after_s must be a positive "
+            "number of seconds")
     grace = (cfg.get("reboot") or {}).get("grace_s")
     if (isinstance(grace, bool)
             or not isinstance(grace, (int, float))

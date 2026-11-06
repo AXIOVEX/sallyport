@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  SyncyardTrayWatchdog scheduled task (spec 025 mechanism,
+  spec 029 packaging). The tray installer renders this
+  template: __USER_SID__ is the installing user's SID,
+  __TRAY_DIR__ the tray install directory (where
+  tray-watchdog.ps1 lands), __STATE_DIR__ the tray's
+  %LOCALAPPDATA%\SyncyardTray directory. A rendered task with
+  an unsubstituted __TOKEN__ left in it is an install failure
+  (spec 029 FR-006).
+  One-minute repetition, the owner's own session, windowless:
+  the action is powershell.exe with -WindowStyle Hidden, and
+  the script it runs creates no window of its own.
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Syncyard tray watchdog: relaunch an absent tray within about a minute, honoring the stopped-by-user marker and a relaunch cap (spec 025).</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>__USER_SID__</UserId>
+    </LogonTrigger>
+    <TimeTrigger>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>__USER_SID__</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <ExecutionTimeLimit>PT2M</ExecutionTimeLimit>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "__TRAY_DIR__\tray-watchdog.ps1" -StateDir "__STATE_DIR__"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

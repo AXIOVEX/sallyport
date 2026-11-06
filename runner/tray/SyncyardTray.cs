@@ -45,6 +45,18 @@
 // item, which hunted session windows by title and could
 // never show a healthy runner.
 //
+// Spec 025 (0.4.4.0): the tray beats. Every ~30 s and once at
+// startup the tray writes tray-heartbeat.json beside its log
+// (host, build, pid, session, started_at, ts, tick, and the
+// per-lane running/faulted state), atomically. The backchannel
+// agent merges that file into its heartbeat as `tray`, and
+// the gatekeeper judges agent-alive/tray-dead from it, so a
+// dead tray is a fleet-visible defect instead of a discovery
+// the owner makes at the taskbar. The owner's Exit writes a
+// stopped-by-user marker beside the log; the packaged tray
+// watchdog (runner/tray/tray-watchdog.ps1) honors it, and any
+// tray start clears it.
+//
 // Compile (no SDK install needed - csc ships with Windows):
 //   csc /target:winexe /out:SyncyardTray.exe /win32icon:logo.ico
 //       /resource:logo.png,SyncyardLogo.png
@@ -80,8 +92,8 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyCompany("Axiovex Systems, LLC")]
 [assembly: System.Reflection.AssemblyProduct("Syncyard Tray")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (c) Axiovex Systems, LLC")]
-[assembly: System.Reflection.AssemblyVersion("0.4.3.0")]
-[assembly: System.Reflection.AssemblyFileVersion("0.4.3.0")]
+[assembly: System.Reflection.AssemblyVersion("0.4.4.0")]
+[assembly: System.Reflection.AssemblyFileVersion("0.4.4.0")]
 
 namespace SyncyardTray
 {
@@ -408,6 +420,12 @@ namespace SyncyardTray
             @"\\wsl.localhost\Ubuntu-24.04\home\tpierson\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json";
         public int ConnectionStaleSeconds = 180;
         public int ConnectionDownSeconds = 900;
+        // Spec 025: the gatekeeper host name this tray's
+        // heartbeat claims. The host guard's convention
+        // (a settings key, the desktop as the compiled
+        // default); the laptop's settings file names its
+        // own host. Nothing else about the beat changes.
+        public string HeartbeatHost = "desktop";
 
         private readonly Dictionary<string, bool> _laneEnabled =
             new Dictionary<string, bool>();
@@ -485,6 +503,8 @@ namespace SyncyardTray
                 s.ConnectionDownSeconds = Clamp(MiniJson.GetInt(text,
                     "connectionDownSeconds", s.ConnectionDownSeconds),
                     30, 86400);
+                string hh = MiniJson.GetString(text, "heartbeatHost");
+                if (!string.IsNullOrEmpty(hh)) s.HeartbeatHost = hh;
                 if (s.ConnectionStaleSeconds >= s.ConnectionDownSeconds)
                 {
                     // An inverted pair cannot be evaluated; fall
@@ -547,6 +567,8 @@ namespace SyncyardTray
                 ConnectionDownSeconds.ToString(
                     CultureInfo.InvariantCulture),
                 true);
+            Line(sb, "heartbeatHost",
+                "\"" + MiniJson.Escape(HeartbeatHost) + "\"", true);
             for (int i = 0; i < Lanes.Length; i++)
                 Line(sb, "laneEnabled_" + Lanes[i],
                     Bool(LaneEnabled(Lanes[i])), i < Lanes.Length - 1);
@@ -1236,6 +1258,16 @@ namespace SyncyardTray
         private bool _menuDirty;
         private int _tick;
         private TraySettings _settings;
+        // Tray liveness heartbeat (spec 025): the file beside
+        // the log the backchannel agent merges into its
+        // heartbeat, the process start it reports, and the
+        // write state (cadence clock + a failure latch so a
+        // broken write logs once, not every beat).
+        private readonly string _heartbeatPath;
+        private readonly string _stoppedMarkerPath;
+        private readonly DateTime _startedAtUtc = DateTime.UtcNow;
+        private DateTime _lastHeartbeatUtc = DateTime.MinValue;
+        private bool _heartbeatWriteFailed;
         private FleetStatus _fleet;
         private ConnectionStatus _conn;
         private int _lastConnState = -1;
@@ -1253,7 +1285,7 @@ namespace SyncyardTray
         // misjudge). All other fields are UI-thread state,
         // written by the posted completions of the two worker
         // threads below; the workers never touch the menu.
-        private const string BuildId = "0.4.3.0";
+        private const string BuildId = "0.4.4.0";
         private const string UpdateManifestUrl =
             "https://github.com/AXIOVEX/syncyard/releases/latest/download/tray-update.json";
         private string _updateVersion;     // newer build, if any
@@ -1293,6 +1325,9 @@ namespace SyncyardTray
                 "SyncyardTray");
             Directory.CreateDirectory(baseDir);
             _logPath = Path.Combine(baseDir, "tray.log");
+            _heartbeatPath = Path.Combine(baseDir, "tray-heartbeat.json");
+            _stoppedMarkerPath = Path.Combine(baseDir,
+                "tray-stopped-by-user.json");
 
             // The project mark is embedded in this program as the
             // SyncyardLogo.png resource (spec 007 FR-007); a logo.png
@@ -1355,6 +1390,12 @@ namespace SyncyardTray
             Log("tray build " + BuildId);
             RefreshStates();
             StartMissing(false);
+            // Spec 025: a start is the owner (or the watchdog
+            // acting for them) wanting a tray — clear any
+            // stopped-by-user marker a previous Exit left, and
+            // lay down the first beat now, not 30 s from now.
+            ClearStoppedByUserMarker();
+            WriteTrayHeartbeat();
             if (_settings.HideStrayConsoles) HideStrayConsoles();
             _fleet = FleetStatus.Load(_settings.FleetStatusPath,
                 _settings.FleetStaleSeconds);
@@ -1433,6 +1474,11 @@ namespace SyncyardTray
                     "It will not be restarted again - open the tray menu.",
                     ToolTipIcon.Error);
             }
+            // Tray liveness beat (spec 025): a 30 s wall-clock
+            // cadence off the tick, so the beat's rate does not
+            // depend on the tick setting.
+            if ((DateTime.UtcNow - _lastHeartbeatUtc).TotalSeconds >= 30)
+                WriteTrayHeartbeat();
             // One fleet read per tick, after supervision, so the
             // menu, tooltip, and any open dialog all render the
             // same snapshot (spec 014 FR-008/FR-010).
@@ -1441,6 +1487,107 @@ namespace SyncyardTray
             RebuildMenu();
             RefreshSettingsDialog();
             RefreshStatusDialog();
+        }
+
+        // The tray liveness beat (spec 025): a small record
+        // beside the log — host, build, pid, session, start,
+        // tick, and each lane's running/faulted state at write
+        // time — written atomically (temp file + replace, the
+        // agent's own pattern for its heartbeat). The agent
+        // merges it into the fleet heartbeat as `tray`; the
+        // gatekeeper judges this tray dead when the beat lags
+        // its carrier. A write failure never kills the tray:
+        // it logs once until a write lands again.
+        private void WriteTrayHeartbeat()
+        {
+            DateTime now = DateTime.UtcNow;
+            try
+            {
+                var sb = new StringBuilder();
+                sb.Append("{\n");
+                sb.Append("  \"host\": \"").Append(
+                    MiniJson.Escape(_settings.HeartbeatHost)).Append("\",\n");
+                sb.Append("  \"build\": \"").Append(BuildId).Append("\",\n");
+                sb.Append("  \"pid\": ").Append(
+                    Process.GetCurrentProcess().Id.ToString(
+                        CultureInfo.InvariantCulture)).Append(",\n");
+                sb.Append("  \"session\": ").Append(
+                    Process.GetCurrentProcess().SessionId.ToString(
+                        CultureInfo.InvariantCulture)).Append(",\n");
+                sb.Append("  \"started_at\": \"").Append(IsoUtc(
+                    _startedAtUtc)).Append("\",\n");
+                sb.Append("  \"ts\": \"").Append(IsoUtc(now)).Append("\",\n");
+                sb.Append("  \"tick\": ").Append(_tick.ToString(
+                    CultureInfo.InvariantCulture)).Append(",\n");
+                sb.Append("  \"lanes\": [");
+                bool first = true;
+                foreach (var r in _runners)
+                {
+                    if (!first) sb.Append(", ");
+                    first = false;
+                    sb.Append("{\"lane\": \"").Append(
+                        MiniJson.Escape(r.Lane)).Append("\", \"running\": ")
+                        .Append(r.Running ? "true" : "false")
+                        .Append(", \"faulted\": ")
+                        .Append(r.Faulted ? "true" : "false").Append("}");
+                }
+                sb.Append("]\n}\n");
+                string tmp = _heartbeatPath + ".tmp";
+                File.WriteAllText(tmp, sb.ToString());
+                if (File.Exists(_heartbeatPath))
+                    File.Replace(tmp, _heartbeatPath, null);
+                else
+                    File.Move(tmp, _heartbeatPath);
+                _lastHeartbeatUtc = now;
+                if (_heartbeatWriteFailed)
+                {
+                    _heartbeatWriteFailed = false;
+                    Log("tray heartbeat write recovered");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!_heartbeatWriteFailed)
+                {
+                    _heartbeatWriteFailed = true;
+                    Log("tray heartbeat write failed: " + ex.Message);
+                }
+            }
+        }
+
+        private static string IsoUtc(DateTime utc)
+        {
+            return utc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'",
+                CultureInfo.InvariantCulture);
+        }
+
+        // The stopped-by-user marker (spec 025): the owner's
+        // Exit writes it beside the log and the packaged tray
+        // watchdog stands down while it stands, so Exit means
+        // exit (closing the spec 023 FR-007 gap). Any tray
+        // start clears it. Best-effort both ways: a marker
+        // that cannot be written or cleared never blocks the
+        // tray itself.
+        private void WriteStoppedByUserMarker()
+        {
+            try
+            {
+                File.WriteAllText(_stoppedMarkerPath,
+                    "{\"ts\": \"" + IsoUtc(DateTime.UtcNow) +
+                    "\", \"pid\": " + Process.GetCurrentProcess().Id
+                        .ToString(CultureInfo.InvariantCulture) + "}\n");
+            }
+            catch { }
+        }
+
+        private void ClearStoppedByUserMarker()
+        {
+            try
+            {
+                if (File.Exists(_stoppedMarkerPath))
+                    File.Delete(_stoppedMarkerPath);
+            }
+            catch { }
         }
 
         // The one fleet read plus the connection judgement
@@ -2432,6 +2579,7 @@ namespace SyncyardTray
             exit.Click += delegate
             {
                 Log("tray exited by owner; runners left as-is");
+                WriteStoppedByUserMarker();
                 _icon.Visible = false;
                 Application.Exit();
             };

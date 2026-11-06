@@ -15,9 +15,11 @@ source level — CI has no .NET Framework compiler, so this parity
 extraction is the functional test the battery can honestly run),
 the dialog must stay single-instance and allocation-free on the
 tick path, the Run key must be written only from the dialog's save
-path, and the fleet section must stay read-only (one WriteAllText
-in the whole source: the settings save) with mode strings carried
-verbatim, never whitelisted.
+path, and the fleet section must stay read-only (the settings
+save and the tray's own two state files, its heartbeat and its
+stopped-by-user marker, are the only writes in the whole
+source: three WriteAllText sites, battery-pinned) with
+mode strings carried verbatim, never whitelisted.
 
 The spec 018 section guards the connection indicator: the state
 function's bounds and missing-signal case, the FR-003 wording, the
@@ -56,6 +58,12 @@ import sys
 
 SRC = pathlib.Path(__file__).with_name("SyncyardTray.cs").read_text(
     encoding="utf-8")
+NSI = pathlib.Path(__file__).with_name("SyncyardTray.nsi").read_text(
+    encoding="utf-8")
+WATCHDOG = pathlib.Path(__file__).with_name(
+    "tray-watchdog.ps1").read_text(encoding="utf-8")
+TASKXML = pathlib.Path(__file__).with_name(
+    "tray-watchdog-task.xml").read_text(encoding="utf-8")
 
 
 def check(name, ok):
@@ -125,6 +133,10 @@ def main():
                        "private void EndUpdateBusy")
     consoles = region("internal sealed class ConsolesForm",
                       "internal sealed class SettingsForm")
+    heartbeat = region("private void WriteTrayHeartbeat()",
+                       "// The one fleet read plus")
+    tickcore = region("private void TickCore()",
+                      "// The one fleet read plus")
     written, read = settings_keys()
     results = [
         # ---- spec 007: the GDI leak and exception guards ----------
@@ -187,11 +199,17 @@ def main():
         check("settings values are clamped on load",
               ", 1, 20)" in settings and ", 2, 60)" in settings
               and ", 30, 3600)" in settings),
-        # The settings save is the ONLY WriteAllText in the tray:
-        # the fleet snapshot and everything else stay read-only.
-        check("single WriteAllText, inside TraySettings.Save",
-              SRC.count("File.WriteAllText(") == 1
-              and "File.WriteAllText(" in settings),
+        # The settings save, the tray heartbeat, and the
+        # stopped-by-user marker (spec 025) are the ONLY
+        # WriteAllText sites in the tray: the fleet snapshot
+        # and everything else stay read-only.
+        check("three WriteAllText sites only: TraySettings.Save, "
+              "the tray heartbeat writer, the stopped-by-user "
+              "marker",
+              SRC.count("File.WriteAllText(") == 3
+              and "File.WriteAllText(" in settings
+              and "File.WriteAllText(" in heartbeat
+              and "File.WriteAllText(" in SRC),
 
         # ---- spec 014 FR-002/FR-004/FR-006: live application ------
         check("timer interval comes from settings (ctor + apply)",
@@ -410,11 +428,11 @@ def main():
               and 'Log("tray alive")' in SRC),
 
         # ---- spec 021: build stamp and self-update ----------------
-        check("assembly version is the 0.4.3.0 build stamp",
-              'AssemblyVersion("0.4.3.0")' in SRC
-              and 'AssemblyFileVersion("0.4.3.0")' in SRC),
+        check("assembly version is the 0.4.4.0 build stamp",
+              'AssemblyVersion("0.4.4.0")' in SRC
+              and 'AssemblyFileVersion("0.4.4.0")' in SRC),
         check("BuildId constant carries the stamp",
-              'BuildId = "0.4.3.0"' in SRC),
+              'BuildId = "0.4.4.0"' in SRC),
         check("menu header shows the build stamp",
               '"Syncyard Tray v" + BuildId' in SRC),
         check("startup log carries the build stamp",
@@ -545,6 +563,80 @@ def main():
               SRC.find("_settings = TraySettings.Load();") >= 0
               and SRC.find("_settings = TraySettings.Load();")
               < SRC.find("_runners.Add")),
+        # ---- spec 025: tray liveness heartbeat (H1) --------------
+        # The tray beats beside its log; the backchannel agent
+        # merges the file into its heartbeat as `tray`, and the
+        # gatekeeper judges agent-alive/tray-dead from it. These
+        # pins are the writer's contract: the fields, the atomic
+        # write, the cadence, and the Exit marker the packaged
+        # watchdog honors.
+        check("heartbeat file lives beside the tray log",
+              '_heartbeatPath = Path.Combine(baseDir, '
+              '"tray-heartbeat.json");' in ctor),
+        check("a first beat is written at startup and the "
+              "stopped-by-user marker is cleared there",
+              "WriteTrayHeartbeat();" in ctor
+              and "ClearStoppedByUserMarker();" in ctor),
+        check("the beat carries the spec 025 fields",
+              all(k in heartbeat for k in (
+                  '\\"host\\"', '\\"build\\"', '\\"pid\\"',
+                  '\\"session\\"', '\\"started_at\\"', '\\"ts\\"',
+                  '\\"tick\\"', '\\"lanes\\"', '\\"faulted\\"'))),
+        check("the beat's host is the heartbeatHost setting "
+              "(guard convention, default desktop)",
+              "_settings.HeartbeatHost" in heartbeat
+              and 'public string HeartbeatHost = "desktop";'
+              in settings),
+        check("the beat's lanes are the tray's real runner "
+              "states at write time",
+              "foreach (var r in _runners)" in heartbeat
+              and "r.Running" in heartbeat and "r.Faulted" in heartbeat),
+        check("the heartbeat write is atomic (temp + replace, "
+              "move when absent)",
+              '".tmp"' in heartbeat and "File.Replace(" in heartbeat
+              and "File.Move(" in heartbeat),
+        check("the cadence is a 30 s wall clock off the tick, "
+              "not a tick count",
+              "TotalSeconds >= 30" in tickcore
+              and "WriteTrayHeartbeat();" in tickcore),
+        check("a failed beat write is logged once, not per "
+              "beat, and recovery is logged",
+              "_heartbeatWriteFailed" in heartbeat),
+        check("owner Exit writes the stopped-by-user marker "
+              "the watchdog honors",
+              "WriteStoppedByUserMarker();" in rebuild
+              and '"tray-stopped-by-user.json"' in SRC),
+        check("version truth moves together: assembly, BuildId, "
+              "and the .nsi defines all read 0.4.4.0",
+              'AssemblyVersion("0.4.4.0")' in SRC
+              and 'AssemblyFileVersion("0.4.4.0")' in SRC
+              and 'BuildId = "0.4.4.0"' in SRC
+              and '!define VERSION "0.4.4.0"' in NSI
+              and 'VIProductVersion "0.4.4.0"' in NSI),
+        check("packaged watchdog: a missing exe is an "
+              "owner-needed marker, never a launch attempt",
+              "tray-watchdog-owner-needed.json" in WATCHDOG
+              and "tray exe missing" in WATCHDOG
+              and WATCHDOG.find("tray exe missing")
+              < WATCHDOG.find("Start-Process")),
+        check("packaged watchdog: honors the stopped-by-user "
+              "marker the tray's Exit writes",
+              '"tray-stopped-by-user.json"' in WATCHDOG
+              and "stand down: tray stopped by user" in WATCHDOG),
+        check("packaged watchdog: relaunch cap of 5 per hour, "
+              "persisted in its state file beside the tray log",
+              "RelaunchCapPerHour = 5" in WATCHDOG
+              and "tray-watchdog-state.json" in WATCHDOG),
+        check("packaged watchdog: the tray is identified by "
+              "its full exe path only",
+              "ExecutablePath.Equals($TrayExe" in WATCHDOG),
+        check("watchdog task template: 1-minute repetition, "
+              "windowless, tokens unsubstituted in the shipped "
+              "template",
+              "<Interval>PT1M</Interval>" in TASKXML
+              and "-WindowStyle Hidden" in TASKXML
+              and "__USER_SID__" in TASKXML
+              and "__TRAY_DIR__" in TASKXML),
         # ---- menu lifetime: the disposed-strip crash ------------
         # The 2026-11-04 laptop crash (see the module docstring):
         # the modal menu filter must never be left holding a

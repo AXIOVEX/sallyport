@@ -81,6 +81,15 @@ TAIL_BYTES="${SYNCBC_TAIL_BYTES:-8000}"
 # itself, so a stale file is harmless here.
 GOING_DOWN_FILE="${SYNCBC_GOING_DOWN_FILE:-/mnt/c/Users/trist/Development/Syncyard/going-down.json}"
 GUARD_FILE="${SYNCBC_GUARD_FILE:-/mnt/c/Users/trist/Development/Syncyard/guard-heartbeat.json}"
+# Spec 025 (tray liveness): the tray writes its heartbeat file
+# beside its log; write_heartbeat merges it into the heartbeat
+# payload verbatim (as `tray`) every cycle, exactly like the
+# guard's records. The gatekeeper judges tray staleness from
+# it (agent alive + tray beat stale = the tray is dead on a
+# live host). A missing or unreadable tray file is skipped —
+# the heartbeat never fails because the tray is absent; that
+# absence is precisely what the gatekeeper needs to see.
+TRAY_FILE="${SYNCBC_TRAY_FILE:-/mnt/c/Users/trist/AppData/Local/SyncyardTray/tray-heartbeat.json}"
 LOG_FILE="$BASE/agent.log"
 LAST_ID_FILE="$BASE/.last_executed_id"
 SELFTEST_FILE="$BASE/.self_test.json"
@@ -111,10 +120,11 @@ write_heartbeat() {
     local stopped="$1"
     local last_id=""
     [ -f "$LAST_ID_FILE" ] && last_id="$(cat "$LAST_ID_FILE" 2>/dev/null)"
-    python3 - "$REPO_DIR/$CHANNEL_REL/heartbeat.json" "$last_id" "$stopped" "$SELFTEST_FILE" "$GOING_DOWN_FILE" "$GUARD_FILE" "$SYNC_FILE" <<'PY' 2>/dev/null || true
+    python3 - "$REPO_DIR/$CHANNEL_REL/heartbeat.json" "$last_id" "$stopped" "$SELFTEST_FILE" "$GOING_DOWN_FILE" "$GUARD_FILE" "$SYNC_FILE" "$TRAY_FILE" <<'PY' 2>/dev/null || true
 import json, os, socket, sys, datetime
 path, last_id, stopped, selftest_path = sys.argv[1], sys.argv[2], sys.argv[3] == "1", sys.argv[4]
 going_down_path, guard_path, sync_path = sys.argv[5], sys.argv[6], sys.argv[7]
+tray_path = sys.argv[8]
 data = {
     "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "host": socket.gethostname(),
@@ -139,8 +149,11 @@ except Exception:
 # heartbeat never fails because a guard file is absent or
 # mid-write (the guard writes with temp + rename, so a read
 # here sees either the old record or the new one, whole).
+# Spec 025: the tray's heartbeat file rides the same merge
+# under `tray` (the tray also writes with temp + replace).
 for key, src in (("going_down", going_down_path),
-                 ("guard", guard_path)):
+                 ("guard", guard_path),
+                 ("tray", tray_path)):
     try:
         with open(src, encoding="utf-8") as fh:
             extra = json.load(fh)
