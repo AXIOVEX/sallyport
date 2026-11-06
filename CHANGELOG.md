@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Gatekeeper snapshot queue fields on the primary path:
+  gk.py's build_snapshot now emits the tray queue model
+  (active, lanes, queue_state, running_total,
+  waiting_total) with the same shapes and four-state
+  rules as fleet_status.py's fallback derivation, so a
+  gatekeeper-sourced snapshot no longer sends the tray
+  down its degraded path. test_fleet_status pins the
+  fields on the gatekeeper emission for the idle,
+  waiting, running and full cases.
 - Tray liveness heartbeat (spec 025, H1): tray 0.4.4.0 writes
   tray-heartbeat.json beside its log about every 30 s and at
   startup (host, build, pid, session, started_at, tick,
