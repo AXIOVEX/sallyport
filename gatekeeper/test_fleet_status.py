@@ -19,10 +19,12 @@ import fleet_status  # noqa: E402
 
 TOP_KEYS = {"generated_at", "mode", "draining", "reason",
             "focus", "waiting"}
-# The fallback derivation's additive queue-depth fields
-# (tray 0.4.3.0). The gatekeeper's own emission is pinned
-# to TOP_KEYS alone (see GatekeeperSnapshot/Transporter):
-# it is transported verbatim whether or not it grows them.
+# The additive queue-depth fields (tray 0.4.3.0), emitted
+# by BOTH derivations: the fallback below and the
+# gatekeeper's own build_snapshot (see GatekeeperSnapshot),
+# so the tray reads the same queue model from either
+# source. The Transporter's canned GK_EMITTED fixture
+# predates them and is still transported verbatim.
 FALLBACK_KEYS = TOP_KEYS | {"active", "lanes", "queue_state",
                             "running_total", "waiting_total"}
 ACTIVE_KEYS = {"key", "program", "lane", "run_id"}
@@ -542,7 +544,7 @@ class GatekeeperSnapshot(unittest.TestCase):
         self.assertNotIn("priority", by_key["auto-aged"])
         self.assertTrue(all(w["held"] is False
                             for w in snap["waiting"]))
-        self.assertEqual(set(snap), TOP_KEYS)
+        self.assertEqual(set(snap), FALLBACK_KEYS)
 
     def test_paused_mode_reason_and_maintenance_exemption(self):
         self.put("PAUSED.json", {"reason": "owner hold"})
@@ -604,6 +606,101 @@ class GatekeeperSnapshot(unittest.TestCase):
         self.assertEqual(held, {"plain": True, "maint-plain": True,
                                 "gk-reboot-desktop-1": False})
 
+    def test_queue_fields_idle_when_empty(self):
+        from unittest import mock
+        caps = {"quick": 1, "normal": 3}
+        with mock.patch.object(self.gk, "LANE_CONCURRENCY",
+                               caps):
+            snap = self.gk.build_snapshot()
+        self.assertEqual(snap["active"], [])
+        self.assertEqual(snap["running_total"], 0)
+        self.assertEqual(snap["waiting_total"], 0)
+        self.assertEqual(snap["queue_state"], "idle")
+        self.assertEqual(snap["lanes"], {
+            "normal": {"cap": 3, "running": 0, "waiting": 0,
+                       "state": "idle"},
+            "quick": {"cap": 1, "running": 0, "waiting": 0,
+                      "state": "idle"}})
+
+    def test_queue_fields_active_entries_and_run_id(self):
+        self.job("run-job", state="dispatched", run_id=4242,
+                 created_at="2026-11-03T11:30:00Z")
+        self.job("watch-job", lane="long", state="watching",
+                 created_at="2026-11-03T11:15:00Z")
+        self.job("wait-job", lane="gpu")
+        snap = self.gk.build_snapshot()
+        # Submission order; run_id only when the record has
+        # one — the same shape the fallback emits.
+        self.assertEqual([a["key"] for a in snap["active"]],
+                         ["watch-job", "run-job"])
+        for a in snap["active"]:
+            self.assertTrue(set(a) <= ACTIVE_KEYS)
+            self.assertTrue({"key", "program", "lane"}
+                            <= set(a))
+        self.assertEqual(snap["active"][1]["run_id"], 4242)
+        self.assertNotIn("run_id", snap["active"][0])
+        self.assertEqual(snap["running_total"], 2)
+        self.assertEqual(snap["waiting_total"], 1)
+        # The queued gpu lane is "waiting", not "full", so
+        # the fleet as a whole is running, not saturated.
+        self.assertEqual(snap["lanes"]["gpu"]["state"],
+                         "waiting")
+        self.assertEqual(snap["queue_state"], "running")
+
+    def test_queue_state_waiting_when_nothing_running(self):
+        self.job("wait-job")
+        snap = self.gk.build_snapshot()
+        self.assertEqual(snap["queue_state"], "waiting")
+        self.assertEqual(snap["lanes"]["quick"]["state"],
+                         "waiting")
+        self.assertEqual(snap["lanes"]["quick"]["waiting"], 1)
+        self.assertEqual(snap["lanes"]["quick"]["running"], 0)
+
+    def test_queue_fields_lane_states_and_full(self):
+        from unittest import mock
+        caps = {"quick": 1, "normal": 2}
+        with mock.patch.object(self.gk, "LANE_CONCURRENCY",
+                               caps):
+            # quick: at cap with a queue behind it -> full.
+            self.job("q-run", state="dispatched")
+            self.job("q-wait")
+            # normal: one of two slots busy, queue behind
+            # it -> running (capacity remains), so the
+            # fleet is not full while any queued lane has
+            # room.
+            self.job("n-run", lane="normal", state="watching")
+            self.job("n-wait", lane="normal")
+            snap = self.gk.build_snapshot()
+            self.assertEqual(snap["queue_state"], "running")
+            self.assertEqual(snap["lanes"]["quick"],
+                             {"cap": 1, "running": 1,
+                              "waiting": 1, "state": "full"})
+            self.assertEqual(snap["lanes"]["normal"],
+                             {"cap": 2, "running": 1,
+                              "waiting": 1, "state": "running"})
+            for lane in snap["lanes"].values():
+                self.assertEqual(set(lane), LANE_KEYS)
+            # Fill normal's second slot: now every lane
+            # with a queue is at cap, fleet reads full.
+            self.job("n-run2", lane="normal",
+                     state="dispatched")
+            snap = self.gk.build_snapshot()
+            self.assertEqual(snap["lanes"]["normal"]["state"],
+                             "full")
+            self.assertEqual(snap["queue_state"], "full")
+
+    def test_queue_fields_unconfigured_lane_cap_1(self):
+        from unittest import mock
+        with mock.patch.object(self.gk, "LANE_CONCURRENCY",
+                               {"quick": 1}):
+            self.job("x-run", lane="exotic",
+                     state="dispatched")
+            self.job("x-wait", lane="exotic")
+            snap = self.gk.build_snapshot()
+        self.assertEqual(snap["lanes"]["exotic"],
+                         {"cap": 1, "running": 1, "waiting": 1,
+                          "state": "full"})
+
     def test_cli_snapshot_prints_one_json_object(self):
         import subprocess
         self.put("hosts.json", {"desktop": {"hold": True}})
@@ -614,7 +711,7 @@ class GatekeeperSnapshot(unittest.TestCase):
             timeout=30)
         self.assertEqual(out.returncode, 0, out.stderr)
         snap = json.loads(out.stdout)
-        self.assertEqual(set(snap), TOP_KEYS)
+        self.assertEqual(set(snap), FALLBACK_KEYS)
         self.assertEqual(snap["draining"], True)
         self.assertEqual(snap["waiting"][0]["key"], "plain")
         self.assertEqual(snap["waiting"][0]["held"], True)

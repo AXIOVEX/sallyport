@@ -4704,6 +4704,24 @@ def snapshot_held(job, prec, stopped, held_hosts):
     return held
 
 
+def snapshot_lane_state(cap, running, waiting):
+    """The tray's four-state queue model for one lane:
+    idle (nothing running, nothing waiting), waiting
+    (jobs queued, nothing running - the dangerous
+    state), full (running at cap with jobs still
+    waiting), running (everything else with a runner
+    out). Mirrors fleet_status._lane_state so the
+    primary and fallback derivations emit the same
+    states for the same queue."""
+    if running == 0 and waiting == 0:
+        return "idle"
+    if running == 0:
+        return "waiting"
+    if waiting > 0 and running >= cap:
+        return "full"
+    return "running"
+
+
 def build_snapshot():
     """The spec 014 FR-008 fleet snapshot, derived from this
     gatekeeper's own state by its own code paths: the
@@ -4716,7 +4734,15 @@ def build_snapshot():
     two surfaces: `gk status` for the operator at the
     terminal, this JSON for the tray feed, transported by
     fleet_status.py (publisher v2). Pure reads; writes
-    nothing."""
+    nothing.
+
+    The queue-depth fields (active, lanes, queue_state,
+    running_total, waiting_total) carry the tray's
+    four-state queue model (spec 025): the same fields,
+    shapes and state rules fleet_status.py's fallback
+    derivation emits, so a gatekeeper-sourced snapshot
+    and a fallback snapshot are interchangeable to the
+    tray."""
     stop = stop_state()
     prec = pause_record()
     held_hosts = {h for h, r in load_hosts_state().items()
@@ -4738,8 +4764,9 @@ def build_snapshot():
                  "chats": list(prec["except_chats"])}
         draining = draining or bool(prec.get("drain"))
     now = now_dt()
+    jobs = load_jobs()
     waiting_jobs = sorted(
-        [j for j in load_jobs() if j["state"] == "submitted"],
+        [j for j in jobs if j["state"] == "submitted"],
         key=lambda j: dispatch_sort_key(j, now))
     waiting = []
     for job in waiting_jobs:
@@ -4754,6 +4781,55 @@ def build_snapshot():
             if job.get(opt) is not None:
                 entry[opt] = job[opt]
         waiting.append(entry)
+    # Active jobs (a run is out on a runner) in submission
+    # order, with the run id when the record carries one.
+    active_jobs = sorted(
+        [j for j in jobs if j["state"] in ("dispatching",
+                                           "dispatched",
+                                           "watching")],
+        key=lambda j: (j.get("created_at") or "",
+                       j.get("key") or ""))
+    active = []
+    for job in active_jobs:
+        entry = {
+            "key": job.get("key") or "",
+            "program": job.get("program") or "",
+            "lane": job.get("lane") or "",
+        }
+        if job.get("run_id") is not None:
+            entry["run_id"] = job["run_id"]
+        active.append(entry)
+    # Per-lane depth: every configured lane (from
+    # LANE_CONCURRENCY), plus any lane a queued or active
+    # record names (an unconfigured lane defaults to
+    # cap 1).
+    lane_names = set(LANE_CONCURRENCY)
+    for entry in waiting:
+        lane_names.add(entry["lane"])
+    for entry in active:
+        lane_names.add(entry["lane"])
+    lanes = {}
+    for name in sorted(lane_names):
+        run_n = sum(1 for e in active if e["lane"] == name)
+        wait_n = sum(1 for e in waiting if e["lane"] == name)
+        cap = LANE_CONCURRENCY.get(name, 1)
+        lanes[name] = {"cap": cap, "running": run_n,
+                       "waiting": wait_n,
+                       "state": snapshot_lane_state(cap, run_n,
+                                                    wait_n)}
+    running_total = len(active)
+    waiting_total = len(waiting)
+    if running_total == 0 and waiting_total == 0:
+        queue_state = "idle"
+    elif running_total == 0:
+        queue_state = "waiting"
+    elif waiting_total > 0 and all(
+            lanes[n]["state"] == "full"
+            for n in lanes if lanes[n]["waiting"] > 0):
+        # Saturated: every lane with a queue is at its cap.
+        queue_state = "full"
+    else:
+        queue_state = "running"
     return {
         "generated_at": now_iso(),
         "mode": mode,
@@ -4761,6 +4837,11 @@ def build_snapshot():
         "reason": reason,
         "focus": focus,
         "waiting": waiting,
+        "active": active,
+        "lanes": lanes,
+        "queue_state": queue_state,
+        "running_total": running_total,
+        "waiting_total": waiting_total,
     }
 
 
