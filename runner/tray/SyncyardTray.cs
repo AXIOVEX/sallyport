@@ -809,47 +809,46 @@ namespace SyncyardTray
 
         private static void ParseInto(TraySettings s, string text)
         {
-                s.Autostart = MiniJson.GetBool(text, "autostart",
-                    s.Autostart);
-                s.SupervisionEnabled = MiniJson.GetBool(text,
-                    "supervisionEnabled", s.SupervisionEnabled);
-                s.MaxRestartsPerHour = Clamp(MiniJson.GetInt(text,
-                    "maxRestartsPerHour", s.MaxRestartsPerHour), 1, 20);
-                s.TickSeconds = Clamp(MiniJson.GetInt(text,
-                    "tickSeconds", s.TickSeconds), 2, 60);
-                s.HideStrayConsoles = MiniJson.GetBool(text,
-                    "hideStrayConsoles", s.HideStrayConsoles);
-                string fp = MiniJson.GetString(text, "fleetStatusPath");
-                if (!string.IsNullOrEmpty(fp)) s.FleetStatusPath = fp;
-                string rr = MiniJson.GetString(text, "runnerRoot");
-                if (!string.IsNullOrEmpty(rr)) s.RunnerRoot = rr;
-                s.FleetStaleSeconds = Clamp(MiniJson.GetInt(text,
-                    "fleetStaleSeconds", s.FleetStaleSeconds), 30, 3600);
-                string hb = MiniJson.GetString(text,
-                    "connectionHeartbeatPath");
-                if (!string.IsNullOrEmpty(hb))
-                    s.ConnectionHeartbeatPath = hb;
-                s.ConnectionStaleSeconds = Clamp(MiniJson.GetInt(text,
-                    "connectionStaleSeconds", s.ConnectionStaleSeconds),
-                    10, 3600);
-                s.ConnectionDownSeconds = Clamp(MiniJson.GetInt(text,
-                    "connectionDownSeconds", s.ConnectionDownSeconds),
-                    30, 86400);
-                string hh = MiniJson.GetString(text, "heartbeatHost");
-                if (!string.IsNullOrEmpty(hh)) s.HeartbeatHost = hh;
-                if (s.ConnectionStaleSeconds >= s.ConnectionDownSeconds)
-                {
-                    // An inverted pair cannot be evaluated; fall
-                    // back to the FR-001 defaults rather than
-                    // guess which bound the owner meant.
-                    s.ConnectionStaleSeconds = 180;
-                    s.ConnectionDownSeconds = 900;
-                }
-                foreach (var lane in s.Lanes)
-                    s.SetLaneEnabled(lane, MiniJson.GetBool(text,
-                        "laneEnabled_" + lane, true));
-                s.FixConnectionPair();
+            s.Autostart = MiniJson.GetBool(text, "autostart",
+                s.Autostart);
+            s.SupervisionEnabled = MiniJson.GetBool(text,
+                "supervisionEnabled", s.SupervisionEnabled);
+            s.MaxRestartsPerHour = Clamp(MiniJson.GetInt(text,
+                "maxRestartsPerHour", s.MaxRestartsPerHour), 1, 20);
+            s.TickSeconds = Clamp(MiniJson.GetInt(text,
+                "tickSeconds", s.TickSeconds), 2, 60);
+            s.HideStrayConsoles = MiniJson.GetBool(text,
+                "hideStrayConsoles", s.HideStrayConsoles);
+            string fp = MiniJson.GetString(text, "fleetStatusPath");
+            if (!string.IsNullOrEmpty(fp)) s.FleetStatusPath = fp;
+            string rr = MiniJson.GetString(text, "runnerRoot");
+            if (!string.IsNullOrEmpty(rr)) s.RunnerRoot = rr;
+            s.FleetStaleSeconds = Clamp(MiniJson.GetInt(text,
+                "fleetStaleSeconds", s.FleetStaleSeconds), 30, 3600);
+            string hb = MiniJson.GetString(text,
+                "connectionHeartbeatPath");
+            if (!string.IsNullOrEmpty(hb))
+                s.ConnectionHeartbeatPath = hb;
+            s.ConnectionStaleSeconds = Clamp(MiniJson.GetInt(text,
+                "connectionStaleSeconds", s.ConnectionStaleSeconds),
+                10, 3600);
+            s.ConnectionDownSeconds = Clamp(MiniJson.GetInt(text,
+                "connectionDownSeconds", s.ConnectionDownSeconds),
+                30, 86400);
+            string hh = MiniJson.GetString(text, "heartbeatHost");
+            if (!string.IsNullOrEmpty(hh)) s.HeartbeatHost = hh;
+            if (s.ConnectionStaleSeconds >= s.ConnectionDownSeconds)
+            {
+                // An inverted pair cannot be evaluated; fall
+                // back to the FR-001 defaults rather than
+                // guess which bound the owner meant.
+                s.ConnectionStaleSeconds = 180;
+                s.ConnectionDownSeconds = 900;
             }
+            foreach (var lane in s.Lanes)
+                s.SetLaneEnabled(lane, MiniJson.GetBool(text,
+                    "laneEnabled_" + lane, true));
+            s.FixConnectionPair();
         }
 
         // The atomic save (spec 028 FR-001): the new content
