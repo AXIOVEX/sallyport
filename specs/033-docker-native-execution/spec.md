@@ -126,6 +126,15 @@ never embedded in job scripts (the run.yml cwd defect of
 - **Programs' own build environments** (iSMART firmware toolchain
   and similar): out of scope by the boundary in the inventory;
   revisited only if the owning program asks.
+- **iSMART follows the fleet (owner amendment, 2026-11-06
+  10:18 ET)**: iSMART's own WSL-dependent work converts to Docker
+  under this spec as well, but ONLY after all of today's iSMART
+  work is complete. Nothing in the iSMART environment changes
+  while any part of today's program (firmware builds, flashes,
+  kiosk deploy, the Item G chain) is still open. The iSMART chat
+  declares today's work done; only then does its conversion
+  window open, sequenced with the laptop backchannel agent's
+  conversion, which remains last and jointly approved.
 
 ## Migration order
 
