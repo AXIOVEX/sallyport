@@ -103,11 +103,7 @@ impl std::fmt::Display for DispatchError {
 
 impl std::error::Error for DispatchError {}
 
-fn ledger_fields(
-    job_id: &str,
-    key: &str,
-    idem: &str,
-) -> BTreeMap<String, serde_json::Value> {
+fn ledger_fields(job_id: &str, key: &str, idem: &str) -> BTreeMap<String, serde_json::Value> {
     let mut m = BTreeMap::new();
     m.insert("job_id".into(), serde_json::Value::String(job_id.into()));
     m.insert("key".into(), serde_json::Value::String(key.into()));
@@ -196,11 +192,9 @@ impl<'a> DispatchTxn<'a> {
         dispatcher: &dyn Dispatcher,
     ) -> Result<RunRef, DispatchError> {
         assert_epoch(store, token).map_err(|_| DispatchError::Fenced)?;
-        let job = state
-            .jobs
-            .get(&self.job_id)
-            .cloned()
-            .ok_or_else(|| DispatchError::NotDispatchable(format!("unknown job {}", self.job_id)))?;
+        let job = state.jobs.get(&self.job_id).cloned().ok_or_else(|| {
+            DispatchError::NotDispatchable(format!("unknown job {}", self.job_id))
+        })?;
         // Step 3: trigger under the idempotency key. If a run
         // already exists under the key (a prior attempt crashed
         // after triggering), adopt it — never trigger twice.
@@ -313,7 +307,10 @@ pub fn recover_dispatching(
                 rec.dispatched_at = Some(crate::time::now_iso());
             });
             let mut fields = ledger_fields(job_id, &job.key, &idem);
-            fields.insert("run_id".into(), serde_json::Value::Number(run.run_id.into()));
+            fields.insert(
+                "run_id".into(),
+                serde_json::Value::Number(run.run_id.into()),
+            );
             fields.insert("recovered".into(), serde_json::Value::Bool(true));
             state.ledger("dispatched", fields);
             Ok(format!("adopted run {}", run.run_id))
@@ -384,7 +381,9 @@ pub mod fake {
                 status: "queued".to_string(),
                 created_at: crate::time::now_iso(),
             };
-            inner.by_key.insert(idempotency_key.to_string(), run.clone());
+            inner
+                .by_key
+                .insert(idempotency_key.to_string(), run.clone());
             Ok(run)
         }
 

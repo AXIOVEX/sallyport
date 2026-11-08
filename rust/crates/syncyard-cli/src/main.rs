@@ -33,7 +33,10 @@ fn main() {
         }
     }
     // version/schema do not need a state home.
-    let needs_home = !matches!(args.first().map(|s| s.as_str()), Some("version") | Some("schema"));
+    let needs_home = !matches!(
+        args.first().map(|s| s.as_str()),
+        Some("version") | Some("schema")
+    );
     let home = match home {
         Some(h) => StateHome::new(h),
         None if !needs_home => StateHome::new(PathBuf::from(".")),

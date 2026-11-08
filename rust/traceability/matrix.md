@@ -2,7 +2,7 @@
 
 Do not hand-edit: regenerate with `cargo run -p syncyard-tracegen`.
 
-Summary: 126 FRs, 158 named test cases, 2 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 156 named tests missing from suite, 0 orphan suite ids.
+Summary: 126 FRs, 158 named test cases, 26 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 132 named tests missing from suite, 0 orphan suite ids.
 
 
 ## 034-streaming-progress
@@ -64,10 +64,10 @@ Summary: 126 FRs, 158 named test cases, 2 named tests present in suite, 0 FRs wi
 | FR-036-10 | T036-11 restore-verification-drill | test | T036-11 NO |
 | FR-036-11 | T036-12 macos-compile-only-ci | gate | T036-12 NO |
 | FR-036-12 | T036-13 token-scope-audit | test | T036-13 NO |
-| FR-036-13 | T036-14 compaction-hash-chain-verified; T036-15 compaction-blocked-in-wave | test | T036-14 NO; T036-15 NO |
+| FR-036-13 | T036-14 compaction-hash-chain-verified; T036-15 compaction-blocked-in-wave | test | T036-14 yes; T036-15 yes |
 | FR-036-14 | T036-16 extension-schema-drift | gate | T036-16 NO |
 | FR-036-15 | T036-17 runner-noise-not-an-error | test | T036-17 NO |
-| FR-036-16 | T036-18 wave-fixture-all-writers | test | T036-18 NO |
+| FR-036-16 | T036-18 wave-fixture-all-writers | test | T036-18 yes |
 
 ## 037-tray-job-control
 
@@ -92,16 +92,16 @@ Summary: 126 FRs, 158 named test cases, 2 named tests present in suite, 0 FRs wi
 |---|---|---|---|
 | FR-038-01 | T038-01 cutover-roundtrip-rehearsal | gate | T038-01 NO |
 | FR-038-02 | T038-02 freeze-window-fallback-named | gate | T038-02 NO |
-| FR-038-03 | T038-03 daemon-single-writer-socket | test | T038-03 NO |
-| FR-038-04 | T038-04 write-behind-flush-60s | test | T038-04 NO |
-| FR-038-05 | T038-05 dispatch-mid-wave | test | T038-05 NO |
-| FR-038-06 | T038-06 fifth-ram-class-and-cure-rule | test | T038-06 NO |
+| FR-038-03 | T038-03 daemon-single-writer-socket | test | T038-03 yes |
+| FR-038-04 | T038-04 write-behind-flush-60s | test | T038-04 yes |
+| FR-038-05 | T038-05 dispatch-mid-wave | test | T038-05 yes |
+| FR-038-06 | T038-06 fifth-ram-class-and-cure-rule | test | T038-06 yes |
 | FR-038-07 | T038-07 watchdog-exclusion-proven | gate | T038-07 NO |
-| FR-038-08 | T038-08 dispatch-idempotency-key | test | T038-08 NO |
-| FR-038-09 | T038-09 two-daemons-one-dispatches | test | T038-09 NO |
-| FR-038-10 | T038-10 boot-reconciliation-github-wins | test | T038-10 NO |
-| FR-038-11 | T038-11 state-home-separation | test | T038-11 NO |
-| FR-038-12 | T038-12 venue-lane-settle-first-scan | test | T038-12 NO |
+| FR-038-08 | T038-08 dispatch-idempotency-key | test | T038-08 yes |
+| FR-038-09 | T038-09 two-daemons-one-dispatches | test | T038-09 yes |
+| FR-038-10 | T038-10 boot-reconciliation-github-wins | test | T038-10 yes |
+| FR-038-11 | T038-11 state-home-separation | test | T038-11 yes |
+| FR-038-12 | T038-12 venue-lane-settle-first-scan | test | T038-12 yes |
 | FR-038-13 | T038-13 mini-server-leg2-container-job; T038-14 mini-server-leg3-desktop-off | test | T038-13 NO; T038-14 NO |
 | FR-038-14 | T038-15 resource-limits-enforced; T038-16 underdeclaration-widens-envelope | test | T038-15 NO; T038-16 NO |
 | FR-038-15 | T038-17 stale-capability-refused | test | T038-17 NO |
@@ -112,30 +112,30 @@ Summary: 126 FRs, 158 named test cases, 2 named tests present in suite, 0 FRs wi
 | FR-038-20 | T038-22 windows-vm-activation-proof | test + human-as-oracle | T038-22 NO |
 | FR-038-21 | T038-23 activation-deactivation-offlines-venue | test | T038-23 NO |
 | FR-038-22 | T038-24 aarch64-artifacts-in-release | gate | T038-24 NO |
-| FR-038-23 | T038-25 ghost-reconcile-from-github-truth | test | T038-25 NO |
-| FR-038-24 | T038-26 hold-queue-before-ghost-completion | test | T038-26 NO |
-| FR-038-25 | T038-27 publish-verifies-every-destination | test | T038-27 NO |
-| FR-038-26 | T038-28 dead-owner-lock-takeover | test | T038-28 NO |
+| FR-038-23 | T038-25 ghost-reconcile-from-github-truth | test | T038-25 yes |
+| FR-038-24 | T038-26 hold-queue-before-ghost-completion | test | T038-26 yes |
+| FR-038-25 | T038-27 publish-verifies-every-destination | test | T038-27 yes |
+| FR-038-26 | T038-28 dead-owner-lock-takeover | test | T038-28 yes |
 | FR-038-27 | T038-29 tailnet-readiness-wait | test | T038-29 NO |
 | FR-038-28 | T038-30 hash-pins-compared-mechanically | gate | T038-30 NO |
 | FR-038-29 | T038-31 fleet-naming-and-anchor-failure | test | T038-31 NO |
 | FR-038-30 | T038-32 acl-deny-probes; T038-33 backup-keys-off-target | test | T038-32 NO; T038-33 NO |
 | FR-038-31 | T038-34 harvest-foreign-line-quarantine | test | T038-34 NO |
-| FR-038-32 | T038-35 err01-fault-injection | test | T038-35 NO |
-| FR-038-33 | T038-36 err02-vm-loss-accounting | test | T038-36 NO |
+| FR-038-32 | T038-35 err01-fault-injection | test | T038-35 yes |
+| FR-038-33 | T038-36 err02-vm-loss-accounting | test | T038-36 yes |
 | FR-038-34 | T038-37 err03-power-loss-recovery | test | T038-37 NO |
-| FR-038-35 | T038-38 err06-migration-manifest | gate | T038-38 NO |
-| FR-038-36 | T038-39 err08-wave-fail-fast | test | T038-39 NO |
-| FR-038-37 | T038-40 err09-self-start-announce | test | T038-40 NO |
+| FR-038-35 | T038-38 err06-migration-manifest | gate | T038-38 yes |
+| FR-038-36 | T038-39 err08-wave-fail-fast | test | T038-39 yes |
+| FR-038-37 | T038-40 err09-self-start-announce | test | T038-40 yes |
 | FR-038-38 | T038-41 one-version-one-train; T038-42 settings-in-app | gate | T038-41 NO; T038-42 NO |
 | FR-038-39 | T038-43 rep01-exactly-one-report; T038-44 rep02-structured-dedupe; T038-45 rep03-daily-cap-digest; T038-46 rep06-credential-scan-refusal | test | T038-43 NO; T038-44 NO; T038-45 NO; T038-46 NO |
 | FR-038-40 | T038-47 separate-credentials-least-privilege | test | T038-47 NO |
 | FR-038-41 | T038-48 fix02-repair-budgets; T038-49 fix03-latch-off; T038-50 fix05-never-fix-list; T038-51 fix06-gpu-verify-revert | test | T038-48 NO; T038-49 NO; T038-50 NO; T038-51 NO |
-| FR-038-42 | T038-52 single-path-publisher-defect-2026-11-06; T038-53 stranded-lock-defect-2026-11-06 | test | T038-52 NO; T038-53 NO |
+| FR-038-42 | T038-52 single-path-publisher-defect-2026-11-06; T038-53 stranded-lock-defect-2026-11-06 | test | T038-52 yes; T038-53 yes |
 | FR-038-43 | T038-54 upd02-canary-gate; T038-55 upd03-health-gate-is-identity; T038-56 upd07-tampered-artifact-refused; T038-57 upd08-mixed-version-refusal | test | T038-54 NO; T038-55 NO; T038-56 NO; T038-57 NO |
 | FR-038-44 | T038-58 unsigned-unpinned-host-no-autoupdate | test | T038-58 NO |
 | FR-038-45 | T038-59 profile-transactional-revert | test | T038-59 NO |
-| FR-038-46 | T038-60 sequence-orders-reconciliation | test | T038-60 NO |
+| FR-038-46 | T038-60 sequence-orders-reconciliation | test | T038-60 yes |
 | FR-038-47 | T038-61 tower-offsite-cosmic-windowless-proof; T038-62 tower-offsite-timer-masked-sleep-proof | test + human-as-oracle | T038-61 NO; T038-62 NO |
 | FR-038-48 | T038-63 non-elevated-raw-write-2026-11-06; T038-64 elevated-raw-device-open-2026-11-06 | test | T038-63 NO; T038-64 NO |
 | FR-038-49 | T038-65 ismart-staged-fold-in | gate | T038-65 NO |
@@ -212,11 +212,8 @@ Summary: 126 FRs, 158 named test cases, 2 named tests present in suite, 0 FRs wi
 - T036-11 restore-verification-drill (036-test-discipline, FR-036-10)
 - T036-12 macos-compile-only-ci (036-test-discipline, FR-036-11)
 - T036-13 token-scope-audit (036-test-discipline, FR-036-12)
-- T036-14 compaction-hash-chain-verified (036-test-discipline, FR-036-13)
-- T036-15 compaction-blocked-in-wave (036-test-discipline, FR-036-13)
 - T036-16 extension-schema-drift (036-test-discipline, FR-036-14)
 - T036-17 runner-noise-not-an-error (036-test-discipline, FR-036-15)
-- T036-18 wave-fixture-all-writers (036-test-discipline, FR-036-16)
 - T037-01 control-surface-successor-only (037-tray-job-control, FR-037-01)
 - T037-02 command-file-schema (037-tray-job-control, FR-037-02)
 - T037-03 repo-access-alone-refused (037-tray-job-control, FR-037-03)
@@ -231,16 +228,7 @@ Summary: 126 FRs, 158 named test cases, 2 named tests present in suite, 0 FRs wi
 - T037-12 control-path-windowless (037-tray-job-control, FR-037-12)
 - T038-01 cutover-roundtrip-rehearsal (038-rust-core-architecture, FR-038-01)
 - T038-02 freeze-window-fallback-named (038-rust-core-architecture, FR-038-02)
-- T038-03 daemon-single-writer-socket (038-rust-core-architecture, FR-038-03)
-- T038-04 write-behind-flush-60s (038-rust-core-architecture, FR-038-04)
-- T038-05 dispatch-mid-wave (038-rust-core-architecture, FR-038-05)
-- T038-06 fifth-ram-class-and-cure-rule (038-rust-core-architecture, FR-038-06)
 - T038-07 watchdog-exclusion-proven (038-rust-core-architecture, FR-038-07)
-- T038-08 dispatch-idempotency-key (038-rust-core-architecture, FR-038-08)
-- T038-09 two-daemons-one-dispatches (038-rust-core-architecture, FR-038-09)
-- T038-10 boot-reconciliation-github-wins (038-rust-core-architecture, FR-038-10)
-- T038-11 state-home-separation (038-rust-core-architecture, FR-038-11)
-- T038-12 venue-lane-settle-first-scan (038-rust-core-architecture, FR-038-12)
 - T038-13 mini-server-leg2-container-job (038-rust-core-architecture, FR-038-13)
 - T038-14 mini-server-leg3-desktop-off (038-rust-core-architecture, FR-038-13)
 - T038-15 resource-limits-enforced (038-rust-core-architecture, FR-038-14)
@@ -253,22 +241,13 @@ Summary: 126 FRs, 158 named test cases, 2 named tests present in suite, 0 FRs wi
 - T038-22 windows-vm-activation-proof (038-rust-core-architecture, FR-038-20)
 - T038-23 activation-deactivation-offlines-venue (038-rust-core-architecture, FR-038-21)
 - T038-24 aarch64-artifacts-in-release (038-rust-core-architecture, FR-038-22)
-- T038-25 ghost-reconcile-from-github-truth (038-rust-core-architecture, FR-038-23)
-- T038-26 hold-queue-before-ghost-completion (038-rust-core-architecture, FR-038-24)
-- T038-27 publish-verifies-every-destination (038-rust-core-architecture, FR-038-25)
-- T038-28 dead-owner-lock-takeover (038-rust-core-architecture, FR-038-26)
 - T038-29 tailnet-readiness-wait (038-rust-core-architecture, FR-038-27)
 - T038-30 hash-pins-compared-mechanically (038-rust-core-architecture, FR-038-28)
 - T038-31 fleet-naming-and-anchor-failure (038-rust-core-architecture, FR-038-29)
 - T038-32 acl-deny-probes (038-rust-core-architecture, FR-038-30)
 - T038-33 backup-keys-off-target (038-rust-core-architecture, FR-038-30)
 - T038-34 harvest-foreign-line-quarantine (038-rust-core-architecture, FR-038-31)
-- T038-35 err01-fault-injection (038-rust-core-architecture, FR-038-32)
-- T038-36 err02-vm-loss-accounting (038-rust-core-architecture, FR-038-33)
 - T038-37 err03-power-loss-recovery (038-rust-core-architecture, FR-038-34)
-- T038-38 err06-migration-manifest (038-rust-core-architecture, FR-038-35)
-- T038-39 err08-wave-fail-fast (038-rust-core-architecture, FR-038-36)
-- T038-40 err09-self-start-announce (038-rust-core-architecture, FR-038-37)
 - T038-41 one-version-one-train (038-rust-core-architecture, FR-038-38)
 - T038-42 settings-in-app (038-rust-core-architecture, FR-038-38)
 - T038-43 rep01-exactly-one-report (038-rust-core-architecture, FR-038-39)
@@ -280,15 +259,12 @@ Summary: 126 FRs, 158 named test cases, 2 named tests present in suite, 0 FRs wi
 - T038-49 fix03-latch-off (038-rust-core-architecture, FR-038-41)
 - T038-50 fix05-never-fix-list (038-rust-core-architecture, FR-038-41)
 - T038-51 fix06-gpu-verify-revert (038-rust-core-architecture, FR-038-41)
-- T038-52 single-path-publisher-defect-2026-11-06 (038-rust-core-architecture, FR-038-42)
-- T038-53 stranded-lock-defect-2026-11-06 (038-rust-core-architecture, FR-038-42)
 - T038-54 upd02-canary-gate (038-rust-core-architecture, FR-038-43)
 - T038-55 upd03-health-gate-is-identity (038-rust-core-architecture, FR-038-43)
 - T038-56 upd07-tampered-artifact-refused (038-rust-core-architecture, FR-038-43)
 - T038-57 upd08-mixed-version-refusal (038-rust-core-architecture, FR-038-43)
 - T038-58 unsigned-unpinned-host-no-autoupdate (038-rust-core-architecture, FR-038-44)
 - T038-59 profile-transactional-revert (038-rust-core-architecture, FR-038-45)
-- T038-60 sequence-orders-reconciliation (038-rust-core-architecture, FR-038-46)
 - T038-61 tower-offsite-cosmic-windowless-proof (038-rust-core-architecture, FR-038-47)
 - T038-62 tower-offsite-timer-masked-sleep-proof (038-rust-core-architecture, FR-038-47)
 - T038-63 non-elevated-raw-write-2026-11-06 (038-rust-core-architecture, FR-038-48)

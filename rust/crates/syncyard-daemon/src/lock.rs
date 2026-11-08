@@ -38,8 +38,11 @@ pub fn try_state_lock(path: &Path) -> io::Result<Option<StateLock>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // truncate(false) is explicit: the lock file's content is
+    // never used, only its flock.
     let file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(path)?;
@@ -60,6 +63,7 @@ pub fn try_state_lock(path: &Path) -> io::Result<Option<StateLock>> {
     }
     let file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(path)?;

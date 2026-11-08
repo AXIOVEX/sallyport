@@ -63,7 +63,10 @@ fn occupies(rec: &QueueRecord, settled: &SettledRuns) -> bool {
 }
 
 /// Current occupancy per lane name.
-pub fn occupancy(jobs: &BTreeMap<String, QueueRecord>, settled: &SettledRuns) -> BTreeMap<String, usize> {
+pub fn occupancy(
+    jobs: &BTreeMap<String, QueueRecord>,
+    settled: &SettledRuns,
+) -> BTreeMap<String, usize> {
     let mut occ: BTreeMap<String, usize> = BTreeMap::new();
     for rec in jobs.values() {
         if occupies(rec, settled) {
@@ -80,11 +83,7 @@ pub fn occupancy(jobs: &BTreeMap<String, QueueRecord>, settled: &SettledRuns) ->
 /// against its own lane's cap and the daemon's hold state. A blocked
 /// job is skipped, never a scan stopper. Returns the job ids to
 /// dispatch now, in order.
-pub fn scan(
-    state: &DaemonState,
-    lanes: &[Lane],
-    settled: &SettledRuns,
-) -> Vec<String> {
+pub fn scan(state: &DaemonState, lanes: &[Lane], settled: &SettledRuns) -> Vec<String> {
     let caps: BTreeMap<&str, &Lane> = lanes.iter().map(|l| (l.name.as_str(), l)).collect();
     let mut occ = occupancy(&state.jobs, settled);
     let mut waiting: Vec<&QueueRecord> = state
@@ -181,14 +180,12 @@ impl StarvationTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{new_queue_record, DaemonState, StateHome};
     use crate::state::tests::sample_job;
+    use crate::state::{new_queue_record, DaemonState, StateHome};
 
     fn state_with(jobs: Vec<QueueRecord>) -> DaemonState {
-        let home = StateHome::new(std::env::temp_dir().join(format!(
-            "sy-lanes-{}",
-            std::process::id()
-        )));
+        let home =
+            StateHome::new(std::env::temp_dir().join(format!("sy-lanes-{}", std::process::id())));
         let mut st = DaemonState::empty(home);
         for j in jobs {
             st.put_job(j);
@@ -212,8 +209,16 @@ mod tests {
         let c = rec("c", "long", 1); // later job, other lane free
         let st = state_with(vec![a, b, c]);
         let lanes = vec![
-            Lane { name: "quick".into(), venue: "native".into(), cap: 1 },
-            Lane { name: "long".into(), venue: "native".into(), cap: 1 },
+            Lane {
+                name: "quick".into(),
+                venue: "native".into(),
+                cap: 1,
+            },
+            Lane {
+                name: "long".into(),
+                venue: "native".into(),
+                cap: 1,
+            },
         ];
         let out = scan(&st, &lanes, &SettledRuns::default());
         // b is blocked by the full quick lane; c still dispatches.
@@ -227,7 +232,11 @@ mod tests {
         a.run_id = Some(111);
         let b = rec("b", "quick", 9);
         let st = state_with(vec![a, b]);
-        let lanes = vec![Lane { name: "quick".into(), venue: "native".into(), cap: 1 }];
+        let lanes = vec![Lane {
+            name: "quick".into(),
+            venue: "native".into(),
+            cap: 1,
+        }];
         let mut settled = SettledRuns::default();
         settled.mark(111);
         let out = scan(&st, &lanes, &settled);

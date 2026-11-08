@@ -46,9 +46,7 @@ impl RunStateSource for NoTransport {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 || args[1] != "serve" {
-        eprintln!(
-            "usage: syncyard-daemon serve --home DIR [--offvm DIR] --allow-no-transport"
-        );
+        eprintln!("usage: syncyard-daemon serve --home DIR [--offvm DIR] --allow-no-transport");
         std::process::exit(2);
     }
     let mut home_dir: Option<PathBuf> = None;

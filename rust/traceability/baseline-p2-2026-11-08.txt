@@ -1,0 +1,5 @@
+P2 tracegen baseline (after daemon+CLI, 2026-11-08)
+TRACEGEN specs=6 fr_rows=126 named_tests=158 named_in_suite=26
+TRACEGEN gaps: fr_without_test=0 fr_without_mode=0 named_missing_from_suite=132 orphan_suite_ids=0
+TRACEGEN matrix written to rust/traceability
+TRACEGEN RESULT gaps=132 (matrix is red)

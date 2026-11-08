@@ -64,7 +64,10 @@ impl std::fmt::Display for MigrateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MigrateError::WaveDetected => {
-                write!(f, "write wave detected: history compaction is forbidden during a wave")
+                write!(
+                    f,
+                    "write wave detected: history compaction is forbidden during a wave"
+                )
             }
             MigrateError::Io(s) => write!(f, "migration I/O: {s}"),
             MigrateError::Mismatch(s) => write!(f, "history verification mismatch: {s}"),
@@ -85,7 +88,11 @@ pub fn ledger_chain(lines: &[&[u8]]) -> String {
     chain
 }
 
-fn read_source(source: &Path) -> Result<(BTreeMap<String, Vec<u8>>, Vec<u8>), MigrateError> {
+/// What a source read yields: record id -> raw bytes, plus the
+/// ledger file's raw bytes.
+type SourceData = (BTreeMap<String, Vec<u8>>, Vec<u8>);
+
+fn read_source(source: &Path) -> Result<SourceData, MigrateError> {
     let mut records = BTreeMap::new();
     let qd = source.join("queue");
     let rd = std::fs::read_dir(&qd)
@@ -140,9 +147,7 @@ pub fn migrate_history(
     for (id, bytes) in &records {
         let sha = sha256_hex(bytes);
         hashes.insert(id.clone(), sha.clone());
-        records_jsonl.extend_from_slice(
-            format!("SYREC1 {id} {} {sha}\n", bytes.len()).as_bytes(),
-        );
+        records_jsonl.extend_from_slice(format!("SYREC1 {id} {} {sha}\n", bytes.len()).as_bytes());
         records_jsonl.extend_from_slice(bytes);
         if !bytes.ends_with(b"\n") {
             records_jsonl.push(b'\n');
@@ -155,7 +160,10 @@ pub fn migrate_history(
         .write_verified(&hist.join("ledger.jsonl"), &ledger)
         .map_err(|e| MigrateError::Io(e.to_string()))?;
 
-    let lines: Vec<&[u8]> = ledger.split(|b| *b == b'\n').filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&[u8]> = ledger
+        .split(|b| *b == b'\n')
+        .filter(|l| !l.is_empty())
+        .collect();
     let manifest = Manifest {
         format: 1,
         source: source.display().to_string(),
@@ -228,8 +236,9 @@ pub fn verify_history(home: &StateHome) -> Result<Manifest, MigrateError> {
         .map_err(|e| MigrateError::Io(format!("records.jsonl unreadable: {e}")))?;
     let frames = parse_frames(&records_jsonl)?;
     for (id, bytes) in &frames {
-        let rec: syncyard_contract::QueueRecord = serde_json::from_slice(bytes)
-            .map_err(|e| MigrateError::Mismatch(format!("archived record {id} unparseable: {e}")))?;
+        let rec: syncyard_contract::QueueRecord = serde_json::from_slice(bytes).map_err(|e| {
+            MigrateError::Mismatch(format!("archived record {id} unparseable: {e}"))
+        })?;
         if rec.id != *id {
             return Err(MigrateError::Mismatch(format!(
                 "frame id {id} but record id {}",
@@ -258,7 +267,10 @@ pub fn verify_history(home: &StateHome) -> Result<Manifest, MigrateError> {
     if sha256_hex(&ledger) != manifest.ledger_sha256 {
         return Err(MigrateError::Mismatch("ledger sha256".into()));
     }
-    let lines: Vec<&[u8]> = ledger.split(|b| *b == b'\n').filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&[u8]> = ledger
+        .split(|b| *b == b'\n')
+        .filter(|l| !l.is_empty())
+        .collect();
     if lines.len() != manifest.ledger_lines {
         return Err(MigrateError::Mismatch("ledger line count".into()));
     }

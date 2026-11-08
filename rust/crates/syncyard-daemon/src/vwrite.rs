@@ -131,7 +131,10 @@ impl StateWriter for FsWriter {
 
     fn append_verified(&self, path: &Path, line: &[u8]) -> Result<(), WriteFailure> {
         let attempt = (|| -> io::Result<()> {
-            let mut f = fs::OpenOptions::new().create(true).append(true).open(path)?;
+            let mut f = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?;
             f.write_all(line)?;
             f.sync_all()?;
             // Verify the tail: the last line.len() bytes must equal

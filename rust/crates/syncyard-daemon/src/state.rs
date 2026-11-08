@@ -10,11 +10,10 @@
 //! state.
 //!
 //! Record classes held in RAM (spec 032 section 1 + spec 038
-//! FR-038-06's fifth class):
-//!   1. live job records   2. the ledger buffer   3. history stays
-//!   file-backed (migrate-history)   4. the outbox cursor
-//!   5. control files: PAUSED / STOPPED / hosts / lane locks /
-//!   per-job holds.
+//! FR-038-06's fifth class): (1) live job records, (2) the ledger
+//! buffer, (3) history stays file-backed (migrate-history), (4) the
+//! outbox cursor, and (5) control files — PAUSED / STOPPED / hosts
+//! / lane locks / per-job holds.
 //!
 //! State-home separation (FR-038-11): the state home is an explicit
 //! path given to the daemon; nothing derives it from the code's
@@ -275,12 +274,13 @@ impl DaemonState {
                             st.next_seq = st.next_seq.max(rec.seq.unwrap_or(0) + 1);
                             st.jobs.insert(rec.id.clone(), rec);
                         }
-                        Err(err) => gaps.push(format!(
-                            "queue record {} unparseable: {err}",
-                            p.display()
-                        )),
+                        Err(err) => {
+                            gaps.push(format!("queue record {} unparseable: {err}", p.display()))
+                        }
                     },
-                    Err(err) => gaps.push(format!("queue record {} unreadable: {err}", p.display())),
+                    Err(err) => {
+                        gaps.push(format!("queue record {} unreadable: {err}", p.display()))
+                    }
                 }
             }
         }
@@ -549,8 +549,14 @@ impl DaemonState {
                 }
             }
         };
-        let paused = self.paused.as_ref().map(|p| serde_json::to_string_pretty(p).unwrap());
-        let stopped = self.stopped.as_ref().map(|p| serde_json::to_string_pretty(p).unwrap());
+        let paused = self
+            .paused
+            .as_ref()
+            .map(|p| serde_json::to_string_pretty(p).unwrap());
+        let stopped = self
+            .stopped
+            .as_ref()
+            .map(|p| serde_json::to_string_pretty(p).unwrap());
         all_ok &= write_opt(self.home.pause_path(), &paused);
         all_ok &= write_opt(self.home.stop_path(), &stopped);
         if self.hosts != serde_json::Value::Null {
@@ -711,8 +717,7 @@ pub(crate) mod tests {
     use crate::vwrite::FsWriter;
 
     pub fn scratch(tag: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("sy-state-{}-{}", std::process::id(), tag));
+        let dir = std::env::temp_dir().join(format!("sy-state-{}-{}", std::process::id(), tag));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

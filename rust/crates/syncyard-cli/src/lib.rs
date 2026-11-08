@@ -55,7 +55,10 @@ pub const VERBS: &[&str] = &[
 /// gk.py verbs not yet implemented here, with their phase. Named in
 /// the schema output so parity gaps are machine-visible.
 pub const NOT_YET_VERBS: &[(&str, &str)] = &[
-    ("sweep", "harvest/reconcile loop lands with the GitHub transport"),
+    (
+        "sweep",
+        "harvest/reconcile loop lands with the GitHub transport",
+    ),
     ("priority", "lane priority surface, later phase"),
     ("lock", "lane locks, later phase"),
     ("unlock", "lane locks, later phase"),
@@ -124,10 +127,7 @@ impl syncyard_daemon::dispatch::Dispatcher for RefuseDispatch {
     ) -> Result<syncyard_daemon::dispatch::RunRef, String> {
         Err("dispatch requires the daemon (transport is daemon-side)".to_string())
     }
-    fn find_by_key(
-        &self,
-        _key: &str,
-    ) -> Result<Option<syncyard_daemon::dispatch::RunRef>, String> {
+    fn find_by_key(&self, _key: &str) -> Result<Option<syncyard_daemon::dispatch::RunRef>, String> {
         Ok(None)
     }
 }
@@ -298,11 +298,9 @@ pub fn run_cli(args: &[String], home: &StateHome, offvm_root: &Path) -> CliOutco
             }
         }
         "submit" => {
-            let (Some(key), Some(program), Some(workflow)) = (
-                a.flag("--key"),
-                a.flag("--program"),
-                a.flag("--workflow"),
-            ) else {
+            let (Some(key), Some(program), Some(workflow)) =
+                (a.flag("--key"), a.flag("--program"), a.flag("--workflow"))
+            else {
                 return err_out("submit requires --key, --program, --workflow");
             };
             let script = a.flag("--script");
@@ -324,7 +322,10 @@ pub fn run_cli(args: &[String], home: &StateHome, offvm_root: &Path) -> CliOutco
                     .flag("--expected-min")
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(30.0),
-                priority: a.flag("--priority").and_then(|v| v.parse().ok()).unwrap_or(0),
+                priority: a
+                    .flag("--priority")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0),
                 priority_source: if a.has("--priority") {
                     "human".to_string()
                 } else {
@@ -402,11 +403,7 @@ pub fn run_cli(args: &[String], home: &StateHome, offvm_root: &Path) -> CliOutco
     }
 }
 
-fn dispatch_request(
-    req: &serde_json::Value,
-    home: &StateHome,
-    offvm_root: &Path,
-) -> CliOutcome {
+fn dispatch_request(req: &serde_json::Value, home: &StateHome, offvm_root: &Path) -> CliOutcome {
     match auto_client(home, offvm_root) {
         Ok(mut client) => match client.call(req) {
             Ok(resp) => {

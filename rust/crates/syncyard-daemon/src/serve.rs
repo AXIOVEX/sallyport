@@ -23,9 +23,7 @@ use syncyard_contract::{JobRecord, JobState};
 
 use crate::dispatch::{dispatch_one, Dispatcher};
 use crate::offvm::{FencingToken, OffVmStore, KIND_SUBMITS};
-use crate::state::{
-    new_queue_record, DaemonState, PauseRecord, StateHome, StopRecord,
-};
+use crate::state::{new_queue_record, DaemonState, PauseRecord, StateHome, StopRecord};
 use crate::time::now_iso;
 use crate::vwrite::StateWriter;
 
@@ -159,7 +157,10 @@ impl Engine {
                 fields.insert(
                     "cleared".into(),
                     serde_json::Value::Array(
-                        cleared.iter().map(|c| serde_json::Value::String(c.to_string())).collect(),
+                        cleared
+                            .iter()
+                            .map(|c| serde_json::Value::String(c.to_string()))
+                            .collect(),
                     ),
                 );
                 self.state.ledger("started", fields);

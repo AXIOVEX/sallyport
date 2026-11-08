@@ -81,7 +81,12 @@ pub struct BootReport {
 /// same job, the copy with the higher `seq` supplies the lifecycle
 /// fields; a copy carrying a payload verdict is never displaced by
 /// one without (ERR-07's verdict rule applies between stores too).
-fn merge_offvm(state: &mut DaemonState, offvm_jobs: BTreeMap<String, QueueRecord>, report: &mut BootReport, kind: &str) {
+fn merge_offvm(
+    state: &mut DaemonState,
+    offvm_jobs: BTreeMap<String, QueueRecord>,
+    report: &mut BootReport,
+    kind: &str,
+) {
     for (id, incoming) in offvm_jobs {
         match state.jobs.get(&id) {
             None => {
@@ -101,10 +106,7 @@ fn merge_offvm(state: &mut DaemonState, offvm_jobs: BTreeMap<String, QueueRecord
                     // A pre-dispatch witness upgrading a lesser copy
                     // is a recovered dispatch, counted by name.
                     if kind == KIND_PREDISPATCH
-                        && matches!(
-                            incoming.state,
-                            JobState::Dispatching | JobState::Dispatched
-                        )
+                        && matches!(incoming.state, JobState::Dispatching | JobState::Dispatched)
                         && !report.recovered_dispatches.contains(&id)
                     {
                         report.recovered_dispatches.push(id.clone());
@@ -240,11 +242,13 @@ pub fn reconcile_ghosts(
     // -- hold-first --
     let mut needs_hold = false;
     for rec in state.jobs.values() {
-        if rec.state == JobState::Submitted && !rec.maintenance {
-            if state.paused.is_none() && !state.holds.contains(&rec.id) {
-                needs_hold = true;
-                break;
-            }
+        if rec.state == JobState::Submitted
+            && !rec.maintenance
+            && state.paused.is_none()
+            && !state.holds.contains(&rec.id)
+        {
+            needs_hold = true;
+            break;
         }
     }
     if needs_hold {
@@ -339,8 +343,8 @@ pub mod fake {
 mod tests {
     use super::*;
     use crate::offvm::DirOffVmStore;
-    use crate::state::{new_queue_record, StateHome};
     use crate::state::tests::sample_job;
+    use crate::state::{new_queue_record, StateHome};
 
     fn home(tag: &str) -> StateHome {
         let dir = std::env::temp_dir().join(format!("sy-recon-{}-{}", std::process::id(), tag));
@@ -388,8 +392,14 @@ mod tests {
         // The hold landed before the completion.
         assert!(st.paused.is_some());
         let events: Vec<&str> = st.ledger_buffer.iter().map(|e| e.event.as_str()).collect();
-        let hold_at = events.iter().position(|e| *e == "ghost_hold_applied").unwrap();
-        let repair_at = events.iter().position(|e| *e == "operator_record_repair").unwrap();
+        let hold_at = events
+            .iter()
+            .position(|e| *e == "ghost_hold_applied")
+            .unwrap();
+        let repair_at = events
+            .iter()
+            .position(|e| *e == "operator_record_repair")
+            .unwrap();
         assert!(hold_at < repair_at);
         let g = &st.jobs["ghost-job"];
         assert_eq!(g.state, JobState::Completed);

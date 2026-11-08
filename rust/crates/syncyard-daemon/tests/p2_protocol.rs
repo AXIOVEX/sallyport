@@ -181,7 +181,10 @@ fn t038_04_write_behind_flush_60s() {
         eng.state.put_job(new_queue_record(&job("wb-job")));
         assert_eq!(eng.state.snapshot()["flush"]["state_dirty_records"], 1);
     }
-    assert!(!home.job_path("wb-job").exists(), "nothing written before the flush cycle");
+    assert!(
+        !home.job_path("wb-job").exists(),
+        "nothing written before the flush cycle"
+    );
     // The write-behind cycle lands it, verified by content.
     let mut landed = false;
     for _ in 0..40 {
@@ -212,9 +215,12 @@ fn t038_05_dispatch_mid_wave() {
     let store = Arc::new(DirOffVmStore::new(root.join("offvm")));
     // The local disk writer is inside a wave: every write denied.
     let gate = Arc::new(GateWriter::new(true));
-    let (mut engine, _fake) = engine_for(&home, store.clone(), gate.clone() as Arc<dyn StateWriter>);
+    let (mut engine, _fake) =
+        engine_for(&home, store.clone(), gate.clone() as Arc<dyn StateWriter>);
     // Submit still acknowledges (RAM + off-VM record).
-    engine.submit(&job("wave-job")).expect("submit acks mid-wave");
+    engine
+        .submit(&job("wave-job"))
+        .expect("submit acks mid-wave");
     assert!(
         engine.state.flush_health.wave_mode,
         "the failed flush must put writers in wave mode"
@@ -233,7 +239,10 @@ fn t038_05_dispatch_mid_wave() {
     assert_eq!(rec.state, JobState::Dispatched);
     assert_eq!(rec.run_id, Some(run.run_id));
     assert!(
-        store.get_record(KIND_PREDISPATCH, "wave-job").unwrap().is_some(),
+        store
+            .get_record(KIND_PREDISPATCH, "wave-job")
+            .unwrap()
+            .is_some(),
         "pre-dispatch witness must exist off-VM"
     );
     // When the wave clears, the backlog flush lands everything.
@@ -277,7 +286,10 @@ fn t038_06_fifth_ram_class_and_cure_rule() {
     let report = st3.flush(&gate);
     assert!(!report.ok);
     st3.cure.note_clear_window();
-    assert!(st3.cure.should_self_restart(true), "cure rule must fire once");
+    assert!(
+        st3.cure.should_self_restart(true),
+        "cure rule must fire once"
+    );
     assert!(!st3.cure.should_self_restart(true), "and only once");
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -299,8 +311,13 @@ fn t038_08_dispatch_idempotency_key() {
     let store = Arc::new(DirOffVmStore::new(root.join("offvm")));
     let (mut engine, _fake) = engine_for(&home, store.clone(), Arc::new(FsWriter::default()));
     engine.submit(&job("first-job")).unwrap();
-    let txn = DispatchTxn::begin(&mut engine.state, store.as_ref(), &engine.token.clone(), "first-job")
-        .unwrap();
+    let txn = DispatchTxn::begin(
+        &mut engine.state,
+        store.as_ref(),
+        &engine.token.clone(),
+        "first-job",
+    )
+    .unwrap();
     let key = txn.idem_key.clone();
     let run = txn
         .finish(
@@ -401,11 +418,17 @@ fn t038_10_boot_reconciliation_github_wins() {
     runs.set(4243, "completed", Some("failure"));
     let report = boot_reconcile(&mut st2, &store, &runs, &[], gaps);
     // GitHub wins on run state for the live record.
-    assert_eq!(st2.jobs["live-job"].run_status.as_deref(), Some("in_progress"));
+    assert_eq!(
+        st2.jobs["live-job"].run_status.as_deref(),
+        Some("in_progress")
+    );
     assert_eq!(report.divergences, vec!["live-job".to_string()]);
     // The payload verdict on the completed record is untouched.
     assert_eq!(st2.jobs["done-job"].markers, vec!["PAYLOAD_OK".to_string()]);
-    assert_eq!(st2.jobs["done-job"].verdict_source.as_deref(), Some("markers"));
+    assert_eq!(
+        st2.jobs["done-job"].verdict_source.as_deref(),
+        Some("markers")
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -436,8 +459,16 @@ fn t038_12_venue_lane_settle_first_scan() {
     let home = StateHome::new(root);
     let mut st = DaemonState::empty(home);
     let lanes = vec![
-        Lane { name: "quick".into(), venue: "native".into(), cap: 2 },
-        Lane { name: "dock".into(), venue: "docker".into(), cap: 1 },
+        Lane {
+            name: "quick".into(),
+            venue: "native".into(),
+            cap: 2,
+        },
+        Lane {
+            name: "dock".into(),
+            venue: "docker".into(),
+            cap: 1,
+        },
     ];
     let mk = |id: &str, lane: &str, venue: &str| {
         let mut j = job(id);
@@ -452,7 +483,10 @@ fn t038_12_venue_lane_settle_first_scan() {
     st.put_job(mk("auto-venue", "quick", "auto")); // auto matches
     st.put_job(mk("docker-job", "dock", "docker")); // matches docker lane
     let out = scan(&st, &lanes, &SettledRuns::default());
-    assert!(!out.contains(&"wrong-venue".to_string()), "venue mismatch must not place: {out:?}");
+    assert!(
+        !out.contains(&"wrong-venue".to_string()),
+        "venue mismatch must not place: {out:?}"
+    );
     assert!(out.contains(&"auto-venue".to_string()));
     assert!(out.contains(&"docker-job".to_string()));
     // Starvation: an old waiting job ledgers dispatch_starved once.
@@ -515,7 +549,12 @@ fn t038_26_hold_queue_before_ghost_completion() {
     st.put_job(ghost);
     let runs = FakeRuns::new();
     runs.set(654, "completed", Some("cancelled"));
-    let done = reconcile_ghosts(&mut st, &runs, &["ghost-job".to_string()], "hold-first test");
+    let done = reconcile_ghosts(
+        &mut st,
+        &runs,
+        &["ghost-job".to_string()],
+        "hold-first test",
+    );
     assert_eq!(done.len(), 1);
     // The hold was applied before completion freed the lane...
     assert!(st.paused.is_some());
@@ -527,7 +566,11 @@ fn t038_26_hold_queue_before_ghost_completion() {
     );
     // ...and the scan now dispatches the maintenance job only:
     // completing the ghost must not release held program work.
-    let lanes = vec![Lane { name: "quick".into(), venue: "native".into(), cap: 3 }];
+    let lanes = vec![Lane {
+        name: "quick".into(),
+        venue: "native".into(),
+        cap: 3,
+    }];
     let out = scan(&st, &lanes, &SettledRuns::default());
     assert_eq!(out, vec!["maint-job".to_string()], "scan: {out:?}");
     let _ = std::fs::remove_dir_all(&root);
@@ -571,7 +614,8 @@ fn t038_28_dead_owner_lock_takeover() {
         holder: "dead-daemon".into(),
         ts: "2026-11-06T00:00:00Z".into(),
     };
-    w.write_verified(&p, &serde_json::to_vec(&stranded).unwrap()).unwrap();
+    w.write_verified(&p, &serde_json::to_vec(&stranded).unwrap())
+        .unwrap();
     match acquire_owner_lock(&p, "us", &w).unwrap() {
         Takeover::Acquired => {}
         other => panic!("stranded lock must be taken over, got {other:?}"),
@@ -582,7 +626,8 @@ fn t038_28_dead_owner_lock_takeover() {
         holder: "just-died".into(),
         ts: syncyard_daemon::time::now_iso(),
     };
-    w.write_verified(&p, &serde_json::to_vec(&young).unwrap()).unwrap();
+    w.write_verified(&p, &serde_json::to_vec(&young).unwrap())
+        .unwrap();
     assert!(matches!(
         acquire_owner_lock(&p, "us", &w).unwrap(),
         Takeover::Acquired
@@ -593,7 +638,8 @@ fn t038_28_dead_owner_lock_takeover() {
         holder: "alive".into(),
         ts: syncyard_daemon::time::now_iso(),
     };
-    w.write_verified(&p, &serde_json::to_vec(&live).unwrap()).unwrap();
+    w.write_verified(&p, &serde_json::to_vec(&live).unwrap())
+        .unwrap();
     assert!(matches!(
         acquire_owner_lock(&p, "us", &w).unwrap(),
         Takeover::OwnerAlive(_)
@@ -626,8 +672,7 @@ fn t038_35_err01_fault_injection() {
         match kill_after {
             0 => { /* crash before begin */ }
             1 => {
-                let _txn =
-                    DispatchTxn::begin(&mut st, store.as_ref(), &token, "fi-job").unwrap();
+                let _txn = DispatchTxn::begin(&mut st, store.as_ref(), &token, "fi-job").unwrap();
                 // crash: txn + RAM dropped without flushing
             }
             2 => {
@@ -652,7 +697,13 @@ fn t038_35_err01_fault_injection() {
         // job is still waiting (the normal post-boot flow).
         let (mut st2, gaps) = DaemonState::load(home.clone());
         let runs = FakeRuns::new();
-        let report = boot_reconcile(&mut st2, store.as_ref(), &runs, &["fi-job".to_string()], gaps);
+        let report = boot_reconcile(
+            &mut st2,
+            store.as_ref(),
+            &runs,
+            &["fi-job".to_string()],
+            gaps,
+        );
         for id in &report.dispatching_to_recover {
             recover_dispatching(&mut st2, &token, &fake, id).unwrap();
         }
@@ -713,14 +764,18 @@ fn t038_36_err02_vm_loss_accounting() {
         gaps,
     );
     // The acknowledged submit is recovered by name from off-VM.
-    assert!(report.recovered_submits.contains(&"survivor-job".to_string()));
+    assert!(report
+        .recovered_submits
+        .contains(&"survivor-job".to_string()));
     assert!(st2.jobs.contains_key("survivor-job"));
     // The dispatched job is recovered from its witness. The
     // witness holds the step-4 state (dispatching + run id): the
     // dispatch provably happened, and post-boot dispatch recovery
     // finalizes the commit from GitHub-side evidence (the fake's
     // registry here) — no lost dispatch, no second trigger.
-    assert!(report.recovered_dispatches.contains(&"dispatched-job".to_string()));
+    assert!(report
+        .recovered_dispatches
+        .contains(&"dispatched-job".to_string()));
     assert!(report
         .dispatching_to_recover
         .contains(&"dispatched-job".to_string()));
@@ -737,7 +792,10 @@ fn t038_36_err02_vm_loss_accounting() {
     assert_eq!(fake.trigger_calls(), 1, "recovery must not re-trigger");
     // An acknowledged submit that exists nowhere is named, never
     // silently absorbed.
-    assert_eq!(report.unrecorded_submits, vec!["never-recorded-job".to_string()]);
+    assert_eq!(
+        report.unrecorded_submits,
+        vec!["never-recorded-job".to_string()]
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -794,7 +852,10 @@ fn t038_38_err06_migration_manifest() {
     .unwrap();
     match verify_history(&home) {
         Err(MigrateError::Mismatch(what)) => {
-            assert!(what.contains("chain"), "chain must be the failing check, got: {what}")
+            assert!(
+                what.contains("chain"),
+                "chain must be the failing check, got: {what}"
+            )
         }
         other => panic!("expected a chain mismatch, got {other:?}"),
     }
@@ -884,7 +945,9 @@ fn t038_39_err08_wave_fail_fast() {
     assert_eq!(wave_events.len(), 1);
     assert_eq!(
         wave_events[0].fields.get("constraint"),
-        Some(&serde_json::Value::String("write_wave_detected".to_string()))
+        Some(&serde_json::Value::String(
+            "write_wave_detected".to_string()
+        ))
     );
     // Nothing was lost: after the wave clears, the whole backlog
     // lands in one flush (the spec 032 falsifier).
@@ -927,7 +990,11 @@ fn t038_40_err09_self_start_announce() {
     let runs = FakeRuns::new();
     let report = boot_reconcile(&mut st2, &store, &runs, &[], gaps);
     assert_eq!(report.gaps.len(), 1);
-    assert!(report.gaps[0].contains("broken-record"), "gap named: {:?}", report.gaps);
+    assert!(
+        report.gaps[0].contains("broken-record"),
+        "gap named: {:?}",
+        report.gaps
+    );
     assert_eq!(report.recovered_submits, vec!["offvm-only-job".to_string()]);
     // The boot is announced in the ledger with its accounting.
     let boot = st2

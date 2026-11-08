@@ -21,7 +21,7 @@ fn scratch(tag: &str) -> PathBuf {
     dir
 }
 
-fn run(home: &StateHome, offvm: &PathBuf, args: &[&str]) -> (i32, serde_json::Value) {
+fn run(home: &StateHome, offvm: &std::path::Path, args: &[&str]) -> (i32, serde_json::Value) {
     let argv: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let outcome = run_cli(&argv, home, offvm);
     let v: serde_json::Value = serde_json::from_str(&outcome.stdout)
@@ -40,8 +40,27 @@ fn fallback_verbs_end_to_end() {
     assert_eq!(v["contract_version"], 1);
     let (code, v) = run(&home, &offvm, &["schema"]);
     assert_eq!(code, 0);
-    let verbs: Vec<&str> = v["verbs"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
-    for want in ["submit", "status", "dispatch", "pause", "start", "stop", "hold", "resume", "cancel", "outbox", "ledger", "snapshot", "migrate-history"] {
+    let verbs: Vec<&str> = v["verbs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_str().unwrap())
+        .collect();
+    for want in [
+        "submit",
+        "status",
+        "dispatch",
+        "pause",
+        "start",
+        "stop",
+        "hold",
+        "resume",
+        "cancel",
+        "outbox",
+        "ledger",
+        "snapshot",
+        "migrate-history",
+    ] {
         assert!(verbs.contains(&want), "schema missing verb {want}");
     }
     // The parity gap is explicit in the schema, not silent.
@@ -60,11 +79,16 @@ fn fallback_verbs_end_to_end() {
         &offvm,
         &[
             "submit",
-            "--key", "cli-test-job",
-            "--program", "test",
-            "--workflow", "run.yml",
-            "--lane", "quick",
-            "--script", script.to_str().unwrap(),
+            "--key",
+            "cli-test-job",
+            "--program",
+            "test",
+            "--workflow",
+            "run.yml",
+            "--lane",
+            "quick",
+            "--script",
+            script.to_str().unwrap(),
         ],
     );
     assert_eq!(code, 0, "submit: {v}");
@@ -81,7 +105,15 @@ fn fallback_verbs_end_to_end() {
     let (code, v) = run(
         &home,
         &offvm,
-        &["submit", "--key", "cli-test-job", "--program", "test", "--workflow", "run.yml"],
+        &[
+            "submit",
+            "--key",
+            "cli-test-job",
+            "--program",
+            "test",
+            "--workflow",
+            "run.yml",
+        ],
     );
     assert_eq!(code, 1);
     assert!(v["error"].as_str().unwrap().contains("duplicate key"));
@@ -118,7 +150,13 @@ fn fallback_verbs_end_to_end() {
         .iter()
         .filter_map(|e| e["event"].as_str())
         .collect();
-    for want in ["submitted", "paused", "started", "operator_hold", "operator_cancel"] {
+    for want in [
+        "submitted",
+        "paused",
+        "started",
+        "operator_hold",
+        "operator_cancel",
+    ] {
         assert!(events.contains(&want), "ledger missing {want}: {events:?}");
     }
     // Unknown verb is an error, not a panic.
@@ -170,7 +208,17 @@ fn socket_verbs_against_live_daemon() {
     let (code, v) = run(
         &home,
         &offvm,
-        &["submit", "--key", "sock-job", "--program", "test", "--workflow", "run.yml", "--lane", "quick"],
+        &[
+            "submit",
+            "--key",
+            "sock-job",
+            "--program",
+            "test",
+            "--workflow",
+            "run.yml",
+            "--lane",
+            "quick",
+        ],
     );
     assert_eq!(code, 0, "socket submit: {v}");
     let job_id = v["job_id"].as_str().unwrap().to_string();
