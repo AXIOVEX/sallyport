@@ -22,9 +22,16 @@ half an hour of mostly waiting.
 - Any jobs queued against a previous runner repository have finished
   or been accounted for by their programs (see
   [docs/MIGRATION.md](../docs/MIGRATION.md), gate 5).
-- PowerShell 7 (`pwsh`) is installed — the dispatch workflows run their
-  steps under it. PowerShell 5.1 also works for the setup scripts
-  scripts (they are ASCII-only on purpose).
+- PowerShell 7 (`pwsh`) is installed — REQUIRED, not optional
+  (owner order 2026-11-08; see [POWERSHELL7.md](POWERSHELL7.md)).
+  Every Syncyard Windows surface runs under PowerShell 7 only:
+  the dispatch workflows fail closed in a preflight step when it is
+  missing, the host scripts carry `#Requires -Version 7.0`, and the
+  tray watchdog task invokes the canonical pwsh.exe path. Windows
+  PowerShell 5.1 is not supported anywhere in Syncyard. If `pwsh`
+  is missing, run `runner\ensure-powershell7.cmd` on the machine:
+  it checks, asks, and installs (winget, or the pinned official
+  MSI with its SHA256 verified), then re-checks.
 
 ## Step 1 — Lay out the lanes
 

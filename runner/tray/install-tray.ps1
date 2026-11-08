@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 <#
 .SYNOPSIS
   Install and start the Syncyard tray supervisor (spec 007).

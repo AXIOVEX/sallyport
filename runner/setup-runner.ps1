@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # setup-runner.ps1 - Syncyard runner setup (version 0.1.1)
 #
 # Downloads the GitHub Actions runner package, registers ONE runner
