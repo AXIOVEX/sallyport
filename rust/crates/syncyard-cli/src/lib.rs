@@ -12,6 +12,11 @@
 //! Verb parity with `gk.py` for the core surface: submit, status,
 //! snapshot, outbox (+ack), pause, stop, start, hold, resume,
 //! cancel, ledger, dispatch, migrate-history, version, schema.
+//! The `progress` verb is the spec 034 surface: a job's live
+//! progress view (fraction, markers, staleness) without waiting
+//! for harvest; in file-fallback mode it reports the spec's
+//! degraded states honestly (progress lives in the daemon's
+//! RAM, so a fallback read says "no progress reported").
 //! The `schema` verb emits the verb surface as JSON: the
 //! `gh syncyard` extension shim is generated from the CLI's own
 //! schema (spec 038 section 9), and P5 builds the drift test on it.
@@ -36,6 +41,7 @@ pub const CRATE_ROLE: &str = "cli";
 pub const VERBS: &[&str] = &[
     "submit",
     "status",
+    "progress",
     "snapshot",
     "outbox",
     "pause",
@@ -355,6 +361,16 @@ pub fn run_cli(args: &[String], home: &StateHome, offvm_root: &Path) -> CliOutco
                 req["job_id"] = serde_json::Value::String(id);
             }
             dispatch_request(&req, home, offvm_root)
+        }
+        "progress" => {
+            let Some(id) = a.positional(0) else {
+                return err_out("progress requires a job id");
+            };
+            dispatch_request(
+                &serde_json::json!({"verb": "progress", "job_id": id}),
+                home,
+                offvm_root,
+            )
         }
         "snapshot" => dispatch_request(&serde_json::json!({"verb": "snapshot"}), home, offvm_root),
         "flush" => dispatch_request(&serde_json::json!({"verb": "flush"}), home, offvm_root),
