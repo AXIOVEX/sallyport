@@ -175,7 +175,10 @@ version = "0.4.0"
 name = "syncyard-cli"
 version = "0.4.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "syncyard-contract",
+ "syncyard-daemon",
 ]
 
 [[package]]

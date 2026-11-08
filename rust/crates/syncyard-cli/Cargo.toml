@@ -8,3 +8,9 @@ description = "Syncyard command-line interface: thin client of the gatekeeper da
 
 [dependencies]
 syncyard-contract.workspace = true
+syncyard-daemon = { path = "../syncyard-daemon" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+syncyard-daemon = { path = "../syncyard-daemon", features = ["test-support"] }
