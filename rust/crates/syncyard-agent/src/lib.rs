@@ -26,7 +26,11 @@
 
 pub mod agent;
 pub mod channel;
+pub mod dockerspec;
 pub mod fake;
+pub mod launchd;
+pub mod preflight;
+pub mod probe;
 pub mod runner;
 pub mod singleton;
 pub mod socket;

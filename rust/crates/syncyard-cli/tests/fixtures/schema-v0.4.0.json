@@ -1,0 +1,62 @@
+{
+  "contract_version": 1,
+  "not_yet_verbs": [
+    {
+      "note": "harvest/reconcile loop lands with the GitHub transport",
+      "verb": "sweep"
+    },
+    {
+      "note": "lane priority surface, later phase",
+      "verb": "priority"
+    },
+    {
+      "note": "lane locks, later phase",
+      "verb": "lock"
+    },
+    {
+      "note": "lane locks, later phase",
+      "verb": "unlock"
+    },
+    {
+      "note": "dispatch focus, later phase",
+      "verb": "focus"
+    },
+    {
+      "note": "host drain, later phase",
+      "verb": "drain"
+    },
+    {
+      "note": "capability probe, later phase",
+      "verb": "probe-host"
+    },
+    {
+      "note": "run adoption, later phase",
+      "verb": "adopt"
+    },
+    {
+      "note": "destructive; requires its own operator design",
+      "verb": "purge"
+    }
+  ],
+  "verbs": [
+    "submit",
+    "status",
+    "progress",
+    "snapshot",
+    "outbox",
+    "pause",
+    "stop",
+    "start",
+    "hold",
+    "kill-switch",
+    "resume",
+    "cancel",
+    "ledger",
+    "dispatch",
+    "migrate-history",
+    "flush",
+    "version",
+    "schema"
+  ],
+  "version": "0.4.0"
+}

@@ -2,7 +2,7 @@
 
 Do not hand-edit: regenerate with `cargo run -p syncyard-tracegen`.
 
-Summary: 126 FRs, 158 named test cases, 75 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 83 named tests missing from suite, 0 orphan suite ids.
+Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 27 named tests missing from suite, 0 orphan suite ids.
 
 
 ## 034-streaming-progress
@@ -18,7 +18,7 @@ Summary: 126 FRs, 158 named test cases, 75 named tests present in suite, 0 FRs w
 | FR-034-07 | T034-09 transport-failure-isolated | test | T034-09 yes |
 | FR-034-08 | T034-10 foreign-marker-quarantine | test | T034-10 yes |
 | FR-034-09 | T034-11 conformance-kit-three-languages | test | T034-11 NO |
-| FR-034-10 | T034-12 door-workflow-pinned-sha | test | T034-12 NO |
+| FR-034-10 | T034-12 door-workflow-pinned-sha | test | T034-12 yes |
 | FR-034-11 | T034-13 cli-daemon-contract-compat | gate | T034-13 yes |
 | FR-034-12 | T034-14 tray-mcp-progress-parity | test | T034-14 yes |
 
@@ -54,18 +54,18 @@ Summary: 126 FRs, 158 named test cases, 75 named tests present in suite, 0 FRs w
 |---|---|---|---|
 | FR-036-01 | T036-01 matrix-generation-completeness; T036-02 matrix-fails-on-orphan-fr | gate | T036-01 NO; T036-02 NO |
 | FR-036-02 | T036-03 package-fr-table-audit | gate | T036-03 NO |
-| FR-036-03 | T036-04 field-simulation-suites-present-and-run | gate | T036-04 NO |
+| FR-036-03 | T036-04 field-simulation-suites-present-and-run | gate | T036-04 yes |
 | FR-036-04 | T036-05 defect-to-test-audit | gate | T036-05 NO |
 | FR-036-05 | T036-06 coverage-bars-enforced | gate | T036-06 NO |
 | FR-036-06 | T036-07 release-gate-composition | gate | T036-07 NO |
-| FR-036-07 | T036-08 fault-injection-dispatch-protocol | test | T036-08 NO |
+| FR-036-07 | T036-08 fault-injection-dispatch-protocol | test | T036-08 yes |
 | FR-036-08 | T036-09 owner-recovery-drill-record | human-as-oracle | T036-09 NO |
-| FR-036-09 | T036-10 unattended-24h-degradation | test | T036-10 NO |
-| FR-036-10 | T036-11 restore-verification-drill | test | T036-11 NO |
+| FR-036-09 | T036-10 unattended-24h-degradation | test | T036-10 yes |
+| FR-036-10 | T036-11 restore-verification-drill | test | T036-11 yes |
 | FR-036-11 | T036-12 macos-compile-only-ci | gate | T036-12 NO |
-| FR-036-12 | T036-13 token-scope-audit | test | T036-13 NO |
+| FR-036-12 | T036-13 token-scope-audit | test | T036-13 yes |
 | FR-036-13 | T036-14 compaction-hash-chain-verified; T036-15 compaction-blocked-in-wave | test | T036-14 yes; T036-15 yes |
-| FR-036-14 | T036-16 extension-schema-drift | gate | T036-16 NO |
+| FR-036-14 | T036-16 extension-schema-drift | gate | T036-16 yes |
 | FR-036-15 | T036-17 runner-noise-not-an-error | test | T036-17 NO |
 | FR-036-16 | T036-18 wave-fixture-all-writers | test | T036-18 yes |
 
@@ -90,7 +90,7 @@ Summary: 126 FRs, 158 named test cases, 75 named tests present in suite, 0 FRs w
 
 | FR | Named test case(s) | Mode | In suite |
 |---|---|---|---|
-| FR-038-01 | T038-01 cutover-roundtrip-rehearsal | gate | T038-01 NO |
+| FR-038-01 | T038-01 cutover-roundtrip-rehearsal | gate | T038-01 yes |
 | FR-038-02 | T038-02 freeze-window-fallback-named | gate | T038-02 NO |
 | FR-038-03 | T038-03 daemon-single-writer-socket | test | T038-03 yes |
 | FR-038-04 | T038-04 write-behind-flush-60s | test | T038-04 yes |
@@ -103,41 +103,41 @@ Summary: 126 FRs, 158 named test cases, 75 named tests present in suite, 0 FRs w
 | FR-038-11 | T038-11 state-home-separation | test | T038-11 yes |
 | FR-038-12 | T038-12 venue-lane-settle-first-scan | test | T038-12 yes |
 | FR-038-13 | T038-13 mini-server-leg2-container-job; T038-14 mini-server-leg3-desktop-off | test | T038-13 NO; T038-14 NO |
-| FR-038-14 | T038-15 resource-limits-enforced; T038-16 underdeclaration-widens-envelope | test | T038-15 NO; T038-16 NO |
-| FR-038-15 | T038-17 stale-capability-refused | test | T038-17 NO |
-| FR-038-16 | T038-18 opportunistic-node-not-requireable | test | T038-18 NO |
-| FR-038-17 | T038-19 four-images-pinned-multiarch | test | T038-19 NO |
-| FR-038-18 | T038-20 container-isolation-posture | test | T038-20 NO |
-| FR-038-19 | T038-21 planted-secret-blocks-start | test | T038-21 NO |
+| FR-038-14 | T038-15 resource-limits-enforced; T038-16 underdeclaration-widens-envelope | test | T038-15 yes; T038-16 yes |
+| FR-038-15 | T038-17 stale-capability-refused | test | T038-17 yes |
+| FR-038-16 | T038-18 opportunistic-node-not-requireable | test | T038-18 yes |
+| FR-038-17 | T038-19 four-images-pinned-multiarch | test | T038-19 yes |
+| FR-038-18 | T038-20 container-isolation-posture | test | T038-20 yes |
+| FR-038-19 | T038-21 planted-secret-blocks-start | test | T038-21 yes |
 | FR-038-20 | T038-22 windows-vm-activation-proof | test + human-as-oracle | T038-22 NO |
-| FR-038-21 | T038-23 activation-deactivation-offlines-venue | test | T038-23 NO |
-| FR-038-22 | T038-24 aarch64-artifacts-in-release | gate | T038-24 NO |
+| FR-038-21 | T038-23 activation-deactivation-offlines-venue | test | T038-23 yes |
+| FR-038-22 | T038-24 aarch64-artifacts-in-release | gate | T038-24 yes |
 | FR-038-23 | T038-25 ghost-reconcile-from-github-truth | test | T038-25 yes |
 | FR-038-24 | T038-26 hold-queue-before-ghost-completion | test | T038-26 yes |
 | FR-038-25 | T038-27 publish-verifies-every-destination | test | T038-27 yes |
 | FR-038-26 | T038-28 dead-owner-lock-takeover | test | T038-28 yes |
-| FR-038-27 | T038-29 tailnet-readiness-wait | test | T038-29 NO |
-| FR-038-28 | T038-30 hash-pins-compared-mechanically | gate | T038-30 NO |
-| FR-038-29 | T038-31 fleet-naming-and-anchor-failure | test | T038-31 NO |
-| FR-038-30 | T038-32 acl-deny-probes; T038-33 backup-keys-off-target | test | T038-32 NO; T038-33 NO |
+| FR-038-27 | T038-29 tailnet-readiness-wait | test | T038-29 yes |
+| FR-038-28 | T038-30 hash-pins-compared-mechanically | gate | T038-30 yes |
+| FR-038-29 | T038-31 fleet-naming-and-anchor-failure | test | T038-31 yes |
+| FR-038-30 | T038-32 acl-deny-probes; T038-33 backup-keys-off-target | test | T038-32 yes; T038-33 yes |
 | FR-038-31 | T038-34 harvest-foreign-line-quarantine | test | T038-34 yes |
 | FR-038-32 | T038-35 err01-fault-injection | test | T038-35 yes |
 | FR-038-33 | T038-36 err02-vm-loss-accounting | test | T038-36 yes |
-| FR-038-34 | T038-37 err03-power-loss-recovery | test | T038-37 NO |
+| FR-038-34 | T038-37 err03-power-loss-recovery | test | T038-37 yes |
 | FR-038-35 | T038-38 err06-migration-manifest | gate | T038-38 yes |
 | FR-038-36 | T038-39 err08-wave-fail-fast | test | T038-39 yes |
 | FR-038-37 | T038-40 err09-self-start-announce | test | T038-40 yes |
 | FR-038-38 | T038-41 one-version-one-train; T038-42 settings-in-app | gate | T038-41 NO; T038-42 yes |
-| FR-038-39 | T038-43 rep01-exactly-one-report; T038-44 rep02-structured-dedupe; T038-45 rep03-daily-cap-digest; T038-46 rep06-credential-scan-refusal | test | T038-43 NO; T038-44 NO; T038-45 NO; T038-46 NO |
-| FR-038-40 | T038-47 separate-credentials-least-privilege | test | T038-47 NO |
-| FR-038-41 | T038-48 fix02-repair-budgets; T038-49 fix03-latch-off; T038-50 fix05-never-fix-list; T038-51 fix06-gpu-verify-revert | test | T038-48 NO; T038-49 NO; T038-50 NO; T038-51 NO |
+| FR-038-39 | T038-43 rep01-exactly-one-report; T038-44 rep02-structured-dedupe; T038-45 rep03-daily-cap-digest; T038-46 rep06-credential-scan-refusal | test | T038-43 yes; T038-44 yes; T038-45 yes; T038-46 yes |
+| FR-038-40 | T038-47 separate-credentials-least-privilege | test | T038-47 yes |
+| FR-038-41 | T038-48 fix02-repair-budgets; T038-49 fix03-latch-off; T038-50 fix05-never-fix-list; T038-51 fix06-gpu-verify-revert | test | T038-48 yes; T038-49 yes; T038-50 yes; T038-51 yes |
 | FR-038-42 | T038-52 single-path-publisher-defect-2026-11-06; T038-53 stranded-lock-defect-2026-11-06 | test | T038-52 yes; T038-53 yes |
-| FR-038-43 | T038-54 upd02-canary-gate; T038-55 upd03-health-gate-is-identity; T038-56 upd07-tampered-artifact-refused; T038-57 upd08-mixed-version-refusal | test | T038-54 NO; T038-55 NO; T038-56 NO; T038-57 NO |
-| FR-038-44 | T038-58 unsigned-unpinned-host-no-autoupdate | test | T038-58 NO |
-| FR-038-45 | T038-59 profile-transactional-revert | test | T038-59 NO |
+| FR-038-43 | T038-54 upd02-canary-gate; T038-55 upd03-health-gate-is-identity; T038-56 upd07-tampered-artifact-refused; T038-57 upd08-mixed-version-refusal | test | T038-54 yes; T038-55 yes; T038-56 yes; T038-57 yes |
+| FR-038-44 | T038-58 unsigned-unpinned-host-no-autoupdate | test | T038-58 yes |
+| FR-038-45 | T038-59 profile-transactional-revert | test | T038-59 yes |
 | FR-038-46 | T038-60 sequence-orders-reconciliation | test | T038-60 yes |
 | FR-038-47 | T038-61 tower-offsite-cosmic-windowless-proof; T038-62 tower-offsite-timer-masked-sleep-proof | test + human-as-oracle | T038-61 NO; T038-62 NO |
-| FR-038-48 | T038-63 non-elevated-raw-write-2026-11-06; T038-64 elevated-raw-device-open-2026-11-06 | test | T038-63 NO; T038-64 NO |
+| FR-038-48 | T038-63 non-elevated-raw-write-2026-11-06; T038-64 elevated-raw-device-open-2026-11-06 | test | T038-63 yes; T038-64 NO |
 | FR-038-49 | T038-65 ismart-staged-fold-in | gate | T038-65 NO |
 | FR-038-50 | T038-66 program-deliverables-exist | gate | T038-66 NO |
 | FR-038-51 | T038-67 single-control-plane-home | gate | T038-67 NO |
@@ -150,76 +150,37 @@ Summary: 126 FRs, 158 named test cases, 75 named tests present in suite, 0 FRs w
 | FR | Named test case(s) | Mode | In suite |
 |---|---|---|---|
 | FR-MAC-01 | T039-01 mac-ci-both-arches; T039-02 platform-assumption-lint | gate | T039-01 NO; T039-02 NO |
-| FR-MAC-02 | T039-03 launchagent-session-and-keepalive; T039-04 agent-logs-fleet-standard | test | T039-03 NO; T039-04 NO |
-| FR-MAC-03 | T039-05 native-job-verdict-harvest; T039-06 docker-venue-probed-not-assumed; T039-07 engine-stopped-no-docker-routing | test | T039-05 NO; T039-06 NO; T039-07 NO |
-| FR-MAC-04 | T039-08 capability-matches-system-profiler | test + human-as-oracle | T039-08 NO |
-| FR-MAC-05 | T039-09 sleep-wake-no-loss-no-double-run; T039-10 sleep-interruption-named-not-failed | test | T039-09 NO; T039-10 NO |
-| FR-MAC-06 | T039-11 unified-pool-caps-enforced; T039-12 batch-campaigns-route-elsewhere | test | T039-11 NO; T039-12 NO |
-| FR-MAC-07 | T039-13 clean-account-gatekeeper-pass; T039-14 signing-tier-reported | test + human-as-oracle | T039-13 NO; T039-14 NO |
-| FR-MAC-08 | T039-15 no-default-tcc-grants; T039-16 needed-grants-named-with-reason | test + gate | T039-15 NO; T039-16 NO |
-| FR-MAC-09 | T039-17 menubar-app-identity-stamp | test | T039-17 NO |
-| FR-MAC-10 | T039-18 mac-backchannel-reserved-use | gate | T039-18 NO |
-| FR-MAC-11 | T039-19 inference-endpoint-advertised-when-live; T039-20 inference-independent-of-agent | test | T039-19 NO; T039-20 NO |
+| FR-MAC-02 | T039-03 launchagent-session-and-keepalive; T039-04 agent-logs-fleet-standard | test | T039-03 yes; T039-04 yes |
+| FR-MAC-03 | T039-05 native-job-verdict-harvest; T039-06 docker-venue-probed-not-assumed; T039-07 engine-stopped-no-docker-routing | test | T039-05 yes; T039-06 yes; T039-07 yes |
+| FR-MAC-04 | T039-08 capability-matches-system-profiler | test + human-as-oracle | T039-08 yes |
+| FR-MAC-05 | T039-09 sleep-wake-no-loss-no-double-run; T039-10 sleep-interruption-named-not-failed | test | T039-09 yes; T039-10 yes |
+| FR-MAC-06 | T039-11 unified-pool-caps-enforced; T039-12 batch-campaigns-route-elsewhere | test | T039-11 yes; T039-12 yes |
+| FR-MAC-07 | T039-13 clean-account-gatekeeper-pass; T039-14 signing-tier-reported | test + human-as-oracle | T039-13 NO; T039-14 yes |
+| FR-MAC-08 | T039-15 no-default-tcc-grants; T039-16 needed-grants-named-with-reason | test + gate | T039-15 yes; T039-16 yes |
+| FR-MAC-09 | T039-17 menubar-app-identity-stamp | test | T039-17 yes |
+| FR-MAC-10 | T039-18 mac-backchannel-reserved-use | gate | T039-18 yes |
+| FR-MAC-11 | T039-19 inference-endpoint-advertised-when-live; T039-20 inference-independent-of-agent | test | T039-19 yes; T039-20 yes |
 
 ## Named tests missing from the suite
 
 - T034-11 conformance-kit-three-languages (034-streaming-progress, FR-034-09)
-- T034-12 door-workflow-pinned-sha (034-streaming-progress, FR-034-10)
 - T036-01 matrix-generation-completeness (036-test-discipline, FR-036-01)
 - T036-02 matrix-fails-on-orphan-fr (036-test-discipline, FR-036-01)
 - T036-03 package-fr-table-audit (036-test-discipline, FR-036-02)
-- T036-04 field-simulation-suites-present-and-run (036-test-discipline, FR-036-03)
 - T036-05 defect-to-test-audit (036-test-discipline, FR-036-04)
 - T036-06 coverage-bars-enforced (036-test-discipline, FR-036-05)
 - T036-07 release-gate-composition (036-test-discipline, FR-036-06)
-- T036-08 fault-injection-dispatch-protocol (036-test-discipline, FR-036-07)
 - T036-09 owner-recovery-drill-record (036-test-discipline, FR-036-08)
-- T036-10 unattended-24h-degradation (036-test-discipline, FR-036-09)
-- T036-11 restore-verification-drill (036-test-discipline, FR-036-10)
 - T036-12 macos-compile-only-ci (036-test-discipline, FR-036-11)
-- T036-13 token-scope-audit (036-test-discipline, FR-036-12)
-- T036-16 extension-schema-drift (036-test-discipline, FR-036-14)
 - T036-17 runner-noise-not-an-error (036-test-discipline, FR-036-15)
-- T038-01 cutover-roundtrip-rehearsal (038-rust-core-architecture, FR-038-01)
 - T038-02 freeze-window-fallback-named (038-rust-core-architecture, FR-038-02)
 - T038-07 watchdog-exclusion-proven (038-rust-core-architecture, FR-038-07)
 - T038-13 mini-server-leg2-container-job (038-rust-core-architecture, FR-038-13)
 - T038-14 mini-server-leg3-desktop-off (038-rust-core-architecture, FR-038-13)
-- T038-15 resource-limits-enforced (038-rust-core-architecture, FR-038-14)
-- T038-16 underdeclaration-widens-envelope (038-rust-core-architecture, FR-038-14)
-- T038-17 stale-capability-refused (038-rust-core-architecture, FR-038-15)
-- T038-18 opportunistic-node-not-requireable (038-rust-core-architecture, FR-038-16)
-- T038-19 four-images-pinned-multiarch (038-rust-core-architecture, FR-038-17)
-- T038-20 container-isolation-posture (038-rust-core-architecture, FR-038-18)
-- T038-21 planted-secret-blocks-start (038-rust-core-architecture, FR-038-19)
 - T038-22 windows-vm-activation-proof (038-rust-core-architecture, FR-038-20)
-- T038-23 activation-deactivation-offlines-venue (038-rust-core-architecture, FR-038-21)
-- T038-24 aarch64-artifacts-in-release (038-rust-core-architecture, FR-038-22)
-- T038-29 tailnet-readiness-wait (038-rust-core-architecture, FR-038-27)
-- T038-30 hash-pins-compared-mechanically (038-rust-core-architecture, FR-038-28)
-- T038-31 fleet-naming-and-anchor-failure (038-rust-core-architecture, FR-038-29)
-- T038-32 acl-deny-probes (038-rust-core-architecture, FR-038-30)
-- T038-33 backup-keys-off-target (038-rust-core-architecture, FR-038-30)
-- T038-37 err03-power-loss-recovery (038-rust-core-architecture, FR-038-34)
 - T038-41 one-version-one-train (038-rust-core-architecture, FR-038-38)
-- T038-43 rep01-exactly-one-report (038-rust-core-architecture, FR-038-39)
-- T038-44 rep02-structured-dedupe (038-rust-core-architecture, FR-038-39)
-- T038-45 rep03-daily-cap-digest (038-rust-core-architecture, FR-038-39)
-- T038-46 rep06-credential-scan-refusal (038-rust-core-architecture, FR-038-39)
-- T038-47 separate-credentials-least-privilege (038-rust-core-architecture, FR-038-40)
-- T038-48 fix02-repair-budgets (038-rust-core-architecture, FR-038-41)
-- T038-49 fix03-latch-off (038-rust-core-architecture, FR-038-41)
-- T038-50 fix05-never-fix-list (038-rust-core-architecture, FR-038-41)
-- T038-51 fix06-gpu-verify-revert (038-rust-core-architecture, FR-038-41)
-- T038-54 upd02-canary-gate (038-rust-core-architecture, FR-038-43)
-- T038-55 upd03-health-gate-is-identity (038-rust-core-architecture, FR-038-43)
-- T038-56 upd07-tampered-artifact-refused (038-rust-core-architecture, FR-038-43)
-- T038-57 upd08-mixed-version-refusal (038-rust-core-architecture, FR-038-43)
-- T038-58 unsigned-unpinned-host-no-autoupdate (038-rust-core-architecture, FR-038-44)
-- T038-59 profile-transactional-revert (038-rust-core-architecture, FR-038-45)
 - T038-61 tower-offsite-cosmic-windowless-proof (038-rust-core-architecture, FR-038-47)
 - T038-62 tower-offsite-timer-masked-sleep-proof (038-rust-core-architecture, FR-038-47)
-- T038-63 non-elevated-raw-write-2026-11-06 (038-rust-core-architecture, FR-038-48)
 - T038-64 elevated-raw-device-open-2026-11-06 (038-rust-core-architecture, FR-038-48)
 - T038-65 ismart-staged-fold-in (038-rust-core-architecture, FR-038-49)
 - T038-66 program-deliverables-exist (038-rust-core-architecture, FR-038-50)
@@ -228,21 +189,4 @@ Summary: 126 FRs, 158 named test cases, 75 named tests present in suite, 0 FRs w
 - T038-69 mcp-surface-after-extension (038-rust-core-architecture, FR-038-53)
 - T039-01 mac-ci-both-arches (039-macos-host, FR-MAC-01)
 - T039-02 platform-assumption-lint (039-macos-host, FR-MAC-01)
-- T039-03 launchagent-session-and-keepalive (039-macos-host, FR-MAC-02)
-- T039-04 agent-logs-fleet-standard (039-macos-host, FR-MAC-02)
-- T039-05 native-job-verdict-harvest (039-macos-host, FR-MAC-03)
-- T039-06 docker-venue-probed-not-assumed (039-macos-host, FR-MAC-03)
-- T039-07 engine-stopped-no-docker-routing (039-macos-host, FR-MAC-03)
-- T039-08 capability-matches-system-profiler (039-macos-host, FR-MAC-04)
-- T039-09 sleep-wake-no-loss-no-double-run (039-macos-host, FR-MAC-05)
-- T039-10 sleep-interruption-named-not-failed (039-macos-host, FR-MAC-05)
-- T039-11 unified-pool-caps-enforced (039-macos-host, FR-MAC-06)
-- T039-12 batch-campaigns-route-elsewhere (039-macos-host, FR-MAC-06)
 - T039-13 clean-account-gatekeeper-pass (039-macos-host, FR-MAC-07)
-- T039-14 signing-tier-reported (039-macos-host, FR-MAC-07)
-- T039-15 no-default-tcc-grants (039-macos-host, FR-MAC-08)
-- T039-16 needed-grants-named-with-reason (039-macos-host, FR-MAC-08)
-- T039-17 menubar-app-identity-stamp (039-macos-host, FR-MAC-09)
-- T039-18 mac-backchannel-reserved-use (039-macos-host, FR-MAC-10)
-- T039-19 inference-endpoint-advertised-when-live (039-macos-host, FR-MAC-11)
-- T039-20 inference-independent-of-agent (039-macos-host, FR-MAC-11)
