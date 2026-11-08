@@ -313,6 +313,7 @@ mod tests {
         cmd
     }
 
+    // T037-03 (signature half): verification is key-bound.
     #[test]
     fn sign_verify_round_trip_and_tamper_evidence() {
         let key = HostSecretKey::from_seed([7u8; 32]);
@@ -339,8 +340,9 @@ mod tests {
         assert!(cmd.verify(&public2));
     }
 
-    // FR-037-08: the action set is closed — acts outside it are
-    // not expressible in the schema at all.
+    // T037-08 act-set-is-gatekeeper-only: the action set is
+    // closed — acts outside it are not expressible in the
+    // schema at all.
     #[test]
     fn action_set_is_closed() {
         for banned in [
@@ -362,6 +364,7 @@ mod tests {
         }
     }
 
+    // T037-02 (expiry half) + T037-05 (age math half).
     #[test]
     fn expiry_window_and_age_math() {
         let key = HostSecretKey::from_seed([3u8; 32]);
