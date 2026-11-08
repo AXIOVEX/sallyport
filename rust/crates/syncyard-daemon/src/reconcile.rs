@@ -98,6 +98,17 @@ fn merge_offvm(state: &mut DaemonState, offvm_jobs: BTreeMap<String, QueueRecord
                 let incoming_seq = incoming.seq.unwrap_or(0);
                 let existing_seq = existing.seq.unwrap_or(0);
                 if incoming_seq > existing_seq && !existing_has_verdict {
+                    // A pre-dispatch witness upgrading a lesser copy
+                    // is a recovered dispatch, counted by name.
+                    if kind == KIND_PREDISPATCH
+                        && matches!(
+                            incoming.state,
+                            JobState::Dispatching | JobState::Dispatched
+                        )
+                        && !report.recovered_dispatches.contains(&id)
+                    {
+                        report.recovered_dispatches.push(id.clone());
+                    }
                     let mut merged = incoming;
                     // Preserve the local verdict fields even when
                     // the newer copy lacks them.

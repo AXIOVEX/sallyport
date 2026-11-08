@@ -185,9 +185,11 @@ impl<'a> DispatchTxn<'a> {
         })
     }
 
-    /// Steps 3-5: trigger (idempotent), capture, commit.
-    pub fn finish(
-        self,
+    /// Steps 3-4: trigger (idempotent) and capture the run id on
+    /// the record and the witness. Split from [`DispatchTxn::commit`]
+    /// so fault-injection tests can stop between protocol steps.
+    pub fn trigger_and_capture(
+        &mut self,
         state: &mut DaemonState,
         store: &dyn OffVmStore,
         token: &FencingToken,
@@ -222,17 +224,41 @@ impl<'a> DispatchTxn<'a> {
         store
             .put_record(KIND_PREDISPATCH, &self.job_id, &bytes)
             .map_err(DispatchError::OffVm)?;
-        // Step 5: commit.
+        self.step = 4;
+        Ok(run)
+    }
+
+    /// Step 5: commit — the record goes to `dispatched` and the
+    /// `dispatched` ledger event is buffered.
+    pub fn commit(self, state: &mut DaemonState, run: &RunRef) {
+        let job_key = state
+            .jobs
+            .get(&self.job_id)
+            .map(|j| j.key.clone())
+            .unwrap_or_default();
         state.update_job(&self.job_id, |rec| {
             rec.state = JobState::Dispatched;
             rec.dispatched_at = Some(crate::time::now_iso());
         });
-        let mut fields = ledger_fields(&self.job_id, &job.key, &self.idem_key);
+        let mut fields = ledger_fields(&self.job_id, &job_key, &self.idem_key);
         fields.insert(
             "run_id".into(),
             serde_json::Value::Number(run.run_id.into()),
         );
         state.ledger("dispatched", fields);
+    }
+
+    /// Steps 3-5 in one call (the normal path).
+    pub fn finish(
+        self,
+        state: &mut DaemonState,
+        store: &dyn OffVmStore,
+        token: &FencingToken,
+        dispatcher: &dyn Dispatcher,
+    ) -> Result<RunRef, DispatchError> {
+        let mut txn = self;
+        let run = txn.trigger_and_capture(state, store, token, dispatcher)?;
+        txn.commit(state, &run);
         Ok(run)
     }
 }

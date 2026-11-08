@@ -414,6 +414,12 @@ impl DaemonState {
     /// flush makes exactly one probe write and returns, instead of
     /// burning retries per record (ERR-08 bounded retries).
     pub fn flush(&mut self, writer: &dyn StateWriter) -> FlushReport {
+        // The state home's layout is daemon-managed: the queue dir
+        // exists before any record write is attempted. (Publish
+        // destinations are NOT managed this way — a missing publish
+        // directory must stay a visible failure, ERR-04.)
+        let _ = std::fs::create_dir_all(self.home.queue_dir());
+        let _ = std::fs::create_dir_all(self.home.root());
         let mut report = FlushReport::default();
         // Snapshot the work so a mid-flush transition re-dirties
         // correctly (the record is removed from the dirty set only
@@ -627,7 +633,7 @@ impl DaemonState {
             "stopped": self.stopped.is_some(),
             "holds": self.holds.len(),
             "flush": {
-                "state_dirty_records": self.flush_health.state_dirty_records,
+                "state_dirty_records": self.dirty_jobs.len(),
                 "last_flush_ok_at": self.flush_health.last_flush_ok_at,
                 "consecutive_failures": self.flush_health.consecutive_failures,
                 "wave_mode": self.flush_health.wave_mode,
