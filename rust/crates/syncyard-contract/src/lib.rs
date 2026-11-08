@@ -19,22 +19,46 @@
 //! omitted from the JSON when unset, so a Rust-written record stays
 //! readable by the Python gatekeeper during the cutover window.
 
+pub mod acl;
+pub mod backchannel;
+pub mod capability;
 pub mod control;
+pub mod creds;
+pub mod fleet;
+pub mod images;
 pub mod isotime;
 pub mod job;
+pub mod permissions;
 pub mod progress;
 pub mod queue;
+pub mod rawaccess;
+pub mod scan;
+pub mod signing;
 
+pub use backchannel::{
+    macos_backchannel_policy, validate_backchannel_policy, BackchannelPolicy,
+    BACKCHANNEL_OWNER, RESERVED_USE,
+};
+pub use capability::{
+    ActivationState, CapabilityRecord, DockerPresence, Measure, MemoryPool, NodeClass,
+};
 pub use control::{
     CommandOutcome, ControlAction, ControlCommand, HostPublicKey, HostSecretKey, OutcomeStatus,
     DEFAULT_EXPIRY_S as COMMAND_DEFAULT_EXPIRY_S, MAX_EXPIRY_S as COMMAND_MAX_EXPIRY_S,
 };
+pub use creds::{audit_credentials, CredRole, Credential, ScopeViolation};
+pub use fleet::{resolve_host, AnchorError, FleetHost, FLEET, CONSTRAINT_ANCHOR_RESOLUTION_FAILED};
+pub use images::{validate_image_set, ImagePin, ImageSetError, REQUIRED_ARCHES, SHARED_IMAGE_NAMES};
 pub use job::JobRecord;
+pub use permissions::{validate_permissions, NamedGrant, PermissionError, PermissionPosture};
 pub use progress::{
     parse_line, parse_lines, Assignment, CompletionReport, ProgressAck, ProgressBatch,
     ProgressEvent, ProgressSnapshot,
 };
 pub use queue::{JobState, QueueRecord};
+pub use rawaccess::{check_raw_access, RawAccessError, ELEVATED_KIT_VENUE};
+pub use scan::{scan_for_credentials, SecretHit};
+pub use signing::{tier_from_identities, BuildStamp, SigningTier};
 
 /// CLI/daemon contract version (spec 034 FR-034-11). Bumped whenever the
 /// contract surface changes incompatibly; CI fails when the CLI and the
