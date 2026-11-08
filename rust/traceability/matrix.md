@@ -2,7 +2,7 @@
 
 Do not hand-edit: regenerate with `cargo run -p syncyard-tracegen`.
 
-Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 27 named tests missing from suite, 0 orphan suite ids.
+Summary: 126 FRs, 158 named test cases, 147 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 11 named tests missing from suite, 0 orphan suite ids.
 
 
 ## 034-streaming-progress
@@ -17,7 +17,7 @@ Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs 
 | FR-034-06 | T034-08 progress-regression-surfaced | test | T034-08 yes |
 | FR-034-07 | T034-09 transport-failure-isolated | test | T034-09 yes |
 | FR-034-08 | T034-10 foreign-marker-quarantine | test | T034-10 yes |
-| FR-034-09 | T034-11 conformance-kit-three-languages | test | T034-11 NO |
+| FR-034-09 | T034-11 conformance-kit-three-languages | test | T034-11 yes |
 | FR-034-10 | T034-12 door-workflow-pinned-sha | test | T034-12 yes |
 | FR-034-11 | T034-13 cli-daemon-contract-compat | gate | T034-13 yes |
 | FR-034-12 | T034-14 tray-mcp-progress-parity | test | T034-14 yes |
@@ -52,21 +52,21 @@ Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs 
 
 | FR | Named test case(s) | Mode | In suite |
 |---|---|---|---|
-| FR-036-01 | T036-01 matrix-generation-completeness; T036-02 matrix-fails-on-orphan-fr | gate | T036-01 NO; T036-02 NO |
-| FR-036-02 | T036-03 package-fr-table-audit | gate | T036-03 NO |
+| FR-036-01 | T036-01 matrix-generation-completeness; T036-02 matrix-fails-on-orphan-fr | gate | T036-01 yes; T036-02 yes |
+| FR-036-02 | T036-03 package-fr-table-audit | gate | T036-03 yes |
 | FR-036-03 | T036-04 field-simulation-suites-present-and-run | gate | T036-04 yes |
-| FR-036-04 | T036-05 defect-to-test-audit | gate | T036-05 NO |
-| FR-036-05 | T036-06 coverage-bars-enforced | gate | T036-06 NO |
-| FR-036-06 | T036-07 release-gate-composition | gate | T036-07 NO |
+| FR-036-04 | T036-05 defect-to-test-audit | gate | T036-05 yes |
+| FR-036-05 | T036-06 coverage-bars-enforced | gate | T036-06 yes |
+| FR-036-06 | T036-07 release-gate-composition | gate | T036-07 yes |
 | FR-036-07 | T036-08 fault-injection-dispatch-protocol | test | T036-08 yes |
 | FR-036-08 | T036-09 owner-recovery-drill-record | human-as-oracle | T036-09 NO |
 | FR-036-09 | T036-10 unattended-24h-degradation | test | T036-10 yes |
 | FR-036-10 | T036-11 restore-verification-drill | test | T036-11 yes |
-| FR-036-11 | T036-12 macos-compile-only-ci | gate | T036-12 NO |
+| FR-036-11 | T036-12 macos-compile-only-ci | gate | T036-12 yes |
 | FR-036-12 | T036-13 token-scope-audit | test | T036-13 yes |
 | FR-036-13 | T036-14 compaction-hash-chain-verified; T036-15 compaction-blocked-in-wave | test | T036-14 yes; T036-15 yes |
 | FR-036-14 | T036-16 extension-schema-drift | gate | T036-16 yes |
-| FR-036-15 | T036-17 runner-noise-not-an-error | test | T036-17 NO |
+| FR-036-15 | T036-17 runner-noise-not-an-error | test | T036-17 yes |
 | FR-036-16 | T036-18 wave-fixture-all-writers | test | T036-18 yes |
 
 ## 037-tray-job-control
@@ -91,7 +91,7 @@ Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs 
 | FR | Named test case(s) | Mode | In suite |
 |---|---|---|---|
 | FR-038-01 | T038-01 cutover-roundtrip-rehearsal | gate | T038-01 yes |
-| FR-038-02 | T038-02 freeze-window-fallback-named | gate | T038-02 NO |
+| FR-038-02 | T038-02 freeze-window-fallback-named | gate | T038-02 yes |
 | FR-038-03 | T038-03 daemon-single-writer-socket | test | T038-03 yes |
 | FR-038-04 | T038-04 write-behind-flush-60s | test | T038-04 yes |
 | FR-038-05 | T038-05 dispatch-mid-wave | test | T038-05 yes |
@@ -127,7 +127,7 @@ Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs 
 | FR-038-35 | T038-38 err06-migration-manifest | gate | T038-38 yes |
 | FR-038-36 | T038-39 err08-wave-fail-fast | test | T038-39 yes |
 | FR-038-37 | T038-40 err09-self-start-announce | test | T038-40 yes |
-| FR-038-38 | T038-41 one-version-one-train; T038-42 settings-in-app | gate | T038-41 NO; T038-42 yes |
+| FR-038-38 | T038-41 one-version-one-train; T038-42 settings-in-app | gate | T038-41 yes; T038-42 yes |
 | FR-038-39 | T038-43 rep01-exactly-one-report; T038-44 rep02-structured-dedupe; T038-45 rep03-daily-cap-digest; T038-46 rep06-credential-scan-refusal | test | T038-43 yes; T038-44 yes; T038-45 yes; T038-46 yes |
 | FR-038-40 | T038-47 separate-credentials-least-privilege | test | T038-47 yes |
 | FR-038-41 | T038-48 fix02-repair-budgets; T038-49 fix03-latch-off; T038-50 fix05-never-fix-list; T038-51 fix06-gpu-verify-revert | test | T038-48 yes; T038-49 yes; T038-50 yes; T038-51 yes |
@@ -139,9 +139,9 @@ Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs 
 | FR-038-47 | T038-61 tower-offsite-cosmic-windowless-proof; T038-62 tower-offsite-timer-masked-sleep-proof | test + human-as-oracle | T038-61 NO; T038-62 NO |
 | FR-038-48 | T038-63 non-elevated-raw-write-2026-11-06; T038-64 elevated-raw-device-open-2026-11-06 | test | T038-63 yes; T038-64 NO |
 | FR-038-49 | T038-65 ismart-staged-fold-in | gate | T038-65 NO |
-| FR-038-50 | T038-66 program-deliverables-exist | gate | T038-66 NO |
-| FR-038-51 | T038-67 single-control-plane-home | gate | T038-67 NO |
-| FR-038-52 | T038-68 door-repo-versioning-owned | gate | T038-68 NO |
+| FR-038-50 | T038-66 program-deliverables-exist | gate | T038-66 yes |
+| FR-038-51 | T038-67 single-control-plane-home | gate | T038-67 yes |
+| FR-038-52 | T038-68 door-repo-versioning-owned | gate | T038-68 yes |
 | FR-038-53 | T038-69 mcp-surface-after-extension | gate | T038-69 NO |
 | FR-038-54 | T038-70 core-windowless-everywhere | test | T038-70 yes |
 
@@ -149,7 +149,7 @@ Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs 
 
 | FR | Named test case(s) | Mode | In suite |
 |---|---|---|---|
-| FR-MAC-01 | T039-01 mac-ci-both-arches; T039-02 platform-assumption-lint | gate | T039-01 NO; T039-02 NO |
+| FR-MAC-01 | T039-01 mac-ci-both-arches; T039-02 platform-assumption-lint | gate | T039-01 yes; T039-02 yes |
 | FR-MAC-02 | T039-03 launchagent-session-and-keepalive; T039-04 agent-logs-fleet-standard | test | T039-03 yes; T039-04 yes |
 | FR-MAC-03 | T039-05 native-job-verdict-harvest; T039-06 docker-venue-probed-not-assumed; T039-07 engine-stopped-no-docker-routing | test | T039-05 yes; T039-06 yes; T039-07 yes |
 | FR-MAC-04 | T039-08 capability-matches-system-profiler | test + human-as-oracle | T039-08 yes |
@@ -163,30 +163,14 @@ Summary: 126 FRs, 158 named test cases, 131 named tests present in suite, 0 FRs 
 
 ## Named tests missing from the suite
 
-- T034-11 conformance-kit-three-languages (034-streaming-progress, FR-034-09)
-- T036-01 matrix-generation-completeness (036-test-discipline, FR-036-01)
-- T036-02 matrix-fails-on-orphan-fr (036-test-discipline, FR-036-01)
-- T036-03 package-fr-table-audit (036-test-discipline, FR-036-02)
-- T036-05 defect-to-test-audit (036-test-discipline, FR-036-04)
-- T036-06 coverage-bars-enforced (036-test-discipline, FR-036-05)
-- T036-07 release-gate-composition (036-test-discipline, FR-036-06)
 - T036-09 owner-recovery-drill-record (036-test-discipline, FR-036-08)
-- T036-12 macos-compile-only-ci (036-test-discipline, FR-036-11)
-- T036-17 runner-noise-not-an-error (036-test-discipline, FR-036-15)
-- T038-02 freeze-window-fallback-named (038-rust-core-architecture, FR-038-02)
 - T038-07 watchdog-exclusion-proven (038-rust-core-architecture, FR-038-07)
 - T038-13 mini-server-leg2-container-job (038-rust-core-architecture, FR-038-13)
 - T038-14 mini-server-leg3-desktop-off (038-rust-core-architecture, FR-038-13)
 - T038-22 windows-vm-activation-proof (038-rust-core-architecture, FR-038-20)
-- T038-41 one-version-one-train (038-rust-core-architecture, FR-038-38)
 - T038-61 tower-offsite-cosmic-windowless-proof (038-rust-core-architecture, FR-038-47)
 - T038-62 tower-offsite-timer-masked-sleep-proof (038-rust-core-architecture, FR-038-47)
 - T038-64 elevated-raw-device-open-2026-11-06 (038-rust-core-architecture, FR-038-48)
 - T038-65 ismart-staged-fold-in (038-rust-core-architecture, FR-038-49)
-- T038-66 program-deliverables-exist (038-rust-core-architecture, FR-038-50)
-- T038-67 single-control-plane-home (038-rust-core-architecture, FR-038-51)
-- T038-68 door-repo-versioning-owned (038-rust-core-architecture, FR-038-52)
 - T038-69 mcp-surface-after-extension (038-rust-core-architecture, FR-038-53)
-- T039-01 mac-ci-both-arches (039-macos-host, FR-MAC-01)
-- T039-02 platform-assumption-lint (039-macos-host, FR-MAC-01)
 - T039-13 clean-account-gatekeeper-pass (039-macos-host, FR-MAC-07)

@@ -40,6 +40,15 @@ struct FrRow {
 }
 
 fn main() -> ExitCode {
+    // Subcommands (spec 036 sections 4-5, spec 039 FR-MAC-01):
+    //   syncyard-tracegen coverage --report llvm-cov-export.json
+    //   syncyard-tracegen lint-platform [--suite DIR]
+    let raw: Vec<String> = env::args().skip(1).collect();
+    match raw.first().map(|s| s.as_str()) {
+        Some("coverage") => return coverage_mode(&raw[1..]),
+        Some("lint-platform") => return lint_mode(&raw[1..]),
+        _ => {}
+    }
     let mut specs_dir = PathBuf::from("specs");
     let mut suite_dir = PathBuf::from("rust");
     let mut out_dir = PathBuf::from("rust/traceability");
@@ -437,4 +446,185 @@ fn render_json(rows: &[FrRow], suite_ids: &BTreeMap<String, BTreeSet<String>>) -
 
 fn esc(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// The spec 036 section 4 bars, per crate.
+const DEFAULT_BARS: [(&str, f64); 5] = [
+    ("contract", 95.0),
+    ("daemon", 90.0),
+    ("cli", 85.0),
+    ("agent", 85.0),
+    ("tray", 80.0),
+];
+
+/// Coverage verdict mode (spec 036 section 4): read an
+/// `llvm-cov export` JSON report, aggregate line coverage
+/// per crate over `crates/syncyard-<crate>/src/` files only,
+/// print each crate's percentage AND its uncovered-line
+/// count (the uncovered lines are reported, never hidden),
+/// and exit non-zero when any crate is below its bar.
+fn coverage_mode(args: &[String]) -> ExitCode {
+    let mut report: Option<PathBuf> = None;
+    let mut bars: Vec<(String, f64)> = DEFAULT_BARS
+        .iter()
+        .map(|(k, v)| (k.to_string(), *v))
+        .collect();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--report" => report = it.next().map(PathBuf::from),
+            "--bars" => {
+                if let Some(spec) = it.next() {
+                    bars = spec
+                        .split(',')
+                        .filter_map(|kv| {
+                            let (k, v) = kv.split_once('=')?;
+                            Some((k.trim().to_string(), v.trim().parse().ok()?))
+                        })
+                        .collect();
+                }
+            }
+            other => {
+                eprintln!("coverage: unknown argument: {other}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    let Some(report) = report else {
+        eprintln!("coverage: --report FILE (llvm-cov export JSON) is required");
+        return ExitCode::from(2);
+    };
+    let text = match fs::read_to_string(&report) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("coverage: cannot read {}: {e}", report.display());
+            return ExitCode::from(2);
+        }
+    };
+    let json: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("coverage: {} is not valid JSON: {e}", report.display());
+            return ExitCode::from(2);
+        }
+    };
+    // crate -> (covered, total) over src/ files only.
+    let mut agg: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    if let Some(files) = json
+        .pointer("/data/0/files")
+        .and_then(|f| f.as_array())
+    {
+        for f in files {
+            let Some(name) = f.get("filename").and_then(|n| n.as_str()) else {
+                continue;
+            };
+            let Some(pos) = name.find("crates/syncyard-") else {
+                continue;
+            };
+            let rest = &name[pos + "crates/syncyard-".len()..];
+            let Some((krate, tail)) = rest.split_once('/') else {
+                continue;
+            };
+            if !tail.starts_with("src/") {
+                continue; // tests and fixtures are not the shipped lines
+            }
+            let lines = &f["summary"]["lines"];
+            let total = lines["count"].as_u64().unwrap_or(0);
+            let covered = lines["covered"].as_u64().unwrap_or(0);
+            let e = agg.entry(krate.to_string()).or_default();
+            e.0 += covered;
+            e.1 += total;
+        }
+    }
+    let mut below = 0usize;
+    for (krate, bar) in &bars {
+        match agg.get(krate) {
+            Some((covered, total)) if *total > 0 => {
+                let pct = *covered as f64 * 100.0 / *total as f64;
+                let uncovered = total - covered;
+                let verdict = if pct + 1e-9 >= *bar { "PASS" } else { "BELOW BAR" };
+                if verdict != "PASS" {
+                    below += 1;
+                }
+                println!(
+                    "COVERAGE {krate} {pct:.2}% ({covered}/{total}) bar={bar} uncovered={uncovered} {verdict}"
+                );
+            }
+            _ => {
+                below += 1;
+                println!("COVERAGE {krate} NO DATA bar={bar} BELOW BAR");
+            }
+        }
+    }
+    if below == 0 {
+        println!("COVERAGE RESULT green");
+        ExitCode::SUCCESS
+    } else {
+        println!("COVERAGE RESULT red ({below} crate(s) below bar or without data)");
+        ExitCode::from(1)
+    }
+}
+
+/// Platform-assumption lint (spec 039 FR-MAC-01): no
+/// OS-specific path literals in shipped code outside the
+/// platform layer. Scanned: `crates/*/src/**.rs` except
+/// files named `platform.rs`; unit-test modules (everything
+/// from the first `#[cfg(test)]`) and comment lines are out
+/// of scope — fixtures legitimately name foreign paths.
+fn lint_mode(args: &[String]) -> ExitCode {
+    let mut suite_dir = PathBuf::from("rust");
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--suite" => {
+                if let Some(v) = it.next() {
+                    suite_dir = PathBuf::from(v);
+                }
+            }
+            other => {
+                eprintln!("lint-platform: unknown argument: {other}");
+                return ExitCode::from(2);
+            }
+        }
+    }
+    const PATTERNS: [&str; 4] = ["\"C:\\\\", "\"C:/", "/proc/", ".exe\""];
+    let mut files = Vec::new();
+    collect_rs_files(&suite_dir.join("crates"), &mut files);
+    files.sort();
+    let mut hits = 0usize;
+    for f in &files {
+        // Scope: shipped code only (crates/*/src/**). Test
+        // files are fixtures and legitimately name foreign
+        // paths.
+        if !f.components().any(|c| c.as_os_str() == "src") {
+            continue;
+        }
+        if f.file_name().map(|n| n == "platform.rs") == Some(true) {
+            continue;
+        }
+        let text = fs::read_to_string(f).unwrap_or_default();
+        let code = match text.find("#[cfg(test)]") {
+            Some(i) => &text[..i],
+            None => &text[..],
+        };
+        for (n, line) in code.lines().enumerate() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            for pat in PATTERNS {
+                if line.contains(pat) {
+                    println!("PLATFORM-LINT {}:{} pattern {pat}", f.display(), n + 1);
+                    hits += 1;
+                }
+            }
+        }
+    }
+    println!("PLATFORM-LINT hits={hits}");
+    if hits == 0 {
+        println!("PLATFORM-LINT RESULT clean");
+        ExitCode::SUCCESS
+    } else {
+        println!("PLATFORM-LINT RESULT red ({hits} hit(s))");
+        ExitCode::from(1)
+    }
 }

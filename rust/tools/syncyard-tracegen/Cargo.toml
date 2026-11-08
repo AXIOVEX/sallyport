@@ -5,3 +5,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Spec 036 traceability matrix generator: parses FR tables from the specs and checks named tests against the suite. Development tool; not a shipped component."
+
+[dependencies]
+serde_json = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

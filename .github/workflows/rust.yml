@@ -1,0 +1,75 @@
+# Rust workspace CI — GitHub-HOSTED runners only, always
+# (SECURITY.md). Spec 036 section 6 (CI matrix, all OS) and
+# spec 039 FR-MAC-01 (both darwin arches in CI on a real
+# macOS runner). The local equivalent is rust/release-gate.sh;
+# this workflow runs the same gate per OS.
+name: Rust
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - "specs/**"
+      - ".github/workflows/rust.yml"
+  pull_request:
+    paths:
+      - "rust/**"
+      - "specs/**"
+      - ".github/workflows/rust.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust (stable + llvm-tools)
+        run: |
+          rustup toolchain install stable
+          rustup component add llvm-tools-preview clippy rustfmt
+      - name: Format
+        working-directory: rust
+        run: cargo fmt --check
+      - name: Clippy
+        working-directory: rust
+        run: cargo clippy --workspace -- -D warnings
+      - name: Test (full workspace suite)
+        working-directory: rust
+        run: cargo test --workspace
+      - name: Traceability matrix
+        run: cargo run -p syncyard-tracegen --manifest-path rust/Cargo.toml
+      - name: Platform-assumption lint (spec 039 FR-MAC-01)
+        run: cargo run -p syncyard-tracegen --manifest-path rust/Cargo.toml -- lint-platform --suite rust
+
+  cross-check:
+    name: cross-check (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+          - x86_64-pc-windows-gnu
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust + target
+        run: |
+          rustup toolchain install stable
+          rustup target add ${{ matrix.target }}
+      - name: cargo check for target
+        working-directory: rust
+        run: cargo check --workspace --target ${{ matrix.target }}

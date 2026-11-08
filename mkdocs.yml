@@ -31,6 +31,13 @@ nav:
   - Progress protocol: progress.md
   - Job control: control.md
   - Operations: operations.md
+  - Threat model: threat-model.md
+  - Diagnostics privacy & retention: diagnostics-privacy-retention.md
+  - Cutover plan: cutover-plan.md
+  - Python decommissioning: python-decommissioning-plan.md
+  - GitHub API budget: github-api-budget.md
+  - Owner recovery runbook: owner-recovery-runbook.md
+  - Door repository: door-repo.md
   - Acceptance gates: acceptance.md
   - Skills pack: skills.md
   - Fleet standard: STANDARD.md

@@ -393,6 +393,82 @@ fn t036_08_fault_injection_fixture() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+// T038-41 data-egress-never
+#[test]
+fn t038_41_data_egress_never() {
+    // The daemon's only state-derived document that leaves
+    // the box is the status snapshot (what fleet publishing
+    // and presentation surfaces consume). ZONE-05's rule for
+    // it: job DATA never egresses — no payload script paths,
+    // no script hashes, no working directories, no payload
+    // output (markers / log tail), no declared needs. The
+    // snapshot's per-job shape is a fixed allowlist, asserted
+    // exactly, over a record loaded with sentinel values in
+    // every sensitive field.
+    let root = scratch("t41");
+    let home = StateHome::new(root.clone());
+    let mut st = DaemonState::empty(home);
+    let mut rec = new_queue_record(&job("egress-job"));
+    rec.script_path = Some("SENTINEL_SCRIPT_PATH".into());
+    rec.script_sha256 = Some("SENTINEL_SCRIPT_SHA".into());
+    rec.cwd = Some("SENTINEL_CWD".into());
+    rec.markers = vec!["SENTINEL_MARKER".to_string()];
+    rec.log_tail = vec!["SENTINEL_LOG_LINE".to_string()];
+    rec.needs = Some(serde_json::json!({"secret_need": "SENTINEL_NEEDS"}));
+    st.put_job(rec);
+    let snap = st.snapshot();
+    let text = serde_json::to_string(&snap).unwrap();
+    for sentinel in [
+        "SENTINEL_SCRIPT_PATH",
+        "SENTINEL_SCRIPT_SHA",
+        "SENTINEL_CWD",
+        "SENTINEL_MARKER",
+        "SENTINEL_LOG_LINE",
+        "SENTINEL_NEEDS",
+        "script_path",
+        "script_sha256",
+        "log_tail",
+        "markers",
+    ] {
+        assert!(
+            !text.contains(sentinel),
+            "snapshot egresses {sentinel}:\n{text}"
+        );
+    }
+    // The per-job key set is exactly the presentation
+    // allowlist — adding a field to the snapshot is a
+    // deliberate, reviewed act that must update this list.
+    let job0 = &snap["jobs"][0];
+    let mut keys: Vec<&str> = job0
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(|k| k.as_str())
+        .collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        vec![
+            "completed_at",
+            "created_at",
+            "dispatched_at",
+            "held",
+            "id",
+            "key",
+            "lane",
+            "priority",
+            "priority_source",
+            "program",
+            "run_conclusion",
+            "run_id",
+            "state",
+            "venue",
+            "verdict_source",
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 // T036-04 simulation-fixture-coverage
 #[test]
 fn t036_04_simulation_fixture_coverage() {
