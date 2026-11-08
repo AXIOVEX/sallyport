@@ -19,12 +19,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use syncyard_contract::{JobRecord, JobState};
+use syncyard_contract::{Assignment, CompletionReport, JobRecord, JobState, ProgressBatch};
 
 use crate::dispatch::{dispatch_one, Dispatcher};
 use crate::offvm::{FencingToken, OffVmStore, KIND_SUBMITS};
 use crate::state::{new_queue_record, DaemonState, PauseRecord, StateHome, StopRecord};
-use crate::time::now_iso;
+use crate::time::{now_iso, now_unix};
 use crate::vwrite::StateWriter;
 
 /// Everything a verb handler needs, behind one lock.
@@ -94,11 +94,208 @@ impl Engine {
             }
             "status" => match req.get("job_id").and_then(|v| v.as_str()) {
                 Some(id) => match self.state.jobs.get(id) {
-                    Some(rec) => ok(serde_json::to_value(rec).unwrap_or_default()),
+                    Some(rec) => {
+                        let mut v = serde_json::to_value(rec).unwrap_or_default();
+                        // The job's streaming-progress view rides
+                        // the status response (spec 034 section 3);
+                        // the record itself is untouched — progress
+                        // is display data, never record state.
+                        if let Some(view) = self.state.progress_view(id, now_unix()) {
+                            if let Ok(pv) = serde_json::to_value(&view) {
+                                v["progress"] = pv;
+                            }
+                        }
+                        ok(v)
+                    }
                     None => err(&format!("unknown job {id}")),
                 },
                 None => ok(self.state.snapshot()),
             },
+            "progress" => {
+                // Spec 034 transport + view. Three shapes:
+                //  {"job_id", "lines": [...], "run_id", "source"}
+                //      ingest one batch (agent / harvest sender)
+                //  {"job_id", "transport_ok": false, ...}
+                //      report a transport failure (FR-034-07)
+                //  {"job_id"}
+                //      read the watcher-facing view (CLI/watchers)
+                let Some(id) = req.get("job_id").and_then(|v| v.as_str()) else {
+                    return err("progress requires job_id");
+                };
+                if !self.state.jobs.contains_key(id) {
+                    return err(&format!("unknown job {id}"));
+                }
+                let id_owned = id.to_string();
+                if req.get("transport_ok").and_then(|v| v.as_bool()) == Some(false) {
+                    let ack = self.state.note_progress_transport_failure(
+                        &id_owned,
+                        req.get("run_id").and_then(|v| v.as_u64()),
+                        req.get("source").and_then(|v| v.as_str()).unwrap_or(""),
+                    );
+                    return ok(serde_json::json!({
+                        "ack": ack,
+                        "progress": serde_json::to_value(
+                            self.state.progress_view(&id_owned, now_unix())
+                        ).unwrap_or_default(),
+                    }));
+                }
+                if let Some(lines_v) = req.get("lines") {
+                    let lines: Vec<String> = match serde_json::from_value(lines_v.clone()) {
+                        Ok(l) => l,
+                        Err(e) => return err(&format!("lines does not parse: {e}")),
+                    };
+                    let batch = ProgressBatch {
+                        job_id: id_owned.clone(),
+                        run_id: req.get("run_id").and_then(|v| v.as_u64()),
+                        source: req
+                            .get("source")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        lines,
+                    };
+                    let ack = self.state.ingest_progress(&batch, now_unix());
+                    return ok(serde_json::json!({
+                        "ack": ack,
+                        "progress": serde_json::to_value(
+                            self.state.progress_view(&id_owned, now_unix())
+                        ).unwrap_or_default(),
+                    }));
+                }
+                match self.state.progress_view(&id_owned, now_unix()) {
+                    Some(view) => ok(serde_json::to_value(&view).unwrap_or_default()),
+                    None => err(&format!("unknown job {id}")),
+                }
+            }
+            "agent_poll" => {
+                // The backchannel agent's assignment surface
+                // (native venue): the oldest submitted, unheld job
+                // for the venue is assigned a daemon-local run id
+                // and marked dispatched. The agent echoes the run
+                // id in every progress batch and in its completion
+                // report, which is what makes attribution checkable.
+                let venue = req
+                    .get("venue")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("native")
+                    .to_string();
+                let agent = req
+                    .get("agent")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("agent")
+                    .to_string();
+                let candidate = self
+                    .state
+                    .jobs
+                    .values()
+                    .filter(|r| {
+                        r.state == JobState::Submitted
+                            && r.venue == venue
+                            && self.state.dispatch_held(r).is_none()
+                    })
+                    .min_by(|a, b| {
+                        a.created_at
+                            .cmp(&b.created_at)
+                            .then(a.seq.unwrap_or(0).cmp(&b.seq.unwrap_or(0)))
+                    })
+                    .map(|r| r.id.clone());
+                match candidate {
+                    None => ok(serde_json::json!({"assignment": null})),
+                    Some(job_id) => {
+                        let run_id = self.state.alloc_local_run_id();
+                        let mut assignment = None;
+                        self.state.update_job(&job_id, |rec| {
+                            rec.state = JobState::Dispatched;
+                            rec.dispatched_at = Some(now_iso());
+                            rec.run_id = Some(run_id);
+                            rec.run_status = Some("in_progress".to_string());
+                            assignment = Some(Assignment {
+                                job_id: rec.id.clone(),
+                                run_id,
+                                command: rec
+                                    .script_path
+                                    .clone()
+                                    .map(|p| vec![p])
+                                    .unwrap_or_default(),
+                                cwd: rec.cwd.clone(),
+                            });
+                        });
+                        let mut fields = BTreeMap::new();
+                        fields.insert(
+                            "job_id".into(),
+                            serde_json::Value::String(job_id.clone()),
+                        );
+                        fields.insert("run_id".into(), serde_json::Value::Number(run_id.into()));
+                        fields.insert("agent".into(), serde_json::Value::String(agent));
+                        fields.insert("local".into(), serde_json::Value::Bool(true));
+                        self.state.ledger("agent_dispatched", fields);
+                        let _ = self.state.flush(self.writer.as_ref());
+                        ok(serde_json::json!({"assignment": assignment}))
+                    }
+                }
+            }
+            "agent_completion" => {
+                // The agent's terminal report. The verdict comes
+                // from the payload exit code alone (spec 020,
+                // FR-034-03): a progress COMPLETED line the payload
+                // wrote earlier is advisory and never consulted
+                // here.
+                let (Some(id), Some(run_id)) = (
+                    req.get("job_id").and_then(|v| v.as_str()),
+                    req.get("run_id").and_then(|v| v.as_u64()),
+                ) else {
+                    return err("agent_completion requires job_id and run_id");
+                };
+                let report = CompletionReport {
+                    job_id: id.to_string(),
+                    run_id,
+                    payload_exit_code: req
+                        .get("payload_exit_code")
+                        .and_then(|v| v.as_i64())
+                        .map(|c| c as i32),
+                    payload_started: req
+                        .get("payload_started")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                };
+                let Some(rec) = self.state.jobs.get(id) else {
+                    return err(&format!("unknown job {id}"));
+                };
+                if rec.state != JobState::Dispatched || rec.run_id != Some(run_id) {
+                    return err(&format!(
+                        "completion does not match the dispatched run for {id}"
+                    ));
+                }
+                let conclusion = report.derived_conclusion();
+                let id_owned = id.to_string();
+                self.state.update_job(&id_owned, |rec| {
+                    rec.state = JobState::Completed;
+                    rec.completed_at = Some(now_iso());
+                    rec.run_status = Some("completed".to_string());
+                    rec.run_conclusion = Some(conclusion.to_string());
+                    rec.verdict_source = Some("payload_exit_code".to_string());
+                });
+                let mut fields = BTreeMap::new();
+                fields.insert("job_id".into(), serde_json::Value::String(id_owned.clone()));
+                fields.insert("run_id".into(), serde_json::Value::Number(run_id.into()));
+                fields.insert(
+                    "payload_exit_code".into(),
+                    report
+                        .payload_exit_code
+                        .map(|c| serde_json::Value::Number(c.into()))
+                        .unwrap_or(serde_json::Value::Null),
+                );
+                fields.insert(
+                    "conclusion".into(),
+                    serde_json::Value::String(conclusion.to_string()),
+                );
+                self.state.ledger("agent_completion", fields);
+                let _ = self.state.flush(self.writer.as_ref());
+                ok(serde_json::json!({
+                    "completed": id_owned,
+                    "run_conclusion": conclusion,
+                }))
+            }
             "snapshot" => ok(self.state.snapshot()),
             "outbox" => ok(serde_json::json!({
                 "pending": self.state.outbox_pending(),

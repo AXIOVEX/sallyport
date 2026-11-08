@@ -211,6 +211,16 @@ pub struct DaemonState {
     pub holds: BTreeSet<String>,
     /// Next monotonic per-source sequence (spec 038 section 9).
     pub next_seq: u64,
+    /// Streaming-progress feeds by job id (spec 034 section 3).
+    /// RAM-only by design: progress is display data, never part of
+    /// the persisted record; after a restart a running job reads
+    /// "no progress reported" until its next batch lands.
+    pub progress: BTreeMap<String, crate::progress::JobProgress>,
+    /// Cadence/staleness tunables for progress ingestion.
+    pub progress_config: crate::progress::ProgressConfig,
+    /// Next daemon-assigned local run id (agent venue; see
+    /// `crate::progress::LOCAL_RUN_ID_BASE`).
+    pub next_local_run_id: u64,
     /// Job ids whose cache write is owed.
     dirty_jobs: BTreeSet<String>,
     dirty_control: bool,
@@ -239,6 +249,9 @@ impl DaemonState {
             lane_locks: serde_json::Value::Null,
             holds: BTreeSet::new(),
             next_seq: 1,
+            progress: BTreeMap::new(),
+            progress_config: crate::progress::ProgressConfig::default(),
+            next_local_run_id: crate::progress::LOCAL_RUN_ID_BASE + 1,
             dirty_jobs: BTreeSet::new(),
             dirty_control: false,
             dirty_seq: false,
@@ -272,6 +285,14 @@ impl DaemonState {
                     Ok(text) => match serde_json::from_str::<QueueRecord>(&text) {
                         Ok(rec) => {
                             st.next_seq = st.next_seq.max(rec.seq.unwrap_or(0) + 1);
+                            // Local run ids must never be reissued
+                            // while a record still carries one.
+                            if let Some(r) = rec.run_id {
+                                if r >= crate::progress::LOCAL_RUN_ID_BASE {
+                                    st.next_local_run_id =
+                                        st.next_local_run_id.max(r.saturating_add(1));
+                                }
+                            }
                             st.jobs.insert(rec.id.clone(), rec);
                         }
                         Err(err) => {
@@ -310,6 +331,16 @@ impl DaemonState {
             }
         }
         (st, gaps)
+    }
+
+    /// Allocate a daemon-local run id for an agent-venue
+    /// assignment (spec 034 section 3 transport). Ids come from a
+    /// reserved high range so they can never be mistaken for
+    /// GitHub run ids in a record.
+    pub fn alloc_local_run_id(&mut self) -> u64 {
+        let id = self.next_local_run_id;
+        self.next_local_run_id = self.next_local_run_id.saturating_add(1);
+        id
     }
 
     /// Assign the next sequence number to a record (spec 038 §9).
@@ -628,6 +659,21 @@ impl DaemonState {
                 _ => {}
             }
         }
+        // Streaming progress for non-terminal jobs rides the
+        // snapshot (spec 034 section 3: watchers see progress
+        // without waiting for harvest). Same values as the per-job
+        // status view — one source, every surface.
+        let now_s = crate::time::now_unix();
+        let mut progress = serde_json::Map::new();
+        for rec in self.jobs.values() {
+            if !rec.state.is_terminal() {
+                if let Some(view) = self.progress_view(&rec.id, now_s) {
+                    if let Ok(v) = serde_json::to_value(&view) {
+                        progress.insert(rec.id.clone(), v);
+                    }
+                }
+            }
+        }
         serde_json::json!({
             "generated_at": now_iso(),
             "source": "syncyard-daemon",
@@ -635,6 +681,7 @@ impl DaemonState {
             "by_state": by_state,
             "waiting": waiting,
             "active": active,
+            "progress": progress,
             "paused": self.paused.is_some(),
             "stopped": self.stopped.is_some(),
             "holds": self.holds.len(),

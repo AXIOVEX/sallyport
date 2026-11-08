@@ -18,6 +18,9 @@
 //! - [`reconcile`] — boot reconciliation + ghost completion.
 //! - [`migrate`] — migrate-history with SHA-256 manifest + chain.
 //! - [`publish`] — per-destination verified publishing.
+//! - [`progress`] — streaming-progress ingestion and views
+//!   (spec 034): attributed batches, cadence, staleness, and
+//!   verdict hygiene on the daemon side.
 //! - [`serve`] — the Unix-socket server and verb handlers.
 //! - [`time`] — wall-clock helpers (display only; ordering is seq).
 
@@ -26,6 +29,7 @@ pub mod lanes;
 pub mod lock;
 pub mod migrate;
 pub mod offvm;
+pub mod progress;
 pub mod publish;
 pub mod reconcile;
 pub mod serve;
