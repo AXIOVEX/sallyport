@@ -379,6 +379,15 @@ version = "0.4.0"
 [[package]]
 name = "syncyard-tray"
 version = "0.4.0"
+dependencies = [
+ "fs2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "syncyard-cli",
+ "syncyard-contract",
+ "syncyard-daemon",
+]
 
 [[package]]
 name = "typenum"
