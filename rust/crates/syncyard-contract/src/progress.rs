@@ -137,6 +137,101 @@ pub fn parse_lines(contents: &str) -> Vec<ProgressEvent> {
     contents.lines().map(parse_line).collect()
 }
 
+/// One transport batch of raw progress lines for one job (spec 034
+/// section 3): the backchannel agent (or the runner's log harvest)
+/// copies the progress file's tail to the gatekeeper at most every
+/// ~60 s per running job.
+///
+/// Attribution (FR-034-08): a batch belongs to a job only when its
+/// run identity and log-source identity match the job's record.
+/// `run_id` is the gatekeeper-side run identity for the job (a
+/// GitHub run id on the door venues, a daemon-assigned local id on
+/// the agent venue); batches that cannot be attributed are
+/// quarantined by the consumer, never folded into the snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProgressBatch {
+    /// The job these lines claim to belong to.
+    pub job_id: String,
+    /// Run identity the lines were observed under, if the source
+    /// knows it.
+    pub run_id: Option<u64>,
+    /// Log-source identity (e.g. `agent:<host>`, `harvest:gh-log`).
+    /// A run's source is established by its first attributed batch;
+    /// later batches under a different source are foreign.
+    pub source: String,
+    /// Raw progress-file lines, verbatim, in file order.
+    pub lines: Vec<String>,
+}
+
+/// The daemon's answer to a progress batch. Transport success is
+/// not acceptance: a throttled batch's lines are retained by the
+/// sender and re-sent with the next batch, so cadence enforcement
+/// never loses progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgressAck {
+    /// Lines folded into the job's snapshot.
+    Applied,
+    /// Arrived inside the ~60 s refresh window; not applied.
+    Throttled,
+    /// Attribution failed (run id or source mismatch); lines
+    /// quarantined and counted, never displayed as the payload's.
+    Quarantined,
+    /// The batch reported a transport failure; the job's progress
+    /// now reads "progress unknown" (FR-034-07).
+    TransportUnknown,
+}
+
+/// A job assignment handed to a backchannel agent (the native
+/// venue's runner surface, spec 038 section 3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Assignment {
+    /// The job to execute.
+    pub job_id: String,
+    /// Daemon-assigned local run identity for this execution; the
+    /// agent echoes it in every progress batch and in the
+    /// completion report so attribution can be checked.
+    pub run_id: u64,
+    /// Payload argv (the job's script path as a single element on
+    /// the current venues).
+    pub command: Vec<String>,
+    /// Working directory for the payload, if the job named one.
+    pub cwd: Option<String>,
+}
+
+/// The agent's terminal report for one assignment.
+///
+/// The verdict source is the payload's own exit code and nothing
+/// else (spec 020; FR-034-03): the agent machinery succeeding at
+/// delivering this report never makes the job a success, and a
+/// `COMPLETED` progress line never overrides the exit code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompletionReport {
+    /// The job that was executed.
+    pub job_id: String,
+    /// The run identity from the assignment, echoed back.
+    pub run_id: u64,
+    /// The payload's exit code; `None` when the payload was killed
+    /// by a signal or could not be started at all.
+    pub payload_exit_code: Option<i32>,
+    /// True when the payload process actually started.
+    pub payload_started: bool,
+}
+
+impl CompletionReport {
+    /// The run conclusion derived from the payload exit code
+    /// alone: 0 is `success`, any other code is `failure`, and a
+    /// payload that never produced an exit code is `error`
+    /// (it never ran to a verdict of its own).
+    pub fn derived_conclusion(&self) -> &'static str {
+        match self.payload_exit_code {
+            Some(0) => "success",
+            Some(_) => "failure",
+            None => "error",
+        }
+    }
+}
+
 /// The gatekeeper's latest progress snapshot for one running job
 /// (spec 034 section 3): a fold of the job's progress events, in the
 /// order they were observed.
@@ -335,5 +430,51 @@ mod tests {
         assert!(snap.is_silent());
         assert_eq!(snap.fraction, None);
         assert_eq!(snap.completed_word, None);
+    }
+
+    #[test]
+    fn wire_types_round_trip() {
+        // The agent<->daemon wire types (spec 034 section 3) keep
+        // their serde shape across the socket.
+        let batch = ProgressBatch {
+            job_id: "job-1".into(),
+            run_id: Some(42),
+            source: "agent:test-host".into(),
+            lines: vec!["STARTED".into(), "PROGRESS 1/2 units".into()],
+        };
+        let text = serde_json::to_string(&batch).unwrap();
+        assert_eq!(serde_json::from_str::<ProgressBatch>(&text).unwrap(), batch);
+
+        let asg = Assignment {
+            job_id: "job-1".into(),
+            run_id: 42,
+            command: vec!["/tmp/payload.sh".into()],
+            cwd: None,
+        };
+        let text = serde_json::to_string(&asg).unwrap();
+        assert_eq!(serde_json::from_str::<Assignment>(&text).unwrap(), asg);
+
+        let ack = serde_json::to_string(&ProgressAck::Throttled).unwrap();
+        assert_eq!(ack, "\"throttled\"");
+    }
+
+    #[test]
+    fn completion_conclusion_comes_from_exit_code_only() {
+        // Spec 020 / FR-034-03: the derived conclusion reads the
+        // payload exit code and nothing else.
+        let rep = |code, started| CompletionReport {
+            job_id: "j".into(),
+            run_id: 1,
+            payload_exit_code: code,
+            payload_started: started,
+        };
+        assert_eq!(rep(Some(0), true).derived_conclusion(), "success");
+        assert_eq!(rep(Some(1), true).derived_conclusion(), "failure");
+        assert_eq!(rep(Some(127), true).derived_conclusion(), "failure");
+        // Killed by a signal, or never started: no exit code, so
+        // no success is derivable — the report is an error, never
+        // a pass manufactured by the wrapper.
+        assert_eq!(rep(None, true).derived_conclusion(), "error");
+        assert_eq!(rep(None, false).derived_conclusion(), "error");
     }
 }

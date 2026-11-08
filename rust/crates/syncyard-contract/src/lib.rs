@@ -24,7 +24,10 @@ pub mod progress;
 pub mod queue;
 
 pub use job::JobRecord;
-pub use progress::{parse_line, parse_lines, ProgressEvent, ProgressSnapshot};
+pub use progress::{
+    parse_line, parse_lines, Assignment, CompletionReport, ProgressAck, ProgressBatch,
+    ProgressEvent, ProgressSnapshot,
+};
 pub use queue::{JobState, QueueRecord};
 
 /// CLI/daemon contract version (spec 034 FR-034-11). Bumped whenever the
