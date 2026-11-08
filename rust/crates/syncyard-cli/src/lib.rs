@@ -168,6 +168,7 @@ impl FileClient {
                 holder: "cli-fallback".to_string(),
             },
             writer: std::sync::Arc::new(FsWriter::default()),
+            pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
         };
         Ok(FileClient {
             engine,

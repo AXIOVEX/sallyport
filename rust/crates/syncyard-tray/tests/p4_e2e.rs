@@ -78,6 +78,7 @@ fn start_daemon(tag: &str) -> Daemon {
         dispatcher: Arc::new(FakeDispatcher::new()),
         token,
         writer: Arc::new(FsWriter::default()),
+        pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
     };
     let shutdown = Arc::new(AtomicBool::new(false));
     let sd = Arc::clone(&shutdown);

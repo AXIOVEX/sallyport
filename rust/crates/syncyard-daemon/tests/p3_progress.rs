@@ -57,6 +57,7 @@ fn engine_for(home: &StateHome, root: &Path) -> Engine {
         dispatcher: Arc::new(FakeDispatcher::new()),
         token,
         writer: Arc::new(FsWriter::default()),
+        pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
     }
 }
 

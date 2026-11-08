@@ -31,6 +31,7 @@ fn engine_for(home: &StateHome, offvm: &std::path::Path) -> Engine {
         dispatcher: Arc::new(FakeDispatcher::new()),
         token,
         writer: Arc::new(FsWriter::default()),
+        pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
     }
 }
 

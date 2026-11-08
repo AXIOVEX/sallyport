@@ -265,6 +265,7 @@ fn agent_end_to_end_against_real_daemon() {
         dispatcher: Arc::new(FakeDispatcher::new()),
         token,
         writer: Arc::new(FsWriter::default()),
+        pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
     };
     let engine = Arc::new(Mutex::new(engine));
     let shutdown = Arc::new(AtomicBool::new(false));

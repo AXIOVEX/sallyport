@@ -103,6 +103,11 @@ pub struct QueueRecord {
     pub program: String,
     /// Door workflow file (`run.yml`, `wsl.yml`, `grab.yml`).
     pub workflow: String,
+    /// The commit sha the door workflow was pinned to at
+    /// dispatch (spec 034 FR-034-10). Rust-only field; omitted
+    /// while unset so Python-written records round-trip.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workflow_sha: Option<String>,
     /// Lane name; `null` on an auto-routed job before assignment.
     pub lane: Option<String>,
     /// Working directory on the target host; `null` until resolved.

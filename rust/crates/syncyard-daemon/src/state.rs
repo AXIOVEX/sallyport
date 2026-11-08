@@ -768,6 +768,7 @@ pub fn new_queue_record(job: &syncyard_contract::JobRecord) -> QueueRecord {
         key: job.key.clone(),
         program: job.program.clone(),
         workflow: job.workflow.clone(),
+        workflow_sha: None,
         lane: job.lane.clone(),
         cwd: job.cwd.clone(),
         script_path: job.script_path.clone(),

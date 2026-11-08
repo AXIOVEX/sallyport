@@ -125,6 +125,7 @@ fn main() {
         dispatcher: Arc::new(NoTransport),
         token,
         writer: Arc::new(FsWriter::default()),
+        pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
     }));
     let shutdown = Arc::new(AtomicBool::new(false));
     if let Err(e) = serve(engine, &home, ServeConfig::default(), shutdown) {

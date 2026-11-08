@@ -181,6 +181,7 @@ fn socket_verbs_against_live_daemon() {
         dispatcher: Arc::new(FakeDispatcher::new()),
         token,
         writer: Arc::new(FsWriter::default()),
+        pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
     }));
     let shutdown = Arc::new(AtomicBool::new(false));
     let home2 = home.clone();

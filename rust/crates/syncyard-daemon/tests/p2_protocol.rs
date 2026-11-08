@@ -73,6 +73,7 @@ fn engine_for(
         dispatcher: fake.clone(),
         token,
         writer,
+        pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
     };
     (engine, fake)
 }

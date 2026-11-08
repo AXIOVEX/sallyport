@@ -216,14 +216,29 @@ pub struct CompletionReport {
     pub payload_exit_code: Option<i32>,
     /// True when the payload process actually started.
     pub payload_started: bool,
+    /// A named interruption that ended the run without the
+    /// payload reaching a verdict of its own. The one value
+    /// the fleet uses today is `sleep` (spec 039 FR-MAC-05):
+    /// a job interrupted by host sleep is reported
+    /// interrupted-by-sleep, NEVER as failed or passed —
+    /// the spec's falsifier is structural here, because the
+    /// interruption check runs before the exit code is read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interruption: Option<String>,
 }
 
 impl CompletionReport {
     /// The run conclusion derived from the payload exit code
     /// alone: 0 is `success`, any other code is `failure`, and a
     /// payload that never produced an exit code is `error`
-    /// (it never ran to a verdict of its own).
+    /// (it never ran to a verdict of its own). A named
+    /// interruption outranks the exit code entirely: sleep
+    /// interruption is its own outcome, never failed or passed
+    /// (spec 039 FR-MAC-05).
     pub fn derived_conclusion(&self) -> &'static str {
+        if self.interruption.as_deref() == Some("sleep") {
+            return "interrupted-by-sleep";
+        }
         match self.payload_exit_code {
             Some(0) => "success",
             Some(_) => "failure",
@@ -467,6 +482,7 @@ mod tests {
             run_id: 1,
             payload_exit_code: code,
             payload_started: started,
+            interruption: None,
         };
         assert_eq!(rep(Some(0), true).derived_conclusion(), "success");
         assert_eq!(rep(Some(1), true).derived_conclusion(), "failure");
@@ -476,5 +492,29 @@ mod tests {
         // a pass manufactured by the wrapper.
         assert_eq!(rep(None, true).derived_conclusion(), "error");
         assert_eq!(rep(None, false).derived_conclusion(), "error");
+    }
+
+    #[test]
+    fn t039_10_sleep_interruption_named_not_failed() {
+        // T039-10 sleep-interruption-named-not-failed (spec
+        // 039 FR-MAC-05): a sleep interruption outranks every
+        // exit code — even 0 (never "passed") and even a
+        // signal kill (never "failed"/"error").
+        let mut rep = CompletionReport {
+            job_id: "j".into(),
+            run_id: 1,
+            payload_exit_code: Some(0),
+            payload_started: true,
+            interruption: Some("sleep".into()),
+        };
+        assert_eq!(rep.derived_conclusion(), "interrupted-by-sleep");
+        rep.payload_exit_code = None;
+        assert_eq!(rep.derived_conclusion(), "interrupted-by-sleep");
+        // Wire shape: an uninterrupted report does not carry
+        // the field at all (Python-side readers unaffected).
+        rep.interruption = None;
+        rep.payload_exit_code = Some(0);
+        let json = serde_json::to_string(&rep).unwrap();
+        assert!(!json.contains("interruption"), "{json}");
     }
 }

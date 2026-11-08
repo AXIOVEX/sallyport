@@ -34,6 +34,12 @@ pub struct Engine {
     pub dispatcher: Arc<dyn Dispatcher>,
     pub token: FencingToken,
     pub writer: Arc<dyn StateWriter>,
+    /// Door-workflow commit-sha pins (spec 034 FR-034-10).
+    /// When a pin table is configured, dispatch stamps the
+    /// job record with the workflow's pinned sha and refuses
+    /// an unpinned workflow by name; with no table configured
+    /// dispatch proceeds unpinned (pre-034-10 deployments).
+    pub pins: crate::workflowpin::WorkflowPins,
 }
 
 impl Engine {
@@ -254,6 +260,10 @@ impl Engine {
                         .get("payload_started")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false),
+                    interruption: req
+                        .get("interruption")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                 };
                 let Some(rec) = self.state.jobs.get(id) else {
                     return err(&format!("unknown job {id}"));
@@ -447,6 +457,21 @@ impl Engine {
                     return err("dispatch requires job_id");
                 };
                 let id_owned = id.to_string();
+                // FR-034-10: with a pin table configured, the
+                // record is stamped with the workflow's pinned
+                // commit sha BEFORE dispatch, and an unpinned
+                // workflow refuses dispatch by name.
+                if !self.pins.is_empty() {
+                    let stamp = match self.state.jobs.get_mut(&id_owned) {
+                        Some(rec) => self.pins.stamp_record(rec),
+                        None => {
+                            return err(&format!("unknown job {id_owned}"));
+                        }
+                    };
+                    if let Err(e) = stamp {
+                        return err(&e.to_string());
+                    }
+                }
                 match dispatch_one(
                     &mut self.state,
                     self.store.as_ref(),

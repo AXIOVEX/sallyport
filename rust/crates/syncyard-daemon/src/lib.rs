@@ -30,13 +30,20 @@ pub mod lanes;
 pub mod lock;
 pub mod migrate;
 pub mod offvm;
+pub mod profile;
 pub mod progress;
 pub mod publish;
 pub mod reconcile;
+pub mod registry;
+pub mod repair;
+pub mod reporting;
+pub mod resources;
 pub mod serve;
 pub mod state;
 pub mod time;
+pub mod update;
 pub mod vwrite;
+pub mod workflowpin;
 
 /// Role marker for diagnostics and the future identity stamp (UPD-03).
 pub const CRATE_ROLE: &str = "gatekeeper-daemon";

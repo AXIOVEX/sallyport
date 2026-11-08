@@ -204,6 +204,7 @@ pub fn run_assignment(
             run_id: assignment.run_id,
             payload_exit_code: None,
             payload_started: false,
+            interruption: None,
         };
     } else {
         let stdout_log = std::fs::File::create(job_dir.join("stdout.log"))
@@ -227,6 +228,7 @@ pub fn run_assignment(
                     run_id: assignment.run_id,
                     payload_exit_code: None,
                     payload_started: false,
+                    interruption: None,
                 };
             }
             Ok(mut child) => {
@@ -269,6 +271,7 @@ pub fn run_assignment(
                     run_id: assignment.run_id,
                     payload_exit_code: exit_code,
                     payload_started: true,
+                    interruption: None,
                 };
                 let undelivered = pending.len() as u64;
                 return Ok(finish(channel, report, counts, undelivered));
