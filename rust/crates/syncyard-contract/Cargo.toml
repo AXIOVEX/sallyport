@@ -9,3 +9,8 @@ description = "Syncyard shared contract: job/queue record types and the streamin
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+# Spec 037 command-file signatures: per-host Ed25519 keys (the
+# gatekeeper holds the public half). rand_core supplies OsRng
+# for enrollment-time key generation only.
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }

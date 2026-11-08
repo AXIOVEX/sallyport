@@ -19,10 +19,16 @@
 //! omitted from the JSON when unset, so a Rust-written record stays
 //! readable by the Python gatekeeper during the cutover window.
 
+pub mod control;
+pub mod isotime;
 pub mod job;
 pub mod progress;
 pub mod queue;
 
+pub use control::{
+    CommandOutcome, ControlAction, ControlCommand, HostPublicKey, HostSecretKey, OutcomeStatus,
+    DEFAULT_EXPIRY_S as COMMAND_DEFAULT_EXPIRY_S, MAX_EXPIRY_S as COMMAND_MAX_EXPIRY_S,
+};
 pub use job::JobRecord;
 pub use progress::{
     parse_line, parse_lines, Assignment, CompletionReport, ProgressAck, ProgressBatch,
