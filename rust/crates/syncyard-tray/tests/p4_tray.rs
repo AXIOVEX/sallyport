@@ -193,7 +193,10 @@ fn t035_05_connection_states_from_signal_ages() {
     };
     assert_eq!(evaluate(&s(Some(30), None), &t).state, LinkState::Connected);
     assert_eq!(evaluate(&s(Some(500), None), &t).state, LinkState::Stale);
-    assert_eq!(evaluate(&s(Some(5000), None), &t).state, LinkState::Disconnected);
+    assert_eq!(
+        evaluate(&s(Some(5000), None), &t).state,
+        LinkState::Disconnected
+    );
     // Heartbeat primary: a fresh heartbeat wins over a stale snapshot.
     let r = evaluate(&s(Some(10), Some(5000)), &t);
     assert_eq!(r.state, LinkState::Connected);
@@ -207,7 +210,10 @@ fn t035_05_connection_states_from_signal_ages() {
 // T035-06 connection-no-false-connected
 #[test]
 fn t035_06_no_signal_ever_is_disconnected_never_connected() {
-    let r = evaluate(&ConnectionSignals::default(), &ConnectionThresholds::default());
+    let r = evaluate(
+        &ConnectionSignals::default(),
+        &ConnectionThresholds::default(),
+    );
     assert_eq!(r.state, LinkState::Disconnected);
     assert!(!r.any_signal_ever);
     assert!(r.describe().contains("no signal seen"));
@@ -305,7 +311,7 @@ fn t035_10_observing_and_rendering_writes_nothing() {
     let mut inp = inputs(NOW);
     inp.fleet = fleet;
     let obs = build_observation(identity(), &Settings::default(), &inp);
-    let _ = compose_tooltip(&[obs.fleet_line.clone()]);
+    let _ = compose_tooltip(std::slice::from_ref(&obs.fleet_line));
     let _ = build_menu(&MenuInput {
         headers: vec![obs.connection.describe()],
         open_label: None,
@@ -362,11 +368,7 @@ fn t035_11_tooltip_within_budget_whole_parts_only() {
     // Already-short tooltips pass through untouched.
     assert_eq!(compose_tooltip(&["a".into(), "b".into()]), "a, b");
     // Priority: the first part is kept, the tail is dropped.
-    let tip2 = compose_tooltip(&[
-        "FIRST".into(),
-        "x".repeat(40),
-        "y".repeat(40),
-    ]);
+    let tip2 = compose_tooltip(&["FIRST".into(), "x".repeat(40), "y".repeat(40)]);
     assert!(tip2.starts_with("FIRST"), "{tip2}");
 }
 
@@ -385,10 +387,7 @@ fn t035_12_vocabulary_is_exactly_the_shared_set() {
     ];
     seen.sort();
     seen.dedup();
-    assert_eq!(
-        seen,
-        vec!["down", "link stale", "linked", "unlinked", "up"]
-    );
+    assert_eq!(seen, vec!["down", "link stale", "linked", "unlinked", "up"]);
     assert_eq!(words::UP, "up");
     assert_eq!(words::DOWN, "down");
     // "N waiting" is the waiting-count form.
@@ -582,7 +581,16 @@ fn t035_19_heartbeat_fields_atomic_and_failure_never_stalls() {
     let text = std::fs::read_to_string(&path).unwrap();
     let back: TrayHeartbeat = serde_json::from_str(&text).unwrap();
     assert_eq!(back, hb);
-    for field in ["host", "build", "pid", "session", "started_at", "ts", "tick", "lanes"] {
+    for field in [
+        "host",
+        "build",
+        "pid",
+        "session",
+        "started_at",
+        "ts",
+        "tick",
+        "lanes",
+    ] {
         assert!(text.contains(&format!("\"{field}\"")), "field {field}");
     }
     // A failed write is an error value; the app still observes.
@@ -591,7 +599,10 @@ fn t035_19_heartbeat_fields_atomic_and_failure_never_stalls() {
     let bad_writer = HeartbeatWriter::new(blocker.join("beats"), install);
     assert!(bad_writer.write(&hb).is_err());
     let obs = build_observation(identity(), &Settings::default(), &inputs(NOW));
-    assert_eq!(obs.total, 2, "observation still assembles after the failed write");
+    assert_eq!(
+        obs.total, 2,
+        "observation still assembles after the failed write"
+    );
 }
 
 // T035-20 singleton-by-install-path + the defect-named test for
@@ -638,8 +649,8 @@ fn laptop_two_tray_fight_2026_11_06() {
             lanes: vec![],
         })
         .unwrap();
-    let foreign = scan_heartbeats(&beats, &install_a, NOW, 120)
-        .expect("the foreign instance is detected");
+    let foreign =
+        scan_heartbeats(&beats, &install_a, NOW, 120).expect("the foreign instance is detected");
     assert_eq!(foreign.install_path, canon_b.to_string_lossy());
     let mut inp = inputs(NOW);
     inp.foreign = Some(foreign);
@@ -664,10 +675,7 @@ fn t035_21_stale_values_render_stale_with_age() {
         r#"{"generated_at":"2026-11-08T09:00:00Z","running_total":2,"waiting_total":5}"#,
     )
     .unwrap();
-    assert_eq!(
-        fleet.freshness(NOW, 900),
-        Freshness::Stale { age_s: 3600 }
-    );
+    assert_eq!(fleet.freshness(NOW, 900), Freshness::Stale { age_s: 3600 });
     let line = fleet.line(NOW, 900);
     assert!(line.contains("stale 3600s"), "{line}");
     assert!(line.contains("2 running"), "{line}");
@@ -743,18 +751,20 @@ fn t035_23_settings_live_in_the_one_app() {
 // half is a field gate on real hosts)
 #[test]
 fn t035_24_windowless_by_construction() {
-    assert!(CONSOLE_POLICY.windows_subsystem_gui);
-    assert!(CONSOLE_POLICY.children_create_no_window);
-    assert!(CONSOLE_POLICY.children_detached);
+    let p = CONSOLE_POLICY;
+    let flags = [
+        p.windows_subsystem_gui,
+        p.children_create_no_window,
+        p.children_detached,
+    ];
+    assert_eq!(flags, [true, true, true]);
     #[cfg(windows)]
     assert_eq!(child_creation_flags(), 0x0800_0000);
     #[cfg(not(windows))]
     assert_eq!(child_creation_flags(), 0);
     // The binary itself is built for the windows subsystem.
-    let main_src = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs"),
-    )
-    .unwrap();
+    let main_src =
+        std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")).unwrap();
     assert!(
         main_src.contains("windows_subsystem = \"windows\""),
         "main.rs carries the windows subsystem attribute"

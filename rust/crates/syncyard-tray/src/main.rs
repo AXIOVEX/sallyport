@@ -17,9 +17,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use syncyard_contract::isotime;
-use syncyard_tray::connection::{
-    ConnectionSignals, ConnectionThresholds, ConnectionTracker,
-};
+use syncyard_tray::connection::{ConnectionSignals, ConnectionThresholds, ConnectionTracker};
 use syncyard_tray::control::{GatekeeperChannel, SocketGatekeeper};
 use syncyard_tray::fleet::load_fleet_status;
 use syncyard_tray::heartbeat::{scan_heartbeats, HeartbeatWriter, TrayHeartbeat};
@@ -33,9 +31,7 @@ use syncyard_tray::settings::Settings;
 use syncyard_tray::singleton::{acquire, SingletonError};
 
 fn arg_value(args: &[String], name: &str) -> Option<String> {
-    args.windows(2)
-        .find(|w| w[0] == name)
-        .map(|w| w[1].clone())
+    args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
 }
 
 fn main() -> ExitCode {
@@ -142,10 +138,7 @@ fn main() -> ExitCode {
     let _ = tracker.observe(
         &ConnectionSignals {
             heartbeat_age_s: inputs.heartbeat_age_s,
-            snapshot_age_s: inputs
-                .fleet
-                .as_ref()
-                .and_then(|f| f.age_s(now)),
+            snapshot_age_s: inputs.fleet.as_ref().and_then(|f| f.age_s(now)),
         },
         now,
     );

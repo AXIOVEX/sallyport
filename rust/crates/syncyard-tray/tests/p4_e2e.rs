@@ -127,16 +127,18 @@ impl Drop for Daemon {
 fn t037_07_and_t037_09_command_round_trip() {
     let daemon = start_daemon("roundtrip");
     let outbox = daemon._root.join("outbox");
-    let issuer = CommandIssuer::new(outbox.clone(), HOST.to_string(), "0.4.0".to_string(), tray_key());
+    let issuer = CommandIssuer::new(
+        outbox.clone(),
+        HOST.to_string(),
+        "0.4.0".to_string(),
+        tray_key(),
+    );
 
     // The app issues: one signed file lands in the outbox.
     let cmd = issuer
         .issue(ControlAction::Cancel, Some("job-1"), None)
         .unwrap();
-    let files: Vec<_> = std::fs::read_dir(&outbox)
-        .unwrap()
-        .flatten()
-        .collect();
+    let files: Vec<_> = std::fs::read_dir(&outbox).unwrap().flatten().collect();
     assert_eq!(files.len(), 1, "exactly one command file");
 
     // Before any gatekeeper decision: PENDING, never done.
@@ -246,8 +248,15 @@ fn t037_12_control_path_spawns_nothing_and_files_exactly_one_command() {
     );
     assert!(!src.contains(".spawn("), "no spawned children");
     let outbox = scratch("t12-files").join("outbox");
-    let issuer = CommandIssuer::new(outbox.clone(), HOST.to_string(), "0.4.0".to_string(), tray_key());
-    let cmd = issuer.issue(ControlAction::Hold, Some("job-9"), None).unwrap();
+    let issuer = CommandIssuer::new(
+        outbox.clone(),
+        HOST.to_string(),
+        "0.4.0".to_string(),
+        tray_key(),
+    );
+    let cmd = issuer
+        .issue(ControlAction::Hold, Some("job-9"), None)
+        .unwrap();
     // The issued file parses and verifies against the host key.
     let files: Vec<_> = std::fs::read_dir(&outbox).unwrap().flatten().collect();
     assert_eq!(files.len(), 1);

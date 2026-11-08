@@ -165,9 +165,7 @@ impl ControlCommand {
             return false;
         };
         let sig = Signature::from_bytes(&sig_array);
-        key.verifying
-            .verify(&self.signing_bytes(), &sig)
-            .is_ok()
+        key.verifying.verify(&self.signing_bytes(), &sig).is_ok()
     }
 }
 
@@ -278,12 +276,14 @@ pub fn from_hex(s: &str) -> Option<Vec<u8>> {
     if !s.len().is_multiple_of(2) {
         return None;
     }
-    let mut out = Vec::with_capacity(s.len() / 2);
     let bytes = s.as_bytes();
-    for pair in bytes.chunks_exact(2) {
-        let hi = (pair[0] as char).to_digit(16)?;
-        let lo = (pair[1] as char).to_digit(16)?;
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        let hi = (bytes[i] as char).to_digit(16)?;
+        let lo = (bytes[i + 1] as char).to_digit(16)?;
         out.push((hi * 16 + lo) as u8);
+        i += 2;
     }
     Some(out)
 }

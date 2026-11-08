@@ -89,7 +89,10 @@ impl ControlState {
 
     /// The recorded outcome for one command id, if decided.
     pub fn outcome_for(&self, command_id: &str) -> Option<&CommandOutcome> {
-        self.outcomes.iter().rev().find(|o| o.command_id == command_id)
+        self.outcomes
+            .iter()
+            .rev()
+            .find(|o| o.command_id == command_id)
     }
 }
 
@@ -203,9 +206,7 @@ impl Engine {
         if window > COMMAND_MAX_EXPIRY_S {
             return self.refuse(
                 cmd,
-                format!(
-                    "expiry window {window}s exceeds the {COMMAND_MAX_EXPIRY_S}s maximum"
-                ),
+                format!("expiry window {window}s exceeds the {COMMAND_MAX_EXPIRY_S}s maximum"),
             );
         }
         // 5. Not yet expired at execution time.
@@ -291,10 +292,7 @@ impl Engine {
                 let new_priority = match cmd.new_priority {
                     Some(p) => p,
                     None => {
-                        return self.refuse(
-                            cmd,
-                            "reprioritize requires new_priority".to_string(),
-                        )
+                        return self.refuse(cmd, "reprioritize requires new_priority".to_string())
                     }
                 };
                 let mut f = fields;

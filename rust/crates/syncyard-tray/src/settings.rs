@@ -81,8 +81,9 @@ impl Settings {
             return Err("connection thresholds must be positive".to_string());
         }
         if self.connection_stale_s >= self.connection_disconnect_s {
-            return Err("connection stale threshold must be below the disconnect threshold"
-                .to_string());
+            return Err(
+                "connection stale threshold must be below the disconnect threshold".to_string(),
+            );
         }
         if self.fleet_stale_s <= 0 {
             return Err("fleet staleness bound must be positive".to_string());

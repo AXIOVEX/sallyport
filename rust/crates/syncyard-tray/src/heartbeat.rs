@@ -48,8 +48,7 @@ pub struct TrayHeartbeat {
 /// The heartbeat filename for an install path: distinct per
 /// path, stable for a path.
 pub fn heartbeat_filename(install_path: &Path) -> String {
-    let canon = std::fs::canonicalize(install_path)
-        .unwrap_or_else(|_| install_path.to_path_buf());
+    let canon = std::fs::canonicalize(install_path).unwrap_or_else(|_| install_path.to_path_buf());
     let mut hasher = Sha256::new();
     hasher.update(canon.to_string_lossy().as_bytes());
     let digest = hasher.finalize();
@@ -110,8 +109,8 @@ pub fn scan_heartbeats(
     now_unix_s: i64,
     fresh_bound_s: i64,
 ) -> Option<ForeignInstance> {
-    let own = std::fs::canonicalize(own_install_path)
-        .unwrap_or_else(|_| own_install_path.to_path_buf());
+    let own =
+        std::fs::canonicalize(own_install_path).unwrap_or_else(|_| own_install_path.to_path_buf());
     let own = own.to_string_lossy().to_string();
     let entries = std::fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {

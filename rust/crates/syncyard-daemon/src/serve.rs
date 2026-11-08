@@ -423,9 +423,7 @@ impl Engine {
                     Err(e) => err(&format!("outcome does not serialize: {e}")),
                 }
             }
-            "control_outcomes" => {
-                ok(serde_json::json!({"outcomes": self.state.control.outcomes}))
-            }
+            "control_outcomes" => ok(serde_json::json!({"outcomes": self.state.control.outcomes})),
             // FIX-08 repair kill switch (spec 037 FR-037-10):
             // read it, or set/clear it as a ledgered operator act.
             "kill_switch" => {

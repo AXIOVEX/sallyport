@@ -58,7 +58,10 @@ impl ReportingHealth {
             .dedupe_rate
             .map(|d| format!("{d:.2}"))
             .unwrap_or_else(|| "unknown".to_string());
-        let cap = self.cap_state.clone().unwrap_or_else(|| "unknown".to_string());
+        let cap = self
+            .cap_state
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
         format!("reports: queue {depth} · dedupe {dedupe} · daily cap {cap}")
     }
 }
@@ -163,9 +166,14 @@ fn job_line(entry: &Value, progress: Option<&Value>, now_unix_s: i64) -> JobLine
     let fraction = progress
         .and_then(|p| p.get("fraction"))
         .and_then(|f| f.as_array())
-        .and_then(|a| match (a.first().and_then(|x| x.as_u64()), a.get(1).and_then(|x| x.as_u64())) {
-            (Some(k), Some(n)) => Some((k, n)),
-            _ => None,
+        .and_then(|a| {
+            match (
+                a.first().and_then(|x| x.as_u64()),
+                a.get(1).and_then(|x| x.as_u64()),
+            ) {
+                (Some(k), Some(n)) => Some((k, n)),
+                _ => None,
+            }
         });
     JobLine {
         id: entry
@@ -189,7 +197,9 @@ fn job_line(entry: &Value, progress: Option<&Value>, now_unix_s: i64) -> JobLine
             .and_then(|p| p.get("display"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
-        progress_age_s: progress.and_then(|p| p.get("age_s")).and_then(|v| v.as_i64()),
+        progress_age_s: progress
+            .and_then(|p| p.get("age_s"))
+            .and_then(|v| v.as_i64()),
         progress_fraction: fraction,
     }
 }
@@ -236,7 +246,9 @@ pub fn build_observation(
                 snap.get("active").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
                 snap.get("jobs_total").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
                 ReportingHealth::from_snapshot(snap),
-                snap.get("kill_switch").and_then(|v| v.as_bool()).unwrap_or(false),
+                snap.get("kill_switch")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             )
         }
         None => (

@@ -39,14 +39,18 @@ pub fn parse_fleet_status(text: &str) -> Option<FleetStatus> {
         .get("generated_at")
         .and_then(|x| x.as_str())
         .map(|s| s.to_string());
-    let generated_unix = generated_at
-        .as_deref()
-        .and_then(isotime::unix_from_iso);
+    let generated_unix = generated_at.as_deref().and_then(isotime::unix_from_iso);
     Some(FleetStatus {
         generated_at,
         generated_unix,
-        source: v.get("source").and_then(|x| x.as_str()).map(|s| s.to_string()),
-        mode: v.get("mode").and_then(|x| x.as_str()).map(|s| s.to_string()),
+        source: v
+            .get("source")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        mode: v
+            .get("mode")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
         queue_state: v
             .get("queue_state")
             .and_then(|x| x.as_str())

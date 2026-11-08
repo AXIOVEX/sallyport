@@ -41,7 +41,10 @@ pub fn load_or_create_key_file(
         let file: HostKeyFile = serde_json::from_str(&text)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let key = HostSecretKey::from_hex(&file.secret_hex).ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::InvalidData, "key file secret unparseable")
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "key file secret unparseable",
+            )
         })?;
         return Ok((file, key, false));
     }
@@ -154,7 +157,11 @@ pub fn display_state(
     outcomes: &[CommandOutcome],
     now_unix_s: i64,
 ) -> CommandDisplay {
-    if let Some(o) = outcomes.iter().rev().find(|o| o.command_id == cmd.command_id) {
+    if let Some(o) = outcomes
+        .iter()
+        .rev()
+        .find(|o| o.command_id == cmd.command_id)
+    {
         return match o.status {
             OutcomeStatus::Executed => CommandDisplay::Confirmed {
                 ledger_event: o.ledger_event.clone(),

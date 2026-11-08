@@ -41,14 +41,26 @@ fn t037_10_cli_kill_switch_verb() {
     // needs to be running for the switch to be a record).
     let out = run_cli(&argv(&["kill-switch"]), &home, &offvm);
     assert_eq!(out.code, 0, "{}", out.stdout);
-    assert!(out.stdout.contains("\"kill_switch\": false"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"kill_switch\": false"),
+        "{}",
+        out.stdout
+    );
 
     // Set it.
     let out = run_cli(&argv(&["kill-switch", "on"]), &home, &offvm);
     assert_eq!(out.code, 0, "{}", out.stdout);
-    assert!(out.stdout.contains("\"kill_switch\": true"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"kill_switch\": true"),
+        "{}",
+        out.stdout
+    );
     let out = run_cli(&argv(&["kill-switch"]), &home, &offvm);
-    assert!(out.stdout.contains("\"kill_switch\": true"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"kill_switch\": true"),
+        "{}",
+        out.stdout
+    );
 
     // The act was ledgered by the daemon side with its source.
     let ledger = std::fs::read_to_string(home.ledger_path()).unwrap();
@@ -60,7 +72,11 @@ fn t037_10_cli_kill_switch_verb() {
     assert_eq!(out.code, 1, "{}", out.stdout);
     assert!(out.stdout.contains("kill-switch takes"), "{}", out.stdout);
     let out = run_cli(&argv(&["kill-switch"]), &home, &offvm);
-    assert!(out.stdout.contains("\"kill_switch\": true"), "{}", out.stdout);
+    assert!(
+        out.stdout.contains("\"kill_switch\": true"),
+        "{}",
+        out.stdout
+    );
 
     // Clear it.
     let out = run_cli(&argv(&["kill-switch", "off"]), &home, &offvm);

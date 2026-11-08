@@ -2,7 +2,7 @@
 
 Do not hand-edit: regenerate with `cargo run -p syncyard-tracegen`.
 
-Summary: 126 FRs, 158 named test cases, 37 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 121 named tests missing from suite, 0 orphan suite ids.
+Summary: 126 FRs, 158 named test cases, 75 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 83 named tests missing from suite, 0 orphan suite ids.
 
 
 ## 034-streaming-progress
@@ -20,33 +20,33 @@ Summary: 126 FRs, 158 named test cases, 37 named tests present in suite, 0 FRs w
 | FR-034-09 | T034-11 conformance-kit-three-languages | test | T034-11 NO |
 | FR-034-10 | T034-12 door-workflow-pinned-sha | test | T034-12 NO |
 | FR-034-11 | T034-13 cli-daemon-contract-compat | gate | T034-13 yes |
-| FR-034-12 | T034-14 tray-mcp-progress-parity | test | T034-14 NO |
+| FR-034-12 | T034-14 tray-mcp-progress-parity | test | T034-14 yes |
 
 ## 035-tray-presentation
 
 | FR | Named test case(s) | Mode | In suite |
 |---|---|---|---|
-| FR-035-01 | T035-01 identity-stamp-on-all-surfaces; T035-02 stamp-mismatch-is-defect | test | T035-01 NO; T035-02 NO |
-| FR-035-02 | T035-03 no-originated-status-values | test | T035-03 NO |
-| FR-035-03 | T035-04 interim-renders-running-only | test | T035-04 NO |
-| FR-035-04 | T035-05 connection-states-from-fixtures; T035-06 fresh-install-never-claims-connected | test | T035-05 NO; T035-06 NO |
-| FR-035-05 | T035-07 icon-marks-independent | test | T035-07 NO |
-| FR-035-06 | T035-08 connection-wording-and-honesty | test | T035-08 NO |
-| FR-035-07 | T035-09 connection-transition-log | test | T035-09 NO |
-| FR-035-08 | T035-10 connection-path-writes-nothing | test | T035-10 NO |
-| FR-035-09 | T035-11 tooltip-budget-composition | test | T035-11 NO |
-| FR-035-10 | T035-12 vocabulary-pinned | test | T035-12 NO |
-| FR-035-11 | T035-13 menu-order-pinned | test | T035-13 NO |
-| FR-035-12 | T035-14 verb-set-pinned | test | T035-14 NO |
-| FR-035-13 | T035-15 greyed-means-unavailable | test | T035-15 NO |
-| FR-035-14 | T035-16 observed-status-moves-together | test | T035-16 NO |
-| FR-035-15 | T035-17 exit-finality-and-marker; T035-18 exit-stays-ended-10min | test + human-as-oracle | T035-17 NO; T035-18 NO |
-| FR-035-16 | T035-19 heartbeat-writer-contract | test | T035-19 NO |
-| FR-035-17 | T035-20 singleton-by-install-path | test | T035-20 NO |
-| FR-035-18 | T035-21 stale-values-render-stale | test | T035-21 NO |
-| FR-035-19 | T035-22 reporting-health-visible | test | T035-22 NO |
-| FR-035-20 | T035-23 settings-single-app-surface | test | T035-23 NO |
-| FR-035-21 | T035-24 no-visible-console-anywhere | test + gate | T035-24 NO |
+| FR-035-01 | T035-01 identity-stamp-on-all-surfaces; T035-02 stamp-mismatch-is-defect | test | T035-01 yes; T035-02 yes |
+| FR-035-02 | T035-03 no-originated-status-values | test | T035-03 yes |
+| FR-035-03 | T035-04 interim-renders-running-only | test | T035-04 yes |
+| FR-035-04 | T035-05 connection-states-from-fixtures; T035-06 fresh-install-never-claims-connected | test | T035-05 yes; T035-06 yes |
+| FR-035-05 | T035-07 icon-marks-independent | test | T035-07 yes |
+| FR-035-06 | T035-08 connection-wording-and-honesty | test | T035-08 yes |
+| FR-035-07 | T035-09 connection-transition-log | test | T035-09 yes |
+| FR-035-08 | T035-10 connection-path-writes-nothing | test | T035-10 yes |
+| FR-035-09 | T035-11 tooltip-budget-composition | test | T035-11 yes |
+| FR-035-10 | T035-12 vocabulary-pinned | test | T035-12 yes |
+| FR-035-11 | T035-13 menu-order-pinned | test | T035-13 yes |
+| FR-035-12 | T035-14 verb-set-pinned | test | T035-14 yes |
+| FR-035-13 | T035-15 greyed-means-unavailable | test | T035-15 yes |
+| FR-035-14 | T035-16 observed-status-moves-together | test | T035-16 yes |
+| FR-035-15 | T035-17 exit-finality-and-marker; T035-18 exit-stays-ended-10min | test + human-as-oracle | T035-17 yes; T035-18 yes |
+| FR-035-16 | T035-19 heartbeat-writer-contract | test | T035-19 yes |
+| FR-035-17 | T035-20 singleton-by-install-path | test | T035-20 yes |
+| FR-035-18 | T035-21 stale-values-render-stale | test | T035-21 yes |
+| FR-035-19 | T035-22 reporting-health-visible | test | T035-22 yes |
+| FR-035-20 | T035-23 settings-single-app-surface | test | T035-23 yes |
+| FR-035-21 | T035-24 no-visible-console-anywhere | test + gate | T035-24 yes |
 
 ## 036-test-discipline
 
@@ -73,18 +73,18 @@ Summary: 126 FRs, 158 named test cases, 37 named tests present in suite, 0 FRs w
 
 | FR | Named test case(s) | Mode | In suite |
 |---|---|---|---|
-| FR-037-01 | T037-01 control-surface-successor-only | gate | T037-01 NO |
-| FR-037-02 | T037-02 command-file-schema | test | T037-02 NO |
-| FR-037-03 | T037-03 repo-access-alone-refused | test | T037-03 NO |
-| FR-037-04 | T037-04 nonce-replay-refused | test | T037-04 NO |
-| FR-037-05 | T037-05 expired-command-refused-and-shown | test | T037-05 NO |
-| FR-037-06 | T037-06 acts-and-refusals-ledgered | test | T037-06 NO |
-| FR-037-07 | T037-07 pending-until-confirmed | test | T037-07 NO |
-| FR-037-08 | T037-08 act-scope-closed-set | test | T037-08 NO |
-| FR-037-09 | T037-09 cancel-via-gatekeeper-only | test | T037-09 NO |
-| FR-037-10 | T037-10 kill-switch-reach-and-hold | test | T037-10 NO |
-| FR-037-11 | T037-11 illegal-version-command-refused | test | T037-11 NO |
-| FR-037-12 | T037-12 control-path-windowless | test | T037-12 NO |
+| FR-037-01 | T037-01 control-surface-successor-only | gate | T037-01 yes |
+| FR-037-02 | T037-02 command-file-schema | test | T037-02 yes |
+| FR-037-03 | T037-03 repo-access-alone-refused | test | T037-03 yes |
+| FR-037-04 | T037-04 nonce-replay-refused | test | T037-04 yes |
+| FR-037-05 | T037-05 expired-command-refused-and-shown | test | T037-05 yes |
+| FR-037-06 | T037-06 acts-and-refusals-ledgered | test | T037-06 yes |
+| FR-037-07 | T037-07 pending-until-confirmed | test | T037-07 yes |
+| FR-037-08 | T037-08 act-scope-closed-set | test | T037-08 yes |
+| FR-037-09 | T037-09 cancel-via-gatekeeper-only | test | T037-09 yes |
+| FR-037-10 | T037-10 kill-switch-reach-and-hold | test | T037-10 yes |
+| FR-037-11 | T037-11 illegal-version-command-refused | test | T037-11 yes |
+| FR-037-12 | T037-12 control-path-windowless | test | T037-12 yes |
 
 ## 038-rust-core-architecture
 
@@ -127,7 +127,7 @@ Summary: 126 FRs, 158 named test cases, 37 named tests present in suite, 0 FRs w
 | FR-038-35 | T038-38 err06-migration-manifest | gate | T038-38 yes |
 | FR-038-36 | T038-39 err08-wave-fail-fast | test | T038-39 yes |
 | FR-038-37 | T038-40 err09-self-start-announce | test | T038-40 yes |
-| FR-038-38 | T038-41 one-version-one-train; T038-42 settings-in-app | gate | T038-41 NO; T038-42 NO |
+| FR-038-38 | T038-41 one-version-one-train; T038-42 settings-in-app | gate | T038-41 NO; T038-42 yes |
 | FR-038-39 | T038-43 rep01-exactly-one-report; T038-44 rep02-structured-dedupe; T038-45 rep03-daily-cap-digest; T038-46 rep06-credential-scan-refusal | test | T038-43 NO; T038-44 NO; T038-45 NO; T038-46 NO |
 | FR-038-40 | T038-47 separate-credentials-least-privilege | test | T038-47 NO |
 | FR-038-41 | T038-48 fix02-repair-budgets; T038-49 fix03-latch-off; T038-50 fix05-never-fix-list; T038-51 fix06-gpu-verify-revert | test | T038-48 NO; T038-49 NO; T038-50 NO; T038-51 NO |
@@ -165,31 +165,6 @@ Summary: 126 FRs, 158 named test cases, 37 named tests present in suite, 0 FRs w
 
 - T034-11 conformance-kit-three-languages (034-streaming-progress, FR-034-09)
 - T034-12 door-workflow-pinned-sha (034-streaming-progress, FR-034-10)
-- T034-14 tray-mcp-progress-parity (034-streaming-progress, FR-034-12)
-- T035-01 identity-stamp-on-all-surfaces (035-tray-presentation, FR-035-01)
-- T035-02 stamp-mismatch-is-defect (035-tray-presentation, FR-035-01)
-- T035-03 no-originated-status-values (035-tray-presentation, FR-035-02)
-- T035-04 interim-renders-running-only (035-tray-presentation, FR-035-03)
-- T035-05 connection-states-from-fixtures (035-tray-presentation, FR-035-04)
-- T035-06 fresh-install-never-claims-connected (035-tray-presentation, FR-035-04)
-- T035-07 icon-marks-independent (035-tray-presentation, FR-035-05)
-- T035-08 connection-wording-and-honesty (035-tray-presentation, FR-035-06)
-- T035-09 connection-transition-log (035-tray-presentation, FR-035-07)
-- T035-10 connection-path-writes-nothing (035-tray-presentation, FR-035-08)
-- T035-11 tooltip-budget-composition (035-tray-presentation, FR-035-09)
-- T035-12 vocabulary-pinned (035-tray-presentation, FR-035-10)
-- T035-13 menu-order-pinned (035-tray-presentation, FR-035-11)
-- T035-14 verb-set-pinned (035-tray-presentation, FR-035-12)
-- T035-15 greyed-means-unavailable (035-tray-presentation, FR-035-13)
-- T035-16 observed-status-moves-together (035-tray-presentation, FR-035-14)
-- T035-17 exit-finality-and-marker (035-tray-presentation, FR-035-15)
-- T035-18 exit-stays-ended-10min (035-tray-presentation, FR-035-15)
-- T035-19 heartbeat-writer-contract (035-tray-presentation, FR-035-16)
-- T035-20 singleton-by-install-path (035-tray-presentation, FR-035-17)
-- T035-21 stale-values-render-stale (035-tray-presentation, FR-035-18)
-- T035-22 reporting-health-visible (035-tray-presentation, FR-035-19)
-- T035-23 settings-single-app-surface (035-tray-presentation, FR-035-20)
-- T035-24 no-visible-console-anywhere (035-tray-presentation, FR-035-21)
 - T036-01 matrix-generation-completeness (036-test-discipline, FR-036-01)
 - T036-02 matrix-fails-on-orphan-fr (036-test-discipline, FR-036-01)
 - T036-03 package-fr-table-audit (036-test-discipline, FR-036-02)
@@ -205,18 +180,6 @@ Summary: 126 FRs, 158 named test cases, 37 named tests present in suite, 0 FRs w
 - T036-13 token-scope-audit (036-test-discipline, FR-036-12)
 - T036-16 extension-schema-drift (036-test-discipline, FR-036-14)
 - T036-17 runner-noise-not-an-error (036-test-discipline, FR-036-15)
-- T037-01 control-surface-successor-only (037-tray-job-control, FR-037-01)
-- T037-02 command-file-schema (037-tray-job-control, FR-037-02)
-- T037-03 repo-access-alone-refused (037-tray-job-control, FR-037-03)
-- T037-04 nonce-replay-refused (037-tray-job-control, FR-037-04)
-- T037-05 expired-command-refused-and-shown (037-tray-job-control, FR-037-05)
-- T037-06 acts-and-refusals-ledgered (037-tray-job-control, FR-037-06)
-- T037-07 pending-until-confirmed (037-tray-job-control, FR-037-07)
-- T037-08 act-scope-closed-set (037-tray-job-control, FR-037-08)
-- T037-09 cancel-via-gatekeeper-only (037-tray-job-control, FR-037-09)
-- T037-10 kill-switch-reach-and-hold (037-tray-job-control, FR-037-10)
-- T037-11 illegal-version-command-refused (037-tray-job-control, FR-037-11)
-- T037-12 control-path-windowless (037-tray-job-control, FR-037-12)
 - T038-01 cutover-roundtrip-rehearsal (038-rust-core-architecture, FR-038-01)
 - T038-02 freeze-window-fallback-named (038-rust-core-architecture, FR-038-02)
 - T038-07 watchdog-exclusion-proven (038-rust-core-architecture, FR-038-07)
@@ -239,7 +202,6 @@ Summary: 126 FRs, 158 named test cases, 37 named tests present in suite, 0 FRs w
 - T038-33 backup-keys-off-target (038-rust-core-architecture, FR-038-30)
 - T038-37 err03-power-loss-recovery (038-rust-core-architecture, FR-038-34)
 - T038-41 one-version-one-train (038-rust-core-architecture, FR-038-38)
-- T038-42 settings-in-app (038-rust-core-architecture, FR-038-38)
 - T038-43 rep01-exactly-one-report (038-rust-core-architecture, FR-038-39)
 - T038-44 rep02-structured-dedupe (038-rust-core-architecture, FR-038-39)
 - T038-45 rep03-daily-cap-digest (038-rust-core-architecture, FR-038-39)
