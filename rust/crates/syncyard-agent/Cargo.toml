@@ -1,0 +1,7 @@
+[package]
+name = "syncyard-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Syncyard backchannel agent: per-host runner-side agent (specs 034/038/039)."

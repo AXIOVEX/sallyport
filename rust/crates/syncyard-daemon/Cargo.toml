@@ -1,0 +1,10 @@
+[package]
+name = "syncyard-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Syncyard gatekeeper daemon: RAM-authoritative job state over a Unix socket (spec 038)."
+
+[dependencies]
+syncyard-contract.workspace = true

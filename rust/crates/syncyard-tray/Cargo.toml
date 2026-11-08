@@ -1,0 +1,7 @@
+[package]
+name = "syncyard-tray"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Syncyard tray/app: status presentation (spec 035) and job control (spec 037)."

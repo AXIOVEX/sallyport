@@ -1,0 +1,10 @@
+[package]
+name = "syncyard-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Syncyard command-line interface: thin client of the gatekeeper daemon (spec 038)."
+
+[dependencies]
+syncyard-contract.workspace = true
