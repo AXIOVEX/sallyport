@@ -24,6 +24,14 @@ nav:
   - Quickstart: quickstart.md
   - Concepts: concepts.md
   - Configuration: configuration.md
+  - Extension: extension.md
+  - Rust core: rust-core.md
+  - Architecture: architecture.md
+  - Verb reference: verbs.md
+  - Progress protocol: progress.md
+  - Job control: control.md
+  - Operations: operations.md
+  - Acceptance gates: acceptance.md
   - Skills pack: skills.md
   - Fleet standard: STANDARD.md
   - Migration: MIGRATION.md

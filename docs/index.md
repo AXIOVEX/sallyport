@@ -42,12 +42,24 @@ Syncyard is one engine with two ways in:
   syncyard`): the gatekeeper itself as a Python package, driven
   as the `syncyard` command. See [Installation](installation.md).
 - **GitHub CLI extension** — `gh extension install
-  AXIOVEX/gh-syncyard`: a thin dispatcher that adds `gh syncyard …`
-  and forwards to an installed gatekeeper, unchanged.
+  AXIOVEX/gh-syncyard`: adds `gh syncyard …` and routes every
+  verb to the engine that serves it. See [Extension](extension.md).
 
 Both drive the identical code and the identical verb surface.
 Which you pick depends on whether `gh` is already your front
 door.
+
+## The Rust core
+
+The engine is being rebuilt in Rust under specs 034-039:
+a RAM-authoritative daemon, a CLI at verb parity, a streaming
+progress protocol, a backchannel agent, and a successor tray
+app with signed job control. The Python gatekeeper stays the
+production engine until the spec 038 one-move cutover.
+[Rust core](rust-core.md) describes what exists today,
+including — plainly — what does not yet, and
+[Acceptance gates](acceptance.md) defines the mechanical gate
+the new stack must pass before it carries the fleet.
 
 ## Where to next
 
@@ -59,6 +71,22 @@ door.
   pause and stop, and what is still only specified.
 - [Configuration](configuration.md) — every knob in
   `syncyard.yaml`, annotated.
+- [Extension](extension.md) — the gh-syncyard front door and
+  its per-engine routing.
+- [Rust core](rust-core.md) — the daemon, CLI, agent, and
+  tray of the successor stack, and their honest status.
+- [Architecture](architecture.md) — the one-move cutover,
+  venue-bound lanes, the Docker posture, and reconciliation.
+- [Verb reference](verbs.md) — every verb on every surface,
+  pinned to the engines' own schema output.
+- [Progress protocol](progress.md) — spec 034's live progress
+  lines, and why they are never verdicts.
+- [Job control](control.md) — spec 037's signed command files
+  and the repair kill switch.
+- [Operations](operations.md) — pause discipline, the sweep,
+  the outbox, the mirror, and self-healing.
+- [Acceptance gates](acceptance.md) — spec 036's mechanical
+  definition of "production stable," and where it stands.
 - [Skills pack](skills.md) — the operating contract for AI
   agents, in eight editions.
 

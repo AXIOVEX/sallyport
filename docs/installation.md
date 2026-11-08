@@ -4,7 +4,8 @@ There are three ways to put the Syncyard gatekeeper on a
 machine. All three run the identical code — the package and the
 checkout are byte-for-byte the same files (spec 017 FR-003) —
 so the choice is about how the machine is managed, not about
-behavior.
+behavior. A fourth section covers the Rust successor stack,
+which builds from source and is not an install route yet.
 
 ## Route 1: standalone package (pip / pipx)
 
@@ -29,9 +30,8 @@ syncyard submit --program myprogram --workflow run.yml \
     --lane quick --script ./probe.ps1 --key probe-1
 ```
 
-The full verb surface — `submit`, `adopt`, `status`, `cancel`,
-`sweep`, `pause`, `resume`, `start`, `stop`, `purge`, `outbox`,
-`host-resume`, `reboot` — is the gatekeeper's own; the console
+The full verb surface is the gatekeeper's own — all 22 verbs
+are listed in the [Verb reference](verbs.md) — and the console
 command is a direct entry point to it, not a wrapper (spec 017
 FR-002). The failsafe backchannel client ships in the package
 as a module:
@@ -68,12 +68,19 @@ gh extension install AXIOVEX/gh-syncyard
 gh syncyard status
 ```
 
-The extension (separate repository, `AXIOVEX/gh-syncyard`) is
-a thin dispatcher: it locates a gatekeeper on disk — via
-`$SYNCYARD_GK`, `$SYNCYARD_HOME`, `~/syncyard`, `~/.syncyard`,
-beside the extension binary, or `./gatekeeper` — and forwards
-arguments, output, and exit codes unchanged. It pairs naturally
-with either of the other two routes as the gatekeeper source.
+The extension (separate repository, `AXIOVEX/gh-syncyard`,
+version 0.4.0) routes every verb to the engine that serves
+it: the Python gatekeeper's 22 verbs forward verbatim with
+exit codes unchanged; six verbs delegate to the Rust CLI; two
+speak to the daemon's socket. It locates a gatekeeper on
+disk — via `$SYNCYARD_GK`, `$SYNCYARD_HOME`, `~/syncyard`,
+`~/.syncyard`, beside the extension binary, `./gatekeeper`,
+or the founding fleet's known install paths — and refuses
+unknown verbs instead of forwarding them blind. `gh syncyard
+doctor` shows what it resolved; `gh syncyard parity` prints
+the whole routing table. See [Extension](extension.md). It
+pairs naturally with either of the other two routes as the
+gatekeeper source.
 
 ## Route 3: from a checkout
 
@@ -89,6 +96,26 @@ State then lives in the checkout's `gatekeeper/` directory and
 the config is the `syncyard.yaml` beside `gk.py`. This is the
 route to take when the gatekeeper's tree is itself managed as
 part of the fleet (pinned to a release, reviewed as code).
+
+## Route 4: the Rust core, from source
+
+The successor stack (specs 034-039) builds from the same
+checkout, out of `rust/`:
+
+```bash
+cargo build --workspace --release   # in rust/
+cargo test --workspace
+```
+
+That produces `syncyard-daemon`, `syncyard-cli`,
+`syncyard-agent`, and `syncyard-tray`. Nothing about the Rust
+core is an install route yet: the Python gatekeeper remains
+the production engine until the spec 038 one-move cutover,
+the daemon refuses to serve without `--allow-no-transport`
+(no live GitHub transport is wired), and the tray has no live
+GUI shell. [Rust core](rust-core.md) gives each component's
+real status; do not put the Rust daemon in front of a fleet
+before the [Acceptance gates](acceptance.md) are green.
 
 ## After installing
 
