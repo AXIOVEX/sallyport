@@ -57,9 +57,8 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| install_path.join("work"));
     let venue = flag(&args, "--venue").unwrap_or_else(|| "native".to_string());
-    let agent_id = flag(&args, "--agent-id").unwrap_or_else(|| {
-        std::env::var("HOSTNAME").unwrap_or_else(|_| "host".to_string())
-    });
+    let agent_id = flag(&args, "--agent-id")
+        .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "host".to_string()));
     let once = args.iter().any(|a| a == "--once");
 
     let channel = SocketChannel::new(PathBuf::from(daemon_home), &venue, &agent_id);
@@ -71,11 +70,13 @@ fn main() {
             // quietly by design (the singleton is the guard,
             // not an alarm).
             eprintln!("syncyard-agent: {e}");
-            std::process::exit(if matches!(e, syncyard_agent::channel::AgentError::AlreadyRunning(_)) {
-                0
-            } else {
-                1
-            });
+            std::process::exit(
+                if matches!(e, syncyard_agent::channel::AgentError::AlreadyRunning(_)) {
+                    0
+                } else {
+                    1
+                },
+            );
         }
     };
     loop {

@@ -185,9 +185,8 @@ pub fn run_assignment(
     let job_dir = config.work_root.join("jobs").join(&assignment.job_id);
     // FR-034-01: the parent directory of the progress file is
     // created before the payload starts.
-    std::fs::create_dir_all(&job_dir).map_err(|e| {
-        AgentError::Local(format!("job dir {}: {e}", job_dir.display()))
-    })?;
+    std::fs::create_dir_all(&job_dir)
+        .map_err(|e| AgentError::Local(format!("job dir {}: {e}", job_dir.display())))?;
     let pfile = progress_path(&config.work_root, &assignment.job_id);
     // A fresh, empty progress file for this run (truncating any
     // stale file a previous attempt left under the same job dir).
@@ -237,7 +236,13 @@ pub fn run_assignment(
                 let exit_code;
                 loop {
                     pending.extend(read_new_lines(&pfile, &mut offset, &mut partial, false));
-                    flush_pending(channel, assignment, &config.source_id, &mut pending, &mut counts);
+                    flush_pending(
+                        channel,
+                        assignment,
+                        &config.source_id,
+                        &mut pending,
+                        &mut counts,
+                    );
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             exit_code = status.code();
@@ -245,16 +250,20 @@ pub fn run_assignment(
                         }
                         Ok(None) => std::thread::sleep(config.forward_interval),
                         Err(e) => {
-                            return Err(AgentError::Local(format!(
-                                "waiting on payload: {e}"
-                            )));
+                            return Err(AgentError::Local(format!("waiting on payload: {e}")));
                         }
                     }
                 }
                 // Final tail: everything the payload wrote,
                 // including a last line without a newline.
                 pending.extend(read_new_lines(&pfile, &mut offset, &mut partial, true));
-                flush_pending(channel, assignment, &config.source_id, &mut pending, &mut counts);
+                flush_pending(
+                    channel,
+                    assignment,
+                    &config.source_id,
+                    &mut pending,
+                    &mut counts,
+                );
                 report = CompletionReport {
                     job_id: assignment.job_id.clone(),
                     run_id: assignment.run_id,

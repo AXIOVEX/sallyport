@@ -221,10 +221,7 @@ impl Engine {
                             });
                         });
                         let mut fields = BTreeMap::new();
-                        fields.insert(
-                            "job_id".into(),
-                            serde_json::Value::String(job_id.clone()),
-                        );
+                        fields.insert("job_id".into(), serde_json::Value::String(job_id.clone()));
                         fields.insert("run_id".into(), serde_json::Value::Number(run_id.into()));
                         fields.insert("agent".into(), serde_json::Value::String(agent));
                         fields.insert("local".into(), serde_json::Value::Bool(true));

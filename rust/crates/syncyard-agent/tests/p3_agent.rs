@@ -167,8 +167,10 @@ fn t034_09_transport_failure_isolated_agent() {
         "worker.sh",
         "printf 'STARTED\\nPROGRESS 1/1 units\\n' >> \"$SYNCYARD_PROGRESS_FILE\"\nexit 0",
     );
-    let mut fake = FakeChannel::default();
-    fake.fail_progress = true;
+    let mut fake = FakeChannel {
+        fail_progress: true,
+        ..FakeChannel::default()
+    };
     let outcome = run_assignment(&mut fake, &assignment("job-y", 9, script), &cfg).unwrap();
 
     assert!(outcome.progress_degraded, "degradation must be reported");
@@ -194,8 +196,10 @@ fn throttled_progress_lines_are_retained() {
         "worker.sh",
         "printf 'STARTED\\nMARKER halfway\\n' >> \"$SYNCYARD_PROGRESS_FILE\"\nexit 0",
     );
-    let mut fake = FakeChannel::default();
-    fake.ack_mode = Some(AckMode::Throttled);
+    let mut fake = FakeChannel {
+        ack_mode: Some(AckMode::Throttled),
+        ..FakeChannel::default()
+    };
     let outcome = run_assignment(&mut fake, &assignment("job-z", 11, script), &cfg).unwrap();
     assert!(outcome.batches_throttled >= 1);
     assert_eq!(outcome.batches_applied, 0);
@@ -211,10 +215,11 @@ fn throttled_progress_lines_are_retained() {
 fn undelivered_completion_is_retried_next_cycle() {
     let root = scratch("retry");
     let script = payload(&root, "ok.sh", "exit 0");
-    let mut fake = FakeChannel::default();
-    fake.fail_completion_times = 1;
-    fake.assignments
-        .push_back(assignment("job-r", 21, script));
+    let fake = FakeChannel {
+        fail_completion_times: 1,
+        assignments: std::collections::VecDeque::from([assignment("job-r", 21, script)]),
+        ..FakeChannel::default()
+    };
     let mut agent = Agent::new(
         root.join("install"),
         config(root.join("work")),

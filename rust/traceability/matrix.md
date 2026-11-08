@@ -2,24 +2,24 @@
 
 Do not hand-edit: regenerate with `cargo run -p syncyard-tracegen`.
 
-Summary: 126 FRs, 158 named test cases, 26 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 132 named tests missing from suite, 0 orphan suite ids.
+Summary: 126 FRs, 158 named test cases, 37 named tests present in suite, 0 FRs without a named test, 0 FRs without a mode, 121 named tests missing from suite, 0 orphan suite ids.
 
 
 ## 034-streaming-progress
 
 | FR | Named test case(s) | Mode | In suite |
 |---|---|---|---|
-| FR-034-01 | T034-01 progress-env-set-on-all-venues | test | T034-01 NO |
+| FR-034-01 | T034-01 progress-env-set-on-all-venues | test | T034-01 yes |
 | FR-034-02 | T034-02 grammar-accept-and-ignore; T034-03 malformed-progress-counted | test | T034-02 yes; T034-03 yes |
-| FR-034-03 | T034-04 completed-line-is-not-a-verdict; T034-05 progress-never-ledgers-verdict | test | T034-04 NO; T034-05 NO |
-| FR-034-04 | T034-06 snapshot-cadence-and-staleness | test | T034-06 NO |
-| FR-034-05 | T034-07 silent-job-stays-silent | test | T034-07 NO |
-| FR-034-06 | T034-08 progress-regression-surfaced | test | T034-08 NO |
-| FR-034-07 | T034-09 transport-failure-isolated | test | T034-09 NO |
-| FR-034-08 | T034-10 foreign-marker-quarantine | test | T034-10 NO |
+| FR-034-03 | T034-04 completed-line-is-not-a-verdict; T034-05 progress-never-ledgers-verdict | test | T034-04 yes; T034-05 yes |
+| FR-034-04 | T034-06 snapshot-cadence-and-staleness | test | T034-06 yes |
+| FR-034-05 | T034-07 silent-job-stays-silent | test | T034-07 yes |
+| FR-034-06 | T034-08 progress-regression-surfaced | test | T034-08 yes |
+| FR-034-07 | T034-09 transport-failure-isolated | test | T034-09 yes |
+| FR-034-08 | T034-10 foreign-marker-quarantine | test | T034-10 yes |
 | FR-034-09 | T034-11 conformance-kit-three-languages | test | T034-11 NO |
 | FR-034-10 | T034-12 door-workflow-pinned-sha | test | T034-12 NO |
-| FR-034-11 | T034-13 cli-daemon-contract-compat | gate | T034-13 NO |
+| FR-034-11 | T034-13 cli-daemon-contract-compat | gate | T034-13 yes |
 | FR-034-12 | T034-14 tray-mcp-progress-parity | test | T034-14 NO |
 
 ## 035-tray-presentation
@@ -120,7 +120,7 @@ Summary: 126 FRs, 158 named test cases, 26 named tests present in suite, 0 FRs w
 | FR-038-28 | T038-30 hash-pins-compared-mechanically | gate | T038-30 NO |
 | FR-038-29 | T038-31 fleet-naming-and-anchor-failure | test | T038-31 NO |
 | FR-038-30 | T038-32 acl-deny-probes; T038-33 backup-keys-off-target | test | T038-32 NO; T038-33 NO |
-| FR-038-31 | T038-34 harvest-foreign-line-quarantine | test | T038-34 NO |
+| FR-038-31 | T038-34 harvest-foreign-line-quarantine | test | T038-34 yes |
 | FR-038-32 | T038-35 err01-fault-injection | test | T038-35 yes |
 | FR-038-33 | T038-36 err02-vm-loss-accounting | test | T038-36 yes |
 | FR-038-34 | T038-37 err03-power-loss-recovery | test | T038-37 NO |
@@ -143,7 +143,7 @@ Summary: 126 FRs, 158 named test cases, 26 named tests present in suite, 0 FRs w
 | FR-038-51 | T038-67 single-control-plane-home | gate | T038-67 NO |
 | FR-038-52 | T038-68 door-repo-versioning-owned | gate | T038-68 NO |
 | FR-038-53 | T038-69 mcp-surface-after-extension | gate | T038-69 NO |
-| FR-038-54 | T038-70 core-windowless-everywhere | test | T038-70 NO |
+| FR-038-54 | T038-70 core-windowless-everywhere | test | T038-70 yes |
 
 ## 039-macos-host
 
@@ -163,17 +163,8 @@ Summary: 126 FRs, 158 named test cases, 26 named tests present in suite, 0 FRs w
 
 ## Named tests missing from the suite
 
-- T034-01 progress-env-set-on-all-venues (034-streaming-progress, FR-034-01)
-- T034-04 completed-line-is-not-a-verdict (034-streaming-progress, FR-034-03)
-- T034-05 progress-never-ledgers-verdict (034-streaming-progress, FR-034-03)
-- T034-06 snapshot-cadence-and-staleness (034-streaming-progress, FR-034-04)
-- T034-07 silent-job-stays-silent (034-streaming-progress, FR-034-05)
-- T034-08 progress-regression-surfaced (034-streaming-progress, FR-034-06)
-- T034-09 transport-failure-isolated (034-streaming-progress, FR-034-07)
-- T034-10 foreign-marker-quarantine (034-streaming-progress, FR-034-08)
 - T034-11 conformance-kit-three-languages (034-streaming-progress, FR-034-09)
 - T034-12 door-workflow-pinned-sha (034-streaming-progress, FR-034-10)
-- T034-13 cli-daemon-contract-compat (034-streaming-progress, FR-034-11)
 - T034-14 tray-mcp-progress-parity (034-streaming-progress, FR-034-12)
 - T035-01 identity-stamp-on-all-surfaces (035-tray-presentation, FR-035-01)
 - T035-02 stamp-mismatch-is-defect (035-tray-presentation, FR-035-01)
@@ -246,7 +237,6 @@ Summary: 126 FRs, 158 named test cases, 26 named tests present in suite, 0 FRs w
 - T038-31 fleet-naming-and-anchor-failure (038-rust-core-architecture, FR-038-29)
 - T038-32 acl-deny-probes (038-rust-core-architecture, FR-038-30)
 - T038-33 backup-keys-off-target (038-rust-core-architecture, FR-038-30)
-- T038-34 harvest-foreign-line-quarantine (038-rust-core-architecture, FR-038-31)
 - T038-37 err03-power-loss-recovery (038-rust-core-architecture, FR-038-34)
 - T038-41 one-version-one-train (038-rust-core-architecture, FR-038-38)
 - T038-42 settings-in-app (038-rust-core-architecture, FR-038-38)
@@ -274,7 +264,6 @@ Summary: 126 FRs, 158 named test cases, 26 named tests present in suite, 0 FRs w
 - T038-67 single-control-plane-home (038-rust-core-architecture, FR-038-51)
 - T038-68 door-repo-versioning-owned (038-rust-core-architecture, FR-038-52)
 - T038-69 mcp-surface-after-extension (038-rust-core-architecture, FR-038-53)
-- T038-70 core-windowless-everywhere (038-rust-core-architecture, FR-038-54)
 - T039-01 mac-ci-both-arches (039-macos-host, FR-MAC-01)
 - T039-02 platform-assumption-lint (039-macos-host, FR-MAC-01)
 - T039-03 launchagent-session-and-keepalive (039-macos-host, FR-MAC-02)

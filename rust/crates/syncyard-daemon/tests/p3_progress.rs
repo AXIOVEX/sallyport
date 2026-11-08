@@ -6,7 +6,7 @@
 //! All state lives in scratch dirs under the system temp dir; the
 //! live gatekeeper is never touched.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use syncyard_contract::{JobRecord, JobState, ProgressAck, ProgressBatch};
@@ -47,7 +47,7 @@ fn job(id: &str) -> JobRecord {
     }
 }
 
-fn engine_for(home: &StateHome, root: &PathBuf) -> Engine {
+fn engine_for(home: &StateHome, root: &Path) -> Engine {
     let store = Arc::new(DirOffVmStore::new(root.join("offvm")));
     let (state, _gaps) = DaemonState::load(home.clone());
     let token = acquire_epoch(store.as_ref(), "test-daemon").unwrap();
@@ -112,7 +112,10 @@ fn t034_04_completed_line_is_not_a_verdict() {
     assert_eq!(status["state"], serde_json::json!("dispatched"));
     assert_eq!(status["run_conclusion"], serde_json::Value::Null);
     assert_eq!(status["verdict_source"], serde_json::Value::Null);
-    assert_eq!(status["progress"]["completed_word"], serde_json::json!("PASS"));
+    assert_eq!(
+        status["progress"]["completed_word"],
+        serde_json::json!("PASS")
+    );
     assert_eq!(
         status["progress"]["display"],
         serde_json::json!("payload reports completed, verdict pending harvest")
@@ -242,11 +245,17 @@ fn t034_08_progress_regression_surfaced() {
     let mut st = state_with_dispatched("t08", "job-a", 777);
     st.progress_config.min_refresh_s = 0;
     assert_eq!(
-        st.ingest_progress(&batch("job-a", 777, "agent:h", &["PROGRESS 5/8 units"]), 1000),
+        st.ingest_progress(
+            &batch("job-a", 777, "agent:h", &["PROGRESS 5/8 units"]),
+            1000
+        ),
         ProgressAck::Applied
     );
     assert_eq!(
-        st.ingest_progress(&batch("job-a", 777, "agent:h", &["PROGRESS 3/8 units"]), 1001),
+        st.ingest_progress(
+            &batch("job-a", 777, "agent:h", &["PROGRESS 3/8 units"]),
+            1001
+        ),
         ProgressAck::Applied
     );
     let view = st.progress_view("job-a", 1002).unwrap();
@@ -332,7 +341,12 @@ fn t034_10_foreign_marker_quarantine() {
 
     // Foreign run id: quarantined wholesale.
     let ack = st.ingest_progress(
-        &batch("job-a", 9999, "harvest:gh-log", &["MARKER foreign milestone"]),
+        &batch(
+            "job-a",
+            9999,
+            "harvest:gh-log",
+            &["MARKER foreign milestone"],
+        ),
         2000,
     );
     assert_eq!(ack, ProgressAck::Quarantined);
