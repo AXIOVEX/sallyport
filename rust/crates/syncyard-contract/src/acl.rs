@@ -34,15 +34,55 @@ pub struct AclRule {
 /// fleet node reaches another node's agent control socket.
 pub const ACL_MATRIX: &[AclRule] = &[
     // The gatekeeper host reaches every node's agent port.
-    AclRule { from: "mini-server", to: "tower-compute", port: 8722, allow: true },
-    AclRule { from: "mini-server", to: "laptop-bench", port: 8722, allow: true },
-    AclRule { from: "mini-server", to: "air-inference", port: 8722, allow: true },
+    AclRule {
+        from: "mini-server",
+        to: "tower-compute",
+        port: 8722,
+        allow: true,
+    },
+    AclRule {
+        from: "mini-server",
+        to: "laptop-bench",
+        port: 8722,
+        allow: true,
+    },
+    AclRule {
+        from: "mini-server",
+        to: "air-inference",
+        port: 8722,
+        allow: true,
+    },
     // Deny cases (the probes' reason to exist):
-    AclRule { from: "air-inference", to: "mini-server", port: 8722, allow: false },
-    AclRule { from: "air-inference", to: "tower-compute", port: 8722, allow: false },
-    AclRule { from: "sbc-inference", to: "mini-server", port: 8722, allow: false },
-    AclRule { from: "tower-offsite", to: "laptop-bench", port: 8722, allow: false },
-    AclRule { from: "laptop-bench", to: "tower-compute", port: 8722, allow: false },
+    AclRule {
+        from: "air-inference",
+        to: "mini-server",
+        port: 8722,
+        allow: false,
+    },
+    AclRule {
+        from: "air-inference",
+        to: "tower-compute",
+        port: 8722,
+        allow: false,
+    },
+    AclRule {
+        from: "sbc-inference",
+        to: "mini-server",
+        port: 8722,
+        allow: false,
+    },
+    AclRule {
+        from: "tower-offsite",
+        to: "laptop-bench",
+        port: 8722,
+        allow: false,
+    },
+    AclRule {
+        from: "laptop-bench",
+        to: "tower-compute",
+        port: 8722,
+        allow: false,
+    },
 ];
 
 /// One probe observation: from a node of class `from`, was

@@ -109,7 +109,10 @@ mod tests {
         assert_eq!(hits[0].line, 2);
         // The hit carries no secret material.
         let rendered = format!("{:?}", hits[0]);
-        assert!(!rendered.contains("ghp_0123"), "hit must not carry the secret");
+        assert!(
+            !rendered.contains("ghp_0123"),
+            "hit must not carry the secret"
+        );
     }
 
     #[test]

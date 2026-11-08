@@ -6,11 +6,14 @@ retires, in what order, and what must be true first.
 
 ## End state
 
-One control plane: the Rust daemon owns queue state, the
-Rust CLI and the `gh syncyard` extension are the front
-doors, and the Python gatekeeper is removed from every
-host. The door repository (workflows) stays — it is GitHub
-Actions YAML, not Python machinery.
+One control plane: the Rust daemon owns queue state in the
+Muse agent environment (the gatekeeper of record lives
+on this VM; fleet hosts are execution venues and hold no
+queue of record), the Rust CLI and the `gh syncyard`
+extension are the front doors, and the Python gatekeeper
+is retired — including the paused observer checkouts on
+fleet hosts. The door repository (workflows) stays — it is
+GitHub Actions YAML, not Python machinery.
 
 ## Preconditions (all must hold)
 
@@ -33,13 +36,14 @@ Actions YAML, not Python machinery.
 3. **`gk.py` stops accepting submissions**; the CLI's socket
    path is the only submit route. The file fallback remains
    available read-only for one release train.
-4. **Host services** (Task Scheduler / systemd units) are
-   repointed at the Rust binaries; the Python units are
-   disabled, not deleted, for one train.
+4. **Venue services** (Task Scheduler / systemd units on
+   the fleet hosts) are repointed at the Rust agent/tray
+   binaries; the Python units are disabled, not deleted,
+   for one train.
 5. **Removal:** after one full train with no fallback use,
    the Python gatekeeper directory is archived into the
-   history store (with its manifest) and deleted from live
-   hosts.
+   history store (with its manifest) and deleted from the
+   agent environment and the observer checkouts.
 
 ## What never retires
 

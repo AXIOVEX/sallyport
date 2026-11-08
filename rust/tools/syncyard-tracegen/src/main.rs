@@ -510,10 +510,7 @@ fn coverage_mode(args: &[String]) -> ExitCode {
     };
     // crate -> (covered, total) over src/ files only.
     let mut agg: BTreeMap<String, (u64, u64)> = BTreeMap::new();
-    if let Some(files) = json
-        .pointer("/data/0/files")
-        .and_then(|f| f.as_array())
-    {
+    if let Some(files) = json.pointer("/data/0/files").and_then(|f| f.as_array()) {
         for f in files {
             let Some(name) = f.get("filename").and_then(|n| n.as_str()) else {
                 continue;
@@ -542,7 +539,11 @@ fn coverage_mode(args: &[String]) -> ExitCode {
             Some((covered, total)) if *total > 0 => {
                 let pct = *covered as f64 * 100.0 / *total as f64;
                 let uncovered = total - covered;
-                let verdict = if pct + 1e-9 >= *bar { "PASS" } else { "BELOW BAR" };
+                let verdict = if pct + 1e-9 >= *bar {
+                    "PASS"
+                } else {
+                    "BELOW BAR"
+                };
                 if verdict != "PASS" {
                     below += 1;
                 }
@@ -607,13 +608,34 @@ fn lint_mode(args: &[String]) -> ExitCode {
             Some(i) => &text[..i],
             None => &text[..],
         };
-        for (n, line) in code.lines().enumerate() {
+        let lines: Vec<&str> = code.lines().collect();
+        for (n, line) in lines.iter().enumerate() {
             if line.trim_start().starts_with("//") {
                 continue;
             }
             for pat in PATTERNS {
                 if line.contains(pat) {
                     println!("PLATFORM-LINT {}:{} pattern {pat}", f.display(), n + 1);
+                    hits += 1;
+                }
+            }
+            // Ungated OS-specific imports are the defect class
+            // the windows-gnu cross-check caught in P7 (an
+            // unguarded `std::os::unix` import in the socket
+            // transport): an os::unix / os::windows use with
+            // no cfg attribute on it or within 5 lines above
+            // is a hit.
+            if line.contains("os::unix") || line.contains("os::windows") {
+                let gated = line.contains("cfg(")
+                    || lines[n.saturating_sub(5)..n]
+                        .iter()
+                        .any(|l| l.contains("cfg("));
+                if !gated {
+                    println!(
+                        "PLATFORM-LINT {}:{} pattern ungated-os-import",
+                        f.display(),
+                        n + 1
+                    );
                     hits += 1;
                 }
             }

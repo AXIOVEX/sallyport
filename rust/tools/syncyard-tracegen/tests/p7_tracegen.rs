@@ -24,8 +24,7 @@ fn run(args: &[&str]) -> (i32, String) {
     let out = Command::new(bin()).args(args).output().unwrap();
     (
         out.status.code().unwrap_or(-1),
-        String::from_utf8_lossy(&out.stdout).to_string()
-            + &String::from_utf8_lossy(&out.stderr),
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr),
     )
 }
 
@@ -46,7 +45,11 @@ fn fixture_specs(root: &Path, spec034: &str) {
         let body = if i == 0 {
             spec034.to_string()
         } else {
-            format!("| FR-03{}-01 | stub | T03{}-01 stub-case | test |\n", i + 4, i + 4)
+            format!(
+                "| FR-03{}-01 | stub | T03{}-01 stub-case | test |\n",
+                i + 4,
+                i + 4
+            )
         };
         std::fs::write(d.join("spec.md"), body).unwrap();
     }
@@ -69,10 +72,7 @@ fn sid(spec: u32, n: u32) -> String {
 
 /// The stub-case ids for fixture specs 035..=039.
 fn stub_ids() -> String {
-    (35..=39)
-        .map(|s| sid(s, 1))
-        .collect::<Vec<_>>()
-        .join(" ")
+    (35..=39).map(|s| sid(s, 1)).collect::<Vec<_>>().join(" ")
 }
 
 // T036-01 generation-completeness: a fixture package whose
@@ -255,7 +255,9 @@ fn t036_05_uncovered_lines_reported_and_t036_06_gate_fails_below_bar() {
 // literal inside a test module, where fixtures live).
 #[test]
 fn t039_02_platform_assumption_lint() {
-    let repo_rust = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let repo_rust = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     let (code, stdout) = run(&["lint-platform", "--suite", repo_rust.to_str().unwrap()]);
     assert_eq!(code, 0, "{stdout}");
     assert!(stdout.contains("PLATFORM-LINT hits=0"), "{stdout}");
@@ -270,6 +272,48 @@ fn t039_02_platform_assumption_lint() {
     assert_eq!(code, 1, "{stdout}");
     assert!(stdout.contains("PLATFORM-LINT hits=1"), "{stdout}");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+// T038-24 artifact-set-per-venue: the release manifest for
+// this train lists every shipped binary for BOTH Linux
+// architectures — an artifact set missing the aarch64 leg
+// of any binary fails here (the Jetson ships aarch64 or
+// the set is not a set).
+#[test]
+fn t038_24_artifact_set_per_venue() {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("..");
+    let text = std::fs::read_to_string(
+        repo.join("rust")
+            .join("release")
+            .join("manifest-0.4.0.json"),
+    )
+    .expect("rust/release/manifest-0.4.0.json must exist");
+    let m: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(m["version"], serde_json::Value::String("0.4.0".into()));
+    let arts = m["artifacts"].as_array().unwrap();
+    for binary in [
+        "syncyard-daemon",
+        "syncyard-cli",
+        "syncyard-agent",
+        "syncyard-tray",
+    ] {
+        for target in ["linux-x86_64", "linux-aarch64"] {
+            let found = arts.iter().find(|a| {
+                a["name"] == serde_json::Value::String(binary.into())
+                    && a["target"] == serde_json::Value::String(target.into())
+            });
+            let entry = found.unwrap_or_else(|| panic!("manifest lacks {binary} for {target}"));
+            let sha = entry["sha256"].as_str().unwrap();
+            assert!(
+                sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit()),
+                "{binary}/{target}: sha256 must be a full digest"
+            );
+            assert!(entry["bytes"].as_u64().unwrap() > 0);
+        }
+    }
 }
 
 // T038-66 docs-set-complete + T038-02 state-freeze-fallback
@@ -300,9 +344,12 @@ fn t038_66_docs_set_complete_with_t038_02_t038_67_t038_68() {
     // T038-02: the fallback is a named state-freeze window.
     assert!(cutover.contains("state-freeze window"), "{cutover}");
     // T038-67: the end state is a single control plane in a
-    // named home.
+    // named home — the Muse agent environment, where the
+    // gatekeeper of record lives (owner topology ruling,
+    // 2026-11-08: fleet hosts are venues, never the home).
     assert!(cutover.contains("a single control plane"), "{cutover}");
-    assert!(cutover.contains("/var/lib/syncyard"), "{cutover}");
+    assert!(cutover.contains("Muse agent environment"), "{cutover}");
+    assert!(cutover.contains("no queue of record"), "{cutover}");
     // T038-68: the door record names owner + versioning.
     let door = read("door-repo.md");
     assert!(door.contains("run.yml") && door.contains("Desktop Access"));
@@ -381,8 +428,8 @@ fn t036_07_gate_composition_t036_17_no_billing_t036_12_ci_matrix_t039_01() {
     assert!(text.contains("step 1") && text.contains("step 6"), "{text}");
 
     // CI matrix: every OS, both darwin arches, aarch64 Linux.
-    let wf = std::fs::read_to_string(repo.join(".github").join("workflows").join("rust.yml"))
-        .unwrap();
+    let wf =
+        std::fs::read_to_string(repo.join(".github").join("workflows").join("rust.yml")).unwrap();
     for needle in [
         "ubuntu-latest",
         "windows-latest",

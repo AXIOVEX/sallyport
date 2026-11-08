@@ -114,13 +114,19 @@ mod tests {
             assert_eq!(host.anchor, name);
         }
         // Old-name mappings persist until cutover.
-        assert_eq!(resolve_host("tristen-desktop").unwrap().name, "tower-compute");
+        assert_eq!(
+            resolve_host("tristen-desktop").unwrap().name,
+            "tower-compute"
+        );
         assert_eq!(resolve_host("tristen-laptop").unwrap().name, "laptop-bench");
         // Failure is named, and there is no fallback to invent.
         let err = resolve_host("tristen-desktopp").unwrap_err();
         assert_eq!(err.constraint, CONSTRAINT_ANCHOR_RESOLUTION_FAILED);
         assert_eq!(err.requested, "tristen-desktopp");
-        assert!(resolve_host("192.168.1.10").is_err(), "raw IPs are not anchors");
+        assert!(
+            resolve_host("192.168.1.10").is_err(),
+            "raw IPs are not anchors"
+        );
         assert!(resolve_host("").is_err());
     }
 }

@@ -3,7 +3,9 @@
 //! One connection per call; the daemon is the only writer of
 //! queue state, the agent only ever sends requests.
 
+#[cfg(unix)]
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
@@ -36,6 +38,18 @@ impl SocketChannel {
         format!("agent:{}", self.agent_id)
     }
 
+    /// The socket transport is Unix-only in this build; on
+    /// other platforms the channel refuses by name (the
+    /// Windows named-pipe transport is not yet wired — a
+    /// named gap, never a silent stub).
+    #[cfg(not(unix))]
+    fn call(&self, _req: &serde_json::Value) -> Result<serde_json::Value, AgentError> {
+        Err(AgentError::Transport(
+            "the daemon socket transport is Unix-only in this build".to_string(),
+        ))
+    }
+
+    #[cfg(unix)]
     fn call(&self, req: &serde_json::Value) -> Result<serde_json::Value, AgentError> {
         let sock = self.daemon_home.join("gk.sock");
         let mut stream = UnixStream::connect(&sock)

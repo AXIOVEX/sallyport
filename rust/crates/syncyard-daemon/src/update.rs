@@ -45,7 +45,11 @@ pub enum UpdateRefusal {
     VersionNotPinned { pinned: String, offered: String },
     /// The mixed-version pair is illegal; names the required
     /// version (UPD-08).
-    MixedVersion { current: String, offered: String, required: String },
+    MixedVersion {
+        current: String,
+        offered: String,
+        required: String,
+    },
     /// The canary has not passed its health gate + soak.
     CanaryGateNotPassed,
     /// A job is running; the update defers (UPD-06).
@@ -65,10 +69,7 @@ impl UpdateRefusal {
 
 /// Verify a candidate artifact against its pin (UPD-07).
 /// The comparison is exact and mechanical on both fields.
-pub fn verify_artifact(
-    artifact: &ArtifactPin,
-    pin: &ArtifactPin,
-) -> Result<(), UpdateRefusal> {
+pub fn verify_artifact(artifact: &ArtifactPin, pin: &ArtifactPin) -> Result<(), UpdateRefusal> {
     if artifact.version != pin.version {
         return Err(UpdateRefusal::VersionNotPinned {
             pinned: pin.version.clone(),
@@ -93,9 +94,7 @@ pub fn mixed_version_legal(
     current: &str,
     offered: &str,
 ) -> Result<(), UpdateRefusal> {
-    if current == offered
-        || matrix.contains(&(current.to_string(), offered.to_string()))
-    {
+    if current == offered || matrix.contains(&(current.to_string(), offered.to_string())) {
         return Ok(());
     }
     Err(UpdateRefusal::MixedVersion {
@@ -167,10 +166,7 @@ pub struct Rollout {
 
 /// The fleet may roll out only when the canary passed its
 /// health gate AND the soak has elapsed since it passed.
-pub fn fleet_rollout_allowed(
-    rollout: &Rollout,
-    now_unix: i64,
-) -> Result<(), UpdateRefusal> {
+pub fn fleet_rollout_allowed(rollout: &Rollout, now_unix: i64) -> Result<(), UpdateRefusal> {
     match (&rollout.canary_gate, rollout.canary_passed_at_unix) {
         (GateVerdict::Pass, Some(passed_at))
             if now_unix.saturating_sub(passed_at) >= rollout.soak_required_s =>

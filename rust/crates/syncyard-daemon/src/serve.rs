@@ -13,7 +13,9 @@
 //! every verb works at full speed mid-wave against RAM state.
 
 use std::collections::BTreeMap;
+#[cfg(unix)]
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -559,9 +561,29 @@ impl Default for ServeConfig {
     }
 }
 
+/// The socket transport is Unix-only in this build: on
+/// non-Unix platforms the daemon's state engine compiles and
+/// its verbs work in-process, but serving is refused by name
+/// until the platform transport (named pipes on Windows) is
+/// wired — a named gap, never a silent stub.
+#[cfg(not(unix))]
+pub fn serve(
+    _engine: Arc<Mutex<Engine>>,
+    _home: &StateHome,
+    _config: ServeConfig,
+    _shutdown: Arc<AtomicBool>,
+) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "the daemon socket transport is Unix-only in this build; \
+         the Windows named-pipe transport is not yet wired",
+    ))
+}
+
 /// Run the server until `shutdown` is set or a `shutdown` request
 /// arrives on a connection. The caller must already hold the state
 /// lock and have run boot reconciliation.
+#[cfg(unix)]
 pub fn serve(
     engine: Arc<Mutex<Engine>>,
     home: &StateHome,
@@ -615,6 +637,7 @@ pub fn serve(
     Ok(())
 }
 
+#[cfg(unix)]
 fn handle_conn(
     stream: UnixStream,
     engine: Arc<Mutex<Engine>>,
@@ -647,8 +670,20 @@ fn handle_conn(
     }
 }
 
+/// Non-Unix: no socket transport in this build, so a socket
+/// request is an Unsupported error — callers (the CLI's
+/// auto-client) degrade to the file fallback on exactly this.
+#[cfg(not(unix))]
+pub fn request(_home: &StateHome, _req: &serde_json::Value) -> std::io::Result<serde_json::Value> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "the daemon socket transport is Unix-only in this build",
+    ))
+}
+
 /// Send one request to a serving daemon and read one response.
 /// Used by the CLI's socket client and by tests.
+#[cfg(unix)]
 pub fn request(home: &StateHome, req: &serde_json::Value) -> std::io::Result<serde_json::Value> {
     let mut stream = UnixStream::connect(home.socket_path())?;
     let mut bytes = serde_json::to_vec(req).unwrap_or_default();

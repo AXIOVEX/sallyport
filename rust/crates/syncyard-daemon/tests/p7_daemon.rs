@@ -173,9 +173,7 @@ fn t038_37_err03_power_loss_drill() {
     st3.put_job(new_queue_record(&job("power-b")));
     let rec_b = new_queue_record(&job("power-b"));
     let bytes = serde_json::to_vec_pretty(&rec_b).unwrap();
-    store
-        .put_record(KIND_SUBMITS, "power-b", &bytes)
-        .unwrap();
+    store.put_record(KIND_SUBMITS, "power-b", &bytes).unwrap();
     dispatch_one(&mut st3, store.as_ref(), &token3, fake.as_ref(), "power-b").unwrap();
     assert_eq!(st3.jobs["power-b"].state, JobState::Dispatched);
     assert_eq!(fake.trigger_calls(), 2, "exactly one new trigger");
@@ -476,12 +474,12 @@ fn t036_04_simulation_fixture_coverage() {
     // section 5 names must have at least one named test
     // somewhere in the workspace suites. If a class's test
     // is ever deleted, this test fails and names the class.
-    let rust_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..");
+    let rust_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
     let mut corpus = String::new();
     fn harvest(dir: &Path, corpus: &mut String) {
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         for entry in rd.flatten() {
             let p = entry.path();
             if p.is_dir() {
@@ -509,4 +507,53 @@ fn t036_04_simulation_fixture_coverage() {
             "simulation class '{class}' has no named test ({id} missing)"
         );
     }
+}
+
+// ---- P7 coverage lift: workflow pin error surface ----
+// (spec 034 FR-034-10's refusal shapes, incl. Display.)
+
+#[test]
+fn workflowpin_error_surface_and_stamp() {
+    use syncyard_daemon::workflowpin::{PinError, WorkflowPins};
+    let mut pins = WorkflowPins::new();
+    assert!(pins.is_empty());
+    assert_eq!(pins.pin_for("run.yml"), None);
+    let err = pins.require_pin("run.yml").unwrap_err();
+    assert_eq!(
+        err,
+        PinError::Unpinned {
+            workflow: "run.yml".into()
+        }
+    );
+    assert!(err.to_string().contains("run.yml"), "{err}");
+    assert!(err.to_string().contains("no commit-sha pin"), "{err}");
+
+    pins.insert("run.yml", "not-a-sha");
+    let err = pins.require_pin("run.yml").unwrap_err();
+    assert_eq!(
+        err,
+        PinError::MalformedPin {
+            workflow: "run.yml".into(),
+            value: "not-a-sha".into()
+        }
+    );
+    assert!(err.to_string().contains("not-a-sha"), "{err}");
+
+    // Uppercase hex and a 39-char value are both malformed.
+    pins.insert("run.yml", "A".repeat(40));
+    assert!(pins.require_pin("run.yml").is_err());
+    pins.insert("run.yml", "a".repeat(39));
+    assert!(pins.require_pin("run.yml").is_err());
+
+    let sha = "0123456789abcdef0123456789abcdef01234567";
+    pins.insert("run.yml", sha);
+    assert!(!pins.is_empty());
+    assert_eq!(pins.pin_for("run.yml"), Some(sha));
+    assert_eq!(pins.require_pin("run.yml").unwrap(), sha);
+
+    // stamp_record writes the resolved pin onto the record.
+    let mut rec = syncyard_daemon::state::new_queue_record(&job("job-pins"));
+    assert_eq!(rec.workflow_sha, None);
+    pins.stamp_record(&mut rec).unwrap();
+    assert_eq!(rec.workflow_sha.as_deref(), Some(sha));
 }

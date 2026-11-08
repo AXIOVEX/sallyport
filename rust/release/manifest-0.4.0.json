@@ -1,0 +1,53 @@
+{
+  "version": "0.4.0",
+  "artifacts": [
+    {
+      "name": "syncyard-agent",
+      "target": "linux-aarch64",
+      "sha256": "c305abcbfb77bdd620ff9dd0d33890aaa61a1d705eac3504407e5a9264e09e23",
+      "bytes": 887368
+    },
+    {
+      "name": "syncyard-cli",
+      "target": "linux-aarch64",
+      "sha256": "599019323a4bd2b1b5bdc63615774c4b3c9698cbf0799513f170c8738bf820ec",
+      "bytes": 1658056
+    },
+    {
+      "name": "syncyard-daemon",
+      "target": "linux-aarch64",
+      "sha256": "46dae02413d8dc68f64962c5e26cc0c250bc09e0f5571f97b63a412fd1e28791",
+      "bytes": 1605352
+    },
+    {
+      "name": "syncyard-tray",
+      "target": "linux-aarch64",
+      "sha256": "aa9cc36e09291e67f7a9aea962e4a27fbdde95d02890b2b30e2354b9b0e0c40a",
+      "bytes": 920272
+    },
+    {
+      "name": "syncyard-agent",
+      "target": "linux-x86_64",
+      "sha256": "3bd1a3ea19e8558299b381325f997b0f0f4278cdfaf84e6e0608f46314e338eb",
+      "bytes": 750872
+    },
+    {
+      "name": "syncyard-cli",
+      "target": "linux-x86_64",
+      "sha256": "2095bf42be854c68849b8ee098e8b4c58483357f6674738e70b7fc6320fb6370",
+      "bytes": 1634816
+    },
+    {
+      "name": "syncyard-daemon",
+      "target": "linux-x86_64",
+      "sha256": "ff489997a11c2f8821ff56715a6ab26ed54aa61e9feff092b3ebbe8ff6ac3640",
+      "bytes": 1575760
+    },
+    {
+      "name": "syncyard-tray",
+      "target": "linux-x86_64",
+      "sha256": "9331f6aa6341d917d9b980c616984534128678cbb9e2a65bd51b5ac2b589fe4a",
+      "bytes": 788712
+    }
+  ]
+}

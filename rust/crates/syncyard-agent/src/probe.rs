@@ -104,7 +104,9 @@ pub fn record_from_profiler(
     // Split into sections by top-level headers ("Hardware:").
     let mut sections: Vec<(String, Vec<&str>)> = Vec::new();
     for line in profiler_output.lines() {
-        if !line.starts_with(char::is_whitespace) && line.trim_end().ends_with(':') && !line.is_empty()
+        if !line.starts_with(char::is_whitespace)
+            && line.trim_end().ends_with(':')
+            && !line.is_empty()
         {
             sections.push((line.trim_end_matches(':').trim().to_string(), Vec::new()));
         } else if let Some((_, lines)) = sections.last_mut() {
@@ -126,9 +128,8 @@ pub fn record_from_profiler(
     let chip = field(&hw, "Chip")
         .or_else(|| field(&hw, "Processor Name"))
         .map(|s| s.to_string());
-    let cores = field(&hw, "Total Number of Cores").and_then(|s| {
-        s.split_whitespace().next()?.parse::<u32>().ok()
-    });
+    let cores = field(&hw, "Total Number of Cores")
+        .and_then(|s| s.split_whitespace().next()?.parse::<u32>().ok());
     let memory_mb = field(&hw, "Memory").and_then(parse_gb_to_mb);
     // The OS identity is carried as one string, version and
     // build together, exactly as the profiler states it.
@@ -142,16 +143,17 @@ pub fn record_from_profiler(
     } else {
         let supported = gfx.iter().any(|l| {
             let l = l.to_lowercase();
-            l.contains("metal") && (l.contains("supported") || l.contains("metal 3") || l.contains("metal 4"))
+            l.contains("metal")
+                && (l.contains("supported") || l.contains("metal 3") || l.contains("metal 4"))
         });
         Measure::Known(supported)
     };
     // Thermal truth, stated in the record (FR-MAC-06): the
     // fanless lines are the MacBook Airs.
     let thermal_note = match field(&hw, "Model Name") {
-        Some(m) if m.contains("MacBook Air") => {
-            Some("fanless (MacBook Air): sustained all-core batch work routes elsewhere".to_string())
-        }
+        Some(m) if m.contains("MacBook Air") => Some(
+            "fanless (MacBook Air): sustained all-core batch work routes elsewhere".to_string(),
+        ),
         _ => None,
     };
 
@@ -251,10 +253,7 @@ Graphics/Displays:
         assert_eq!(rec.memory.total_mb, Measure::Known(8000));
         assert_eq!(rec.disk_total_mb, Measure::Known(251_100));
         assert_eq!(rec.disk_free_mb, Measure::Known(29_500));
-        assert_eq!(
-            rec.os,
-            Measure::Known("macOS 27.0.1 (26A434)".to_string())
-        );
+        assert_eq!(rec.os, Measure::Known("macOS 27.0.1 (26A434)".to_string()));
         assert_eq!(rec.accelerator, Measure::Known(true));
         assert_eq!(rec.docker, DockerPresence::Absent);
         assert!(rec.thermal_note.as_deref().unwrap().contains("fanless"));

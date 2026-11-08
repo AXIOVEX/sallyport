@@ -270,11 +270,23 @@ mod tests {
     fn t038_44_rep02_structured_dedupe() {
         let a = incident(
             "dispatch_failed",
-            &["lane-quick", "42473559588", "2026-11-08T11:01:15Z", "C:\\work\\job.ps1", "3"],
+            &[
+                "lane-quick",
+                "42473559588",
+                "2026-11-08T11:01:15Z",
+                "C:\\work\\job.ps1",
+                "3",
+            ],
         );
         let b = incident(
             "dispatch_failed",
-            &["lane-quick", "42499999999", "2026-11-08T12:44:00Z", "D:\\other\\x.ps1", "7"],
+            &[
+                "lane-quick",
+                "42499999999",
+                "2026-11-08T12:44:00Z",
+                "D:\\other\\x.ps1",
+                "7",
+            ],
         );
         assert_eq!(a.dedupe_key(), b.dedupe_key());
         let mut q = queue();

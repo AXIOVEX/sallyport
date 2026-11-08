@@ -194,7 +194,10 @@ mod tests {
         unknown.disk_free_mb = Measure::Unknown;
         assert!(unknown.disk_free_mb.is_unknown());
         let json = serde_json::to_string(&unknown).unwrap();
-        assert!(json.contains("\"unknown\""), "unknown serializes as unknown: {json}");
+        assert!(
+            json.contains("\"unknown\""),
+            "unknown serializes as unknown: {json}"
+        );
         // An unknown total yields no available figure, never 0.
         unknown.memory.total_mb = Measure::Unknown;
         assert_eq!(unknown.memory.available_for_jobs_mb(), None);

@@ -53,7 +53,12 @@ fn t039_05_native_job_verdict_harvest() {
             continue;
         }
         ran += 1;
-        let script = payload(&root, &format!("p-{ran}.sh"), shell, "echo harvesting\nexit 41");
+        let script = payload(
+            &root,
+            &format!("p-{ran}.sh"),
+            shell,
+            "echo harvesting\nexit 41",
+        );
         let mut fake = FakeChannel::default();
         let asg = Assignment {
             job_id: format!("mac-job-{ran}"),
@@ -143,6 +148,11 @@ fn agent_binary_usage_and_dead_socket_cycle() {
         ])
         .output()
         .unwrap();
-    assert_eq!(out.status.code(), Some(0), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let _ = std::fs::remove_dir_all(&root);
 }

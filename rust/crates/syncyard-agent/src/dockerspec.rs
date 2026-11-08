@@ -47,10 +47,9 @@ impl std::fmt::Display for DockerSpecError {
             DockerSpecError::NotDigestPinned { image } => {
                 write!(f, "image {image} is not pinned by a sha256 digest")
             }
-            DockerSpecError::EgressNotAllowed { image, host } => write!(
-                f,
-                "egress to {host} is not on {image}'s declared allowlist"
-            ),
+            DockerSpecError::EgressNotAllowed { image, host } => {
+                write!(f, "egress to {host} is not on {image}'s declared allowlist")
+            }
             DockerSpecError::PostureWidening { what } => {
                 write!(f, "the Docker posture cannot be widened: {what}")
             }

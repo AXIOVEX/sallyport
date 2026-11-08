@@ -6,14 +6,15 @@ the recovery drill is run by the owner, manually, with this
 page as the only instruction).
 
 **Time needed:** about 15 minutes. **You need:** access to
-the gatekeeper host (mini-server) and this page. Nothing
-here can make things worse: every step is read-only until
-step 5, and step 5 is reversible until step 7.
+the Muse agent environment (the VM where the gatekeeper
+of record lives — fleet hosts are execution venues and
+hold no queue of record) and this page. Nothing here can
+make things worse: every step is read-only until step 5,
+and step 5 is reversible until step 7.
 
 ## 1. Check what is actually down
 
 ```sh
-ssh mini-server
 systemctl status syncyard-daemon
 ```
 

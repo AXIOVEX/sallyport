@@ -36,8 +36,8 @@ pub mod scan;
 pub mod signing;
 
 pub use backchannel::{
-    macos_backchannel_policy, validate_backchannel_policy, BackchannelPolicy,
-    BACKCHANNEL_OWNER, RESERVED_USE,
+    macos_backchannel_policy, validate_backchannel_policy, BackchannelPolicy, BACKCHANNEL_OWNER,
+    RESERVED_USE,
 };
 pub use capability::{
     ActivationState, CapabilityRecord, DockerPresence, Measure, MemoryPool, NodeClass,
@@ -47,8 +47,10 @@ pub use control::{
     DEFAULT_EXPIRY_S as COMMAND_DEFAULT_EXPIRY_S, MAX_EXPIRY_S as COMMAND_MAX_EXPIRY_S,
 };
 pub use creds::{audit_credentials, CredRole, Credential, ScopeViolation};
-pub use fleet::{resolve_host, AnchorError, FleetHost, FLEET, CONSTRAINT_ANCHOR_RESOLUTION_FAILED};
-pub use images::{validate_image_set, ImagePin, ImageSetError, REQUIRED_ARCHES, SHARED_IMAGE_NAMES};
+pub use fleet::{resolve_host, AnchorError, FleetHost, CONSTRAINT_ANCHOR_RESOLUTION_FAILED, FLEET};
+pub use images::{
+    validate_image_set, ImagePin, ImageSetError, REQUIRED_ARCHES, SHARED_IMAGE_NAMES,
+};
 pub use job::JobRecord;
 pub use permissions::{validate_permissions, NamedGrant, PermissionError, PermissionPosture};
 pub use progress::{

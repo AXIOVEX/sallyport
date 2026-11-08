@@ -131,7 +131,10 @@ mod tests {
         assert_eq!(id.train, "0.4.0");
         let line = id.header_line();
         assert!(line.starts_with("Syncyard 0.4.0"), "{line}");
-        assert!(!id.stamp_defect(), "this build's stamp agrees with its train");
+        assert!(
+            !id.stamp_defect(),
+            "this build's stamp agrees with its train"
+        );
         // A stamp from another train IS the defect state.
         let foreign = BuildIdentity {
             train: "0.4.0".into(),
@@ -157,7 +160,10 @@ mod tests {
         assert!(d.windowless);
         // Session detection is by the session name the host
         // reports; a plain Linux session keeps the tray row.
-        assert_eq!(surface_for("linux", Some("gnome")).surface, HostSurface::LinuxTray);
+        assert_eq!(
+            surface_for("linux", Some("gnome")).surface,
+            HostSurface::LinuxTray
+        );
         assert_eq!(surface_for("linux", None).surface, HostSurface::LinuxTray);
         // Every surface row carries the stamp: no exceptions.
         for os in ["windows", "macos", "linux"] {
@@ -165,4 +171,3 @@ mod tests {
         }
     }
 }
-

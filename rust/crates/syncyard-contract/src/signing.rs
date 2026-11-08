@@ -95,6 +95,9 @@ mod tests {
         let stamp = BuildStamp::new("0.4.0", tier_from_identities(&[]));
         assert_eq!(stamp.render(), "train 0.4.0 · signed ad-hoc");
         let json = serde_json::to_string(&stamp).unwrap();
-        assert!(json.contains("\"tier\":\"ad_hoc\""), "tier is in the stamp: {json}");
+        assert!(
+            json.contains("\"tier\":\"ad_hoc\""),
+            "tier is in the stamp: {json}"
+        );
     }
 }

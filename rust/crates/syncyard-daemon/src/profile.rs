@@ -21,7 +21,9 @@ pub enum ProfileOutcome {
     Applied,
     /// The health gate failed; the host was reverted to the
     /// restore point taken before the change.
-    Reverted { reason: String },
+    Reverted {
+        reason: String,
+    },
 }
 
 /// Apply `new` to `host` transactionally. Returns the

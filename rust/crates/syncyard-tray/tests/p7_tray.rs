@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use syncyard_contract::control::{CommandOutcome, ControlAction, OutcomeStatus};
-use syncyard_tray::control::{display_state, load_or_create_key_file, CommandDisplay, CommandIssuer};
+use syncyard_tray::control::{
+    display_state, load_or_create_key_file, CommandDisplay, CommandIssuer,
+};
 use syncyard_tray::settings::Settings;
 
 fn scratch(tag: &str) -> PathBuf {
@@ -105,7 +107,9 @@ fn command_issue_sign_and_display_states() {
         .issue(ControlAction::Hold, Some("job-9"), None)
         .unwrap();
     assert!(!cmd.signature.is_empty());
-    let on_disk = dir.join("outbox").join(format!("command-{}.json", cmd.command_id));
+    let on_disk = dir
+        .join("outbox")
+        .join(format!("command-{}.json", cmd.command_id));
     assert!(on_disk.exists(), "the signed command file is the act");
     let parsed: syncyard_contract::control::ControlCommand =
         serde_json::from_str(&std::fs::read_to_string(&on_disk).unwrap()).unwrap();

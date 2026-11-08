@@ -47,9 +47,12 @@ a fix starts from a fresh photograph.
 ## The end state
 
 However the cutover goes, it ends with a single control plane
-whose home is the Rust daemon's state directory on the
-gatekeeper host (mini-server, `/var/lib/syncyard`), with the
-off-VM witness store as its recovery anchor and the
+whose home is the Rust daemon's state directory in the
+Muse agent environment (this VM — the gatekeeper of
+record has always lived here; fleet hosts are execution
+venues and hold no queue of record, and the mini-server /
+tower-offsite checkouts are paused observers only), with
+the off-VM witness store as its recovery anchor and the
 CLI/extension as its only front doors. There is never a
 steady state with two writers; shadow mode is a phase with
 an end date, not an architecture.

@@ -84,8 +84,7 @@ fn cli_binary_home_rules() {
     let bin = env!("CARGO_BIN_EXE_syncyard-cli");
     let out = Command::new(bin).arg("version").output().unwrap();
     assert_eq!(out.status.code(), Some(0));
-    let v: serde_json::Value =
-        serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).unwrap();
     assert_eq!(v["version"], serde_json::Value::String("0.4.0".into()));
 
     let out = Command::new(bin)
@@ -118,12 +117,12 @@ fn run_cli_error_branches() {
     let out = run_cli(&["submit".to_string()], &home, &offvm);
     assert_ne!(out.code, 0, "submit without flags: {}", out.stdout);
     let out = run_cli(&["migrate-history".to_string()], &home, &offvm);
-    assert_ne!(out.code, 0, "migrate-history without --from: {}", out.stdout);
-    let out = run_cli(
-        &["version".to_string()],
-        &home,
-        &offvm,
+    assert_ne!(
+        out.code, 0,
+        "migrate-history without --from: {}",
+        out.stdout
     );
+    let out = run_cli(&["version".to_string()], &home, &offvm);
     assert_eq!(out.code, 0);
     let v: serde_json::Value = serde_json::from_str(&out.stdout).unwrap();
     assert_eq!(v["contract_version"], serde_json::Value::Number(1.into()));

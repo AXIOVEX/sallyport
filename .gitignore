@@ -16,3 +16,6 @@ dist/
 build/
 *.egg-info/
 site/
+
+# Rust coverage instrumented target (rust/coverage.sh)
+target-cov/

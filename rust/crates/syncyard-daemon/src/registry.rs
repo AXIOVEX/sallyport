@@ -69,7 +69,10 @@ pub struct PlacementRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Placement {
     Placed,
-    Refused { constraint: &'static str, detail: String },
+    Refused {
+        constraint: &'static str,
+        detail: String,
+    },
 }
 
 fn refused(constraint: &'static str, detail: impl Into<String>) -> Placement {
@@ -118,7 +121,8 @@ impl CapabilityRegistry {
     /// re-register (a fresh `register`) before accepting
     /// work (FR-MAC-05).
     pub fn note_wake(&mut self, host: &str) {
-        self.wake.insert(host.to_string(), WakeState::WokeUnregistered);
+        self.wake
+            .insert(host.to_string(), WakeState::WokeUnregistered);
     }
 
     pub fn wake_state(&self, host: &str) -> WakeState {
@@ -244,11 +248,7 @@ impl CapabilityRegistry {
         now_unix: i64,
     ) -> Placement {
         let verdict = self.place(req, now_unix);
-        if let Placement::Refused {
-            constraint,
-            detail,
-        } = &verdict
-        {
+        if let Placement::Refused { constraint, detail } = &verdict {
             let mut fields = BTreeMap::new();
             fields.insert(
                 "host".to_string(),

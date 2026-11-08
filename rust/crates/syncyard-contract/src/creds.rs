@@ -105,9 +105,7 @@ pub fn audit_credentials(creds: &[Credential]) -> Vec<ScopeViolation> {
                 });
             }
         }
-        if cred.role == CredRole::Report
-            && cred.scopes.iter().any(|s| s.starts_with("actions:"))
-        {
+        if cred.role == CredRole::Report && cred.scopes.iter().any(|s| s.starts_with("actions:")) {
             out.push(ScopeViolation {
                 credential: cred.name.clone(),
                 rule: "report_credential_can_dispatch",
@@ -139,9 +137,21 @@ mod tests {
             scopes: scopes.iter().map(|s| s.to_string()).collect(),
         };
         vec![
-            mk("gk-dispatch", CredRole::Dispatch, &["actions:write", "actions:read"]),
-            mk("gk-state", CredRole::StateWrite, &["contents:write", "contents:read"]),
-            mk("gk-publish", CredRole::Publish, &["contents:write", "contents:read"]),
+            mk(
+                "gk-dispatch",
+                CredRole::Dispatch,
+                &["actions:write", "actions:read"],
+            ),
+            mk(
+                "gk-state",
+                CredRole::StateWrite,
+                &["contents:write", "contents:read"],
+            ),
+            mk(
+                "gk-publish",
+                CredRole::Publish,
+                &["contents:write", "contents:read"],
+            ),
             mk("gk-report", CredRole::Report, &["issues:write"]),
         ]
     }

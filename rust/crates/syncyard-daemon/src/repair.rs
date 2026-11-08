@@ -169,9 +169,7 @@ impl RepairEngine {
         // Exponential backoff since this component's last
         // attempt: base * 2^(attempts today - 1) (FIX-02).
         if let Some(last) = self.last_attempt_at.get(component) {
-            let wait = self
-                .base_backoff_s
-                .saturating_mul(1i64 << count.min(20));
+            let wait = self.base_backoff_s.saturating_mul(1i64 << count.min(20));
             if now_unix < last + wait {
                 return RepairOutcome::RefusedBackoff {
                     retry_at_unix: last + wait,
@@ -261,7 +259,10 @@ mod tests {
     #[test]
     fn t038_48_fix02_repair_budgets() {
         let mut eng = RepairEngine::new(2, 60);
-        assert_eq!(eng.attempt(&RECIPE, "agent", 1_000, || true), RepairOutcome::Applied);
+        assert_eq!(
+            eng.attempt(&RECIPE, "agent", 1_000, || true),
+            RepairOutcome::Applied
+        );
         // Immediate retry: backoff (base 60s x 2^1 after one
         // attempt today).
         match eng.attempt(&RECIPE, "agent", 1_030, || true) {
@@ -271,7 +272,10 @@ mod tests {
             other => panic!("expected backoff, got {other:?}"),
         }
         // After backoff, the second attempt fits the daily max.
-        assert_eq!(eng.attempt(&RECIPE, "agent", 1_200, || true), RepairOutcome::Applied);
+        assert_eq!(
+            eng.attempt(&RECIPE, "agent", 1_200, || true),
+            RepairOutcome::Applied
+        );
         // Third attempt on the same day (t=5000 is still day
         // 0): the daily budget refuses.
         assert_eq!(
@@ -302,7 +306,10 @@ mod tests {
             RepairOutcome::RefusedLatchedOff
         );
         eng.clear_latch(RECIPE.name);
-        assert_eq!(eng.attempt(&RECIPE, "agent", 4_000, || true), RepairOutcome::Applied);
+        assert_eq!(
+            eng.attempt(&RECIPE, "agent", 4_000, || true),
+            RepairOutcome::Applied
+        );
     }
 
     // T038-50 fix05-never-fix-list: every never-fix class is
