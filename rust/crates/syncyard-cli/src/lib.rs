@@ -48,6 +48,7 @@ pub const VERBS: &[&str] = &[
     "stop",
     "start",
     "hold",
+    "kill-switch",
     "resume",
     "cancel",
     "ledger",
@@ -397,6 +398,27 @@ pub fn run_cli(args: &[String], home: &StateHome, offvm_root: &Path) -> CliOutco
             offvm_root,
         ),
         "start" => dispatch_request(&serde_json::json!({"verb": "start"}), home, offvm_root),
+        // FIX-08 repair kill switch (spec 037 FR-037-10): the
+        // switch is reachable from the app and from here. Setting
+        // or clearing it is a ledgered operator act on the
+        // daemon side; this verb only forwards it.
+        "kill-switch" => {
+            let req = match a.positional(0).as_deref() {
+                None => serde_json::json!({"verb": "kill_switch"}),
+                Some("on") => {
+                    serde_json::json!({"verb": "kill_switch", "on": true, "source": "cli"})
+                }
+                Some("off") => {
+                    serde_json::json!({"verb": "kill_switch", "on": false, "source": "cli"})
+                }
+                Some(other) => {
+                    return err_out(&format!(
+                        "kill-switch takes `on`, `off`, or no argument (got {other})"
+                    ))
+                }
+            };
+            dispatch_request(&req, home, offvm_root)
+        }
         "hold" | "resume" | "cancel" | "dispatch" => {
             let Some(id) = a.positional(0) else {
                 return err_out(&format!("{verb} requires a job id"));

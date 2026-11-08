@@ -24,6 +24,7 @@
 //! - [`serve`] — the Unix-socket server and verb handlers.
 //! - [`time`] — wall-clock helpers (display only; ordering is seq).
 
+pub mod control;
 pub mod dispatch;
 pub mod lanes;
 pub mod lock;

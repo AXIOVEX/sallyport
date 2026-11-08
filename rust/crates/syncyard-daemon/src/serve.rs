@@ -397,20 +397,50 @@ impl Engine {
                     return err("cancel requires job_id");
                 };
                 let id_owned = id.to_string();
-                let changed = self.state.update_job(&id_owned, |rec| {
-                    if !rec.state.is_terminal() {
-                        rec.state = JobState::Cancelled;
-                        rec.completed_at = Some(now_iso());
-                    }
-                });
-                if !changed {
+                if !self.apply_cancel(&id_owned, BTreeMap::new()) {
                     return err(&format!("unknown job {id}"));
                 }
-                let mut fields = BTreeMap::new();
-                fields.insert("job_id".into(), serde_json::Value::String(id_owned));
-                self.state.ledger("operator_cancel", fields);
                 let _ = self.state.flush(self.writer.as_ref());
                 ok(serde_json::json!({"cancelled": id}))
+            }
+            // Spec 037: a signed tray command file, delivered by
+            // the backchannel. Verification + execution live in
+            // crate::control; the recorded outcome is the only
+            // reply an app may treat as confirmation.
+            "control_command" => {
+                let Some(raw) = req.get("command") else {
+                    return err("control_command requires a command");
+                };
+                let cmd: syncyard_contract::ControlCommand =
+                    match serde_json::from_value(raw.clone()) {
+                        Ok(c) => c,
+                        Err(e) => return err(&format!("command does not parse: {e}")),
+                    };
+                let outcome = self.execute_control_command(&cmd);
+                let _ = self.state.flush(self.writer.as_ref());
+                match serde_json::to_value(&outcome) {
+                    Ok(v) => ok(serde_json::json!({"outcome": v})),
+                    Err(e) => err(&format!("outcome does not serialize: {e}")),
+                }
+            }
+            "control_outcomes" => {
+                ok(serde_json::json!({"outcomes": self.state.control.outcomes}))
+            }
+            // FIX-08 repair kill switch (spec 037 FR-037-10):
+            // read it, or set/clear it as a ledgered operator act.
+            "kill_switch" => {
+                if let Some(on) = req.get("on").and_then(|v| v.as_bool()) {
+                    let source = req
+                        .get("source")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("socket")
+                        .to_string();
+                    let changed = self.set_kill_switch(on, &source);
+                    let _ = self.state.flush(self.writer.as_ref());
+                    ok(serde_json::json!({"kill_switch": on, "changed": changed}))
+                } else {
+                    ok(serde_json::json!({"kill_switch": self.state.control.kill_switch}))
+                }
             }
             "dispatch" => {
                 // The `gk dispatch` verb (spec 038 FR-038-06: the

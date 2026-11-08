@@ -25,6 +25,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use syncyard_contract::{JobState, QueueRecord};
 
+use crate::control::ControlState;
 use crate::time::now_iso;
 use crate::vwrite::StateWriter;
 
@@ -74,6 +75,9 @@ impl StateHome {
     }
     pub fn holds_path(&self) -> PathBuf {
         self.root.join("holds.json")
+    }
+    pub fn control_path(&self) -> PathBuf {
+        self.root.join("control.json")
     }
     pub fn seq_path(&self) -> PathBuf {
         self.root.join("seq.json")
@@ -209,6 +213,10 @@ pub struct DaemonState {
     /// Per-job operator holds (ghost-reconciliation hold-first,
     /// FR-038-24; also the hold verb's state).
     pub holds: BTreeSet<String>,
+    /// Spec 037 control-plane state: enrolled tray host keys,
+    /// the FIX-08 repair kill switch, burned nonces, and the
+    /// recorded command outcomes.
+    pub control: ControlState,
     /// Next monotonic per-source sequence (spec 038 section 9).
     pub next_seq: u64,
     /// Streaming-progress feeds by job id (spec 034 section 3).
@@ -248,6 +256,7 @@ impl DaemonState {
             hosts: serde_json::Value::Null,
             lane_locks: serde_json::Value::Null,
             holds: BTreeSet::new(),
+            control: ControlState::default(),
             next_seq: 1,
             progress: BTreeMap::new(),
             progress_config: crate::progress::ProgressConfig::default(),
@@ -325,6 +334,7 @@ impl DaemonState {
         if let Some(saved) = read_json::<Vec<String>>(&st.home.holds_path()) {
             st.holds = saved.into_iter().collect();
         }
+        st.control = read_json(&st.home.control_path()).unwrap_or_default();
         if let Some(saved) = read_json::<serde_json::Value>(&st.home.seq_path()) {
             if let Some(n) = saved.get("next_seq").and_then(|v| v.as_u64()) {
                 st.next_seq = st.next_seq.max(n);
@@ -418,6 +428,12 @@ impl DaemonState {
         } else {
             self.holds.remove(job_id);
         }
+        self.dirty_control = true;
+    }
+
+    /// Mark control-plane state dirty for the next flush
+    /// (control.json rides the control-file flush class).
+    pub fn touch_control(&mut self) {
         self.dirty_control = true;
     }
 
@@ -601,6 +617,8 @@ impl DaemonState {
         let holds: Vec<String> = self.holds.iter().cloned().collect();
         let text = serde_json::to_string_pretty(&holds).unwrap();
         all_ok &= write_opt(self.home.holds_path(), &Some(text));
+        let control_text = serde_json::to_string_pretty(&self.control).unwrap();
+        all_ok &= write_opt(self.home.control_path(), &Some(control_text));
         let cursor = serde_json::json!({"cursor": self.outbox_cursor}).to_string();
         all_ok &= write_opt(self.home.outbox_cursor_path(), &Some(cursor));
         let seq = serde_json::json!({"next_seq": self.next_seq}).to_string();
@@ -674,6 +692,32 @@ impl DaemonState {
                 }
             }
         }
+        // Per-job summaries for presentation surfaces (spec 035:
+        // the tray renders job lists from gatekeeper records,
+        // verbatim — it never originates a state).
+        let jobs: Vec<serde_json::Value> = self
+            .jobs
+            .values()
+            .map(|rec| {
+                serde_json::json!({
+                    "id": rec.id,
+                    "key": rec.key,
+                    "program": rec.program,
+                    "state": rec.state.as_str(),
+                    "lane": rec.lane,
+                    "venue": rec.venue,
+                    "priority": rec.priority,
+                    "priority_source": rec.priority_source,
+                    "held": self.holds.contains(&rec.id),
+                    "created_at": rec.created_at,
+                    "dispatched_at": rec.dispatched_at,
+                    "completed_at": rec.completed_at,
+                    "run_id": rec.run_id,
+                    "run_conclusion": rec.run_conclusion,
+                    "verdict_source": rec.verdict_source,
+                })
+            })
+            .collect();
         serde_json::json!({
             "generated_at": now_iso(),
             "source": "syncyard-daemon",
@@ -681,10 +725,13 @@ impl DaemonState {
             "by_state": by_state,
             "waiting": waiting,
             "active": active,
+            "jobs": jobs,
             "progress": progress,
             "paused": self.paused.is_some(),
             "stopped": self.stopped.is_some(),
             "holds": self.holds.len(),
+            "kill_switch": self.control.kill_switch,
+            "control_outcomes": self.control.outcomes.len(),
             "flush": {
                 "state_dirty_records": self.dirty_jobs.len(),
                 "last_flush_ok_at": self.flush_health.last_flush_ok_at,
