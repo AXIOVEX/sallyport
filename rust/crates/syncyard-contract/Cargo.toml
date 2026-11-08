@@ -1,0 +1,11 @@
+[package]
+name = "syncyard-contract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Syncyard shared contract: job/queue record types and the streaming-progress protocol (specs 034/038)."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
