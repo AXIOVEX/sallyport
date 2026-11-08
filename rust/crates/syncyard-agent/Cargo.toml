@@ -5,3 +5,15 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Syncyard backchannel agent: per-host runner-side agent (specs 034/038/039)."
+
+[dependencies]
+syncyard-contract.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+fs2 = "0.4"
+
+[dev-dependencies]
+# The end-to-end agent test serves the real daemon in-process and
+# talks to it through the agent's socket channel. (No cycle: the
+# daemon does not depend on the agent.)
+syncyard-daemon = { path = "../syncyard-daemon", features = ["test-support"] }
