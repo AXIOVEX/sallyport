@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 <#
 .SYNOPSIS
   Install and start the Syncyard host shutdown guard (spec 011 Phase 3).

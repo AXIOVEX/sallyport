@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # runner-watchdog.ps1 - Desktop runner watchdog for TRISTEN-DESKTOP.
 #
 # Runs every 5 minutes as a user scheduled task under trist (see the

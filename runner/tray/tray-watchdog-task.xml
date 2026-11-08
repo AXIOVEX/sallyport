@@ -9,7 +9,7 @@
   an unsubstituted __TOKEN__ left in it is an install failure
   (spec 029 FR-006).
   One-minute repetition, the owner's own session, windowless:
-  the action is powershell.exe with -WindowStyle Hidden, and
+  the action is pwsh.exe (PowerShell 7) with -WindowStyle Hidden, and
   the script it runs creates no window of its own.
 -->
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -49,7 +49,7 @@
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>powershell.exe</Command>
+      <Command>pwsh.exe</Command>
       <Arguments>-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "__TRAY_DIR__\tray-watchdog.ps1" -StateDir "__STATE_DIR__"</Arguments>
     </Exec>
   </Actions>

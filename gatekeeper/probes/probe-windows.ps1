@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 Write-Output "SYNCYARD_PROBE 1 platform=windows"
 Write-Output "## hostname"
 hostname

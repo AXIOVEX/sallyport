@@ -1,4 +1,4 @@
-# Syncyard wsl workflow - version 0.2.0
+# Syncyard wsl workflow - version 0.3.0
 # Part of AXIOVEX/syncyard. Dispatch-only by design: this workflow binds
 # self-hosted runners and must NEVER be triggered by pull_request,
 # pull_request_target, issues, or any other unprivileged event.
@@ -35,6 +35,21 @@ jobs:
     runs-on: [self-hosted, "${{ inputs.lane }}"]
     timeout-minutes: 360
     steps:
+      - name: Require PowerShell 7
+        shell: cmd
+        run: |
+          set "PWSH7=%ProgramFiles%\PowerShell\7\pwsh.exe"
+          if exist "%PWSH7%" goto :ps7verify
+          set "PWSH7="
+          for /f "delims=" %%P in ('where pwsh 2^>nul') do if not defined PWSH7 set "PWSH7=%%P"
+          if defined PWSH7 goto :ps7verify
+          echo SYNCYARD_PS7_MISSING: PowerShell 7 is required on this host and pwsh.exe was not found.
+          echo SYNCYARD_PS7_MISSING: Run runner\ensure-powershell7.cmd from AXIOVEX/syncyard to install it, then re-dispatch. Windows PowerShell 5.1 is not supported by Syncyard.
+          exit /b 1
+          :ps7verify
+          "%PWSH7%" -NoProfile -Command "if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) { exit 1 }"
+          if errorlevel 1 exit /b 1
+          echo SYNCYARD_PS7_PREFLIGHT_OK exe=%PWSH7%
       - name: Execute-WSL
         shell: pwsh
         env:
@@ -42,6 +57,11 @@ jobs:
           WSL_CWD: ${{ inputs.cwd }}
           HOLD_FILE: ${{ inputs.hold_file }}
         run: |
+          if ($PSVersionTable.PSEdition -ne 'Core' -or $PSVersionTable.PSVersion.Major -lt 7) { throw "SYNCYARD_PS7_REQUIRED: Syncyard jobs run under PowerShell 7 (Core) only; this step is running $($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion). Windows PowerShell 5.1 is not supported." }
+          $pwsh7 = Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe'
+                    if (-not (Test-Path $pwsh7)) { $pwshCmd = Get-Command pwsh -ErrorAction SilentlyContinue; if ($pwshCmd) { $pwsh7 = $pwshCmd.Source } }
+          if (-not (Test-Path $pwsh7)) { throw "SYNCYARD_PS7_MISSING: pwsh.exe not found on this host (neither the canonical install path nor PATH, where the Store/MSIX install registers). Run runner\ensure-powershell7.cmd from AXIOVEX/syncyard to install PowerShell 7, then re-dispatch." }
+          if ([int](& $pwsh7 -NoProfile -Command '$PSVersionTable.PSVersion.Major') -lt 7) { throw "SYNCYARD_PS7_REQUIRED: $pwsh7 is not PowerShell 7." }
           $script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CMD_B64))
           $f = Join-Path $env:RUNNER_TEMP 'job.sh'
           [IO.File]::WriteAllText($f, ($script -replace "`r`n","`n"))
