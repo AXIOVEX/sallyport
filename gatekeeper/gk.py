@@ -1233,6 +1233,26 @@ def cmd_outbox(args):
             msg = "%s ESCALATED W2 %s run %s age=%s min" % (
                 head, ev.get("classification"), ev.get("run_id"),
                 ev.get("age_min"))
+        elif ev.get("event") == "staging_hash_mismatch":
+            # Staging store (D8): a mismatch is an operator-visible
+            # verdict, pushed like any other.
+            msg = ("%s STAGING HASH MISMATCH file=%s recorded=%s "
+                   "pulled=%s — nothing delivered; the staged copy "
+                   "was moved to quarantine"
+                   % (head, ev.get("filename"),
+                      str(ev.get("recorded_sha256") or "?")[:12],
+                      str(ev.get("pulled_sha256") or "none")[:12]))
+        elif ev.get("event") == "staging_expired":
+            msg = ("%s STAGING EXPIRED file=%s — the sweeper "
+                   "deleted the staged copy at TTL before harvest; "
+                   "recovery is rerunning the producing job"
+                   % (head, ev.get("filename")))
+        elif ev.get("event") == "staging_missing":
+            msg = ("%s STAGING MISSING file=%s — the staged copy "
+                   "is absent with no tombstone and no quarantine "
+                   "record (checks: %s)"
+                   % (head, ev.get("filename"),
+                      ev.get("checks") or "?"))
         elif ev.get("event") == "interrupted":
             # Spec 011 FR-004: the job's host went down mid-flight.
             msg = ("%s INTERRUPTED run %s — host %s going down at %s "
@@ -2518,6 +2538,761 @@ def fetch_log_once(job):
     return True
 
 
+# --- staging store harvest (staging-store build, 2026-11-09) ----------------
+# The fleet staging store on mini-server (STAGING-STORE-SPEC-2026-11-09,
+# build record STAGING-STORE-BUILD-2026-11-09.md): producing hosts push
+# files over 2 MB by SFTP into per-host subtrees of the store; this
+# machinery pulls them for completed jobs whose logs carried STAGED_FILE
+# markers. Design pins, from the two accepted red team passes:
+#   - the marker governs, solely; the meta file is an advisory
+#     cross-check (F9/FBB-2). Any marker/meta disagreement is the
+#     mismatch path, after a stability re-read (D6).
+#   - durable pending state on the job record (job["staging"]) plus a
+#     pass over completed jobs with pending staging, ONE job per sweep
+#     pass (FBB-1/FDB-6). watch_pass only initializes entries.
+#   - verdict order: transport exit status, then byte count, then
+#     hash (FBB-8). Transport failures and truncated pulls DEFER and
+#     retry on a later pass; they never quarantine, never mismatch.
+#   - marker fields are validated before they touch a path or an
+#     argument vector (F5/FBB-3): job= must equal the record's own id,
+#     name= the basename grammar, sha256= strict lowercase hex64,
+#     bytes= an integer inside the per-file cap. All sftp calls use
+#     fixed argument vectors; no shell strings anywhere in this path.
+#   - the harvester lstat's (via the job-dir listing) before pulling
+#     and refuses anything that is not a regular file (F6). Deletes
+#     are conditional and exact-path only (meta re-read unchanged
+#     immediately before; no recursive delete anywhere) (FBB-7).
+#   - the staging verdict is ledgered and the job record saved BEFORE
+#     any remote delete or quarantine move is issued (FDB-2); a
+#     harvested verdict is re-derivable from the ledger alone.
+#   - absence is not expiry (FDB-4): staging_expired is recorded only
+#     with a sweeper tombstone naming the pair; absence with the pair
+#     in quarantine resolves as the mismatch it was; any other absence
+#     is staging_missing with the checks performed recorded.
+#   - the run attempt is pinned on the job record at first processing
+#     (FDB-5); a changed attempt stops the harvest and re-derives the
+#     marker set from the new attempt's log.
+#   - meta pulls are size-capped (FDB-8); three-way size agreement
+#     (marker == meta == server listing) is required before any data
+#     pull. TTL never runs on meta content here: expiry is the
+#     sweeper's first-seen registry on mini-server (F3/FBB-4). The
+#     gatekeeper's clock-skew cross-check compares the meta's
+#     pushed_at against the job's own run window (a push cannot
+#     postdate the job that printed its marker): disagreement over
+#     STAGING_SKEW_S ledgers staging_clock_skew.
+
+STAGING_SFTP_HOST = os.environ.get(
+    "SYNCYARD_STAGING_HOST", "mini-server.tailbfa48d.ts.net")
+STAGING_SFTP_USER = "staging"
+STAGING_KEY = os.environ.get(
+    "SYNCYARD_STAGING_KEY",
+    os.path.join(os.path.expanduser("~"), ".ssh", "syncyard-staging-gk"))
+STAGING_KNOWN_HOSTS = os.environ.get(
+    "SYNCYARD_STAGING_KNOWN_HOSTS",
+    os.path.join(os.path.expanduser("~"), ".ssh", "known_hosts_staging"))
+# The gatekeeper reaches the tailnet through the runtime tunnel proxy;
+# SYNCYARD_STAGING_PROXY=none disables the ProxyCommand (direct route).
+STAGING_PROXY = os.environ.get(
+    "SYNCYARD_STAGING_PROXY",
+    os.path.join(os.path.expanduser("~"), "workspace", "tools",
+                 "ts-connect.py"))
+STAGING_HARVEST_DIR = os.path.join(BASE, "staging-harvest")
+STAGING_META_MAX_BYTES = 65536
+STAGING_FILE_CAP_BYTES = 4000000000
+STAGING_SKEW_S = 600
+STAGING_MIN_FREE_BYTES = 536870912
+
+_STAGED_FILE_RE = re.compile(
+    r"^STAGED_FILE job=(\S+) name=(\S+) bytes=(\S+) sha256=(\S+)\s*$")
+_STAGED_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_STAGED_SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+_SFTP_LS_RE = re.compile(
+    r"^([\-dl][rwxstST\-]{9})\s+\S+\s+\S+\s+\S+\s+(\d+)\s+"
+    r"\S+\s+\S+\s+\S+\s+(.+)$")
+
+
+def _staging_sftp_argv():
+    argv = ["sftp", "-b", "-",
+            "-oBatchMode=yes",
+            "-oStrictHostKeyChecking=yes",
+            "-oUserKnownHostsFile=" + STAGING_KNOWN_HOSTS,
+            "-oConnectTimeout=25",
+            "-oServerAliveInterval=15",
+            "-oServerAliveCountMax=4",
+            "-i", STAGING_KEY]
+    if STAGING_PROXY and STAGING_PROXY != "none":
+        argv.append("-oProxyCommand=%s %%h %%p" % STAGING_PROXY)
+    argv.append("%s@%s" % (STAGING_SFTP_USER, STAGING_SFTP_HOST))
+    return argv
+
+
+def _sftp_run(commands, timeout=180):
+    """One batch sftp session against the staging store. A command
+    prefixed with '-' makes sftp log its failure and continue; an
+    unprefixed failure aborts the batch with a non-zero exit.
+    Returns (rc, stdout, stderr); rc 124 on timeout, 127 on spawn
+    failure (the run_cmd discipline)."""
+    try:
+        p = subprocess.run(_staging_sftp_argv(),
+                           input="\n".join(commands) + "\n",
+                           capture_output=True, text=True,
+                           timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except subprocess.TimeoutExpired:
+        return 124, "", "timeout"
+    except OSError as e:
+        return 127, "", str(e)
+
+
+def _sftp_list(path):
+    """List one remote directory. Returns (state, entries) where
+    state is 'ok', 'absent' (the server said no such file), or
+    'error' (transport or protocol failure), and entries maps
+    basename -> (kind, size) with kind 'file', 'dir', 'link' or
+    'other'. The listing doubles as the harvester's lstat."""
+    rc, out, err = _sftp_run(["ls -l " + path], timeout=90)
+    if rc != 0:
+        if "no such file" in (err or "").lower():
+            return "absent", {}
+        return "error", {}
+    entries = {}
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or line.startswith("sftp>"):
+            continue
+        m = _SFTP_LS_RE.match(line)
+        if not m:
+            continue
+        perms, size, name = m.group(1), int(m.group(2)), m.group(3)
+        if " -> " in name:
+            name = name.split(" -> ")[0]
+        name = name.rstrip("/").split("/")[-1]
+        kind = {"-": "file", "d": "dir", "l": "link"}.get(perms[0],
+                                                          "other")
+        entries[name] = (kind, size)
+    return "ok", entries
+
+
+def _sftp_get(remote, local, timeout=180):
+    rc, _out, _err = _sftp_run(["get %s %s" % (remote, local)],
+                               timeout=timeout)
+    return rc
+
+
+def _sftp_put(local, remote):
+    rc, _out, _err = _sftp_run(["put %s %s" % (local, remote)],
+                               timeout=90)
+    return rc
+
+
+def _staging_remote(job, host):
+    """Remote paths for one job, gatekeeper view (the gatekeeper
+    account's chroot is the store root)."""
+    store = "/hosts/%s/store" % host
+    return {
+        "dir": "%s/%s" % (store, job["id"]),
+        "quarantine_dir": "%s/quarantine/%s" % (store, job["id"]),
+        "quarantine_parent": "%s/quarantine" % store,
+        "tombstones": "%s/.tombstones" % store,
+    }
+
+
+def _staging_ledger_has(event, job_id, filename):
+    """True when the ledger already carries this event for this
+    (job, filename) — the FDB-2 recovery source when a record save
+    failed in a write wave."""
+    try:
+        with open(LEDGER, encoding="utf-8") as f:
+            for raw in f:
+                if event not in raw or job_id not in raw:
+                    continue
+                try:
+                    ev = json.loads(raw)
+                except ValueError:
+                    continue
+                if (ev.get("event") == event
+                        and ev.get("job_id") == job_id
+                        and ev.get("filename") == filename):
+                    return True
+    except OSError:
+        pass
+    return False
+
+
+def staging_init(job, force=False):
+    """Initialize durable pending-staging entries from the job's
+    harvested STAGED_FILE markers (FBB-1). Pure record mutation
+    (plus ledger lines for refused markers and conflicting
+    duplicates); the caller saves. Returns True when the record
+    changed."""
+    markers = job.get("markers") or []
+    lines = [m for m in markers
+             if m.strip().startswith("STAGED_FILE")]
+    if not lines:
+        return False
+    if (not force and job.get("staging")
+            and job.get("staging_run_id") == job.get("run_id")):
+        return False
+    entries = {}
+    order = []
+    for line in lines:
+        m = _STAGED_FILE_RE.match(line.strip())
+        if not m:
+            ledger("staging_refused", job_id=job["id"], key=job["key"],
+                   run_id=job.get("run_id"), filename=None,
+                   reason="marker_malformed", marker=line.strip()[:160])
+            continue
+        mjob, name, sbytes, sha = m.groups()
+        problem = None
+        nbytes = None
+        if mjob != job["id"]:
+            problem = "marker_job_mismatch"
+        elif not _STAGED_NAME_RE.match(name):
+            problem = "filename_grammar"
+        elif not _STAGED_SHA_RE.match(sha):
+            problem = "sha256_grammar"
+        else:
+            try:
+                nbytes = int(sbytes)
+            except ValueError:
+                problem = "bytes_grammar"
+            else:
+                if not 0 < nbytes <= STAGING_FILE_CAP_BYTES:
+                    problem = "bytes_out_of_range"
+        if problem:
+            ledger("staging_refused", job_id=job["id"], key=job["key"],
+                   run_id=job.get("run_id"), filename=name,
+                   reason=problem)
+            continue
+        if name in entries:
+            prev = entries[name]
+            if (prev["bytes"] != nbytes or prev["sha256"] != sha) \
+                    and prev["status"] == "pending":
+                prev["status"] = "hash_mismatch"
+                prev["detail"] = "conflicting_duplicate_markers"
+                prev["updated_at"] = now_iso()
+                ledger("staging_hash_mismatch", job_id=job["id"],
+                       key=job["key"], run_id=job.get("run_id"),
+                       filename=name,
+                       recorded_sha256=prev["sha256"],
+                       other_sha256=sha, pulled_sha256=None,
+                       meta_sha256=None,
+                       detail="conflicting_duplicate_markers")
+            continue
+        entries[name] = {
+            "name": name, "bytes": nbytes, "sha256": sha,
+            "run_id": job.get("run_id"),
+            "host": LANE_HOST.get(job.get("lane")),
+            "status": "pending", "attempts": 0, "detail": None,
+            "created_at": now_iso(), "updated_at": now_iso(),
+        }
+        order.append(name)
+    job["staging"] = [entries[n] for n in order]
+    job["staging_run_id"] = job.get("run_id")
+    return True
+
+
+def _staging_defer(job, entry, reason):
+    """Transport-class failure: the entry stays pending and a later
+    pass retries (FBB-1/FBB-8). Never a verdict about the bytes."""
+    entry["attempts"] = int(entry.get("attempts") or 0) + 1
+    entry["detail"] = "deferred:" + reason
+    entry["updated_at"] = now_iso()
+    ledger("staging_deferred", job_id=job["id"], key=job["key"],
+           run_id=job.get("run_id"), filename=entry["name"],
+           reason=reason, attempts=entry["attempts"])
+
+
+def _staging_save_or_stop(job):
+    """Ledger-before-delete discipline (FDB-2): a remote delete or
+    quarantine move is issued only after the verdict state is
+    durably on record. A failed save stops the remote mutation;
+    the next pass re-derives from the ledger and the store."""
+    try:
+        save_job(job)
+        return True
+    except (IOError, OSError) as exc:
+        hlog("STAGING save failed pre-delete job=%s error=%s"
+             % (job["id"], exc))
+        return False
+
+
+def _staging_quarantine(job, entry, paths, with_meta):
+    """Move the staged pair into per-host quarantine (the evidence
+    is kept, never deleted). Best-effort meta move; the data move
+    is the verdict-bearing one."""
+    cmds = ["-mkdir " + paths["quarantine_parent"],
+            "-mkdir " + paths["quarantine_dir"],
+            "rename %s/%s %s/%s" % (paths["dir"], entry["name"],
+                                    paths["quarantine_dir"],
+                                    entry["name"])]
+    if with_meta:
+        cmds.append("-rename %s/%s.meta.json %s/%s.meta.json"
+                    % (paths["dir"], entry["name"],
+                       paths["quarantine_dir"], entry["name"]))
+    cmds.append("-rm %s/.claim-%s" % (paths["dir"], entry["name"]))
+    rc, _out, _err = _sftp_run(cmds, timeout=120)
+    if rc != 0:
+        ledger("staging_quarantine_failed", job_id=job["id"],
+               key=job["key"], run_id=job.get("run_id"),
+               filename=entry["name"], rc=rc)
+
+
+def _staging_conditional_delete(job, entry, paths, meta_bytes):
+    """Harvest-then-delete, conditional (FBB-7): the meta is
+    re-pulled and must be byte-identical to the meta the harvest
+    verified against; only the two exact verified paths are
+    removed, plus the claim, plus an rmdir of the job dir when it
+    has become empty. No recursive delete exists in this path."""
+    tmpd = tempfile.mkdtemp(prefix="gk-staging-recheck-")
+    try:
+        recheck = os.path.join(tmpd, "meta.json")
+        rc = _sftp_get(paths["dir"] + "/" + entry["name"]
+                       + ".meta.json", recheck, timeout=90)
+        if rc != 0:
+            ledger("staging_delete_skipped", job_id=job["id"],
+                   key=job["key"], run_id=job.get("run_id"),
+                   filename=entry["name"],
+                   reason="meta_recheck_failed")
+            _sftp_run(["-rm %s/.claim-%s"
+                       % (paths["dir"], entry["name"])], timeout=60)
+            return
+        with open(recheck, "rb") as f:
+            now_meta = f.read()
+        if now_meta != meta_bytes:
+            ledger("staging_delete_skipped", job_id=job["id"],
+                   key=job["key"], run_id=job.get("run_id"),
+                   filename=entry["name"], reason="meta_changed")
+            _sftp_run(["-rm %s/.claim-%s"
+                       % (paths["dir"], entry["name"])], timeout=60)
+            return
+    finally:
+        try:
+            os.unlink(os.path.join(tmpd, "meta.json"))
+        except OSError:
+            pass
+        try:
+            os.rmdir(tmpd)
+        except OSError:
+            pass
+    _sftp_run(["-rm %s/%s" % (paths["dir"], entry["name"]),
+               "-rm %s/%s.meta.json" % (paths["dir"], entry["name"]),
+               "-rm %s/.claim-%s" % (paths["dir"], entry["name"]),
+               "-rmdir %s" % paths["dir"]], timeout=90)
+    state, _entries = _sftp_list(paths["dir"])
+    if state == "ok":
+        ledger("staging_delete_unverified", job_id=job["id"],
+               key=job["key"], run_id=job.get("run_id"),
+               filename=entry["name"])
+    else:
+        ledger("staging_deleted", job_id=job["id"], key=job["key"],
+               run_id=job.get("run_id"), filename=entry["name"])
+
+
+def _staging_absence(job, entry, paths):
+    """The staged file is not where the marker says. Absence is
+    not expiry (FDB-4): resolve from the ledger (FDB-2 recovery),
+    the sweeper's tombstones, and quarantine, in that order; only
+    a tombstone earns staging_expired."""
+    if _staging_ledger_has("staging_harvested", job["id"],
+                            entry["name"]):
+        entry["status"] = "harvested"
+        entry["detail"] = "recovered_from_ledger"
+        entry["updated_at"] = now_iso()
+        return
+    state, tombs = _sftp_list(paths["tombstones"])
+    if state == "error":
+        _staging_defer(job, entry, "tombstone_list_failed")
+        return
+    if "%s--%s.tomb" % (job["id"], entry["name"]) in tombs:
+        entry["status"] = "expired"
+        entry["detail"] = "sweeper_tombstone"
+        entry["updated_at"] = now_iso()
+        ledger("staging_expired", job_id=job["id"], key=job["key"],
+               run_id=job.get("run_id"), filename=entry["name"],
+               host=entry.get("host"), bytes=entry["bytes"],
+               sha256=entry["sha256"])
+        return
+    qstate, qentries = _sftp_list(paths["quarantine_dir"])
+    if qstate == "error":
+        _staging_defer(job, entry, "quarantine_list_failed")
+        return
+    if qstate == "ok" and entry["name"] in qentries:
+        entry["status"] = "hash_mismatch"
+        entry["detail"] = "found_in_quarantine"
+        entry["updated_at"] = now_iso()
+        if not _staging_ledger_has("staging_hash_mismatch",
+                                   job["id"], entry["name"]):
+            ledger("staging_hash_mismatch", job_id=job["id"],
+                   key=job["key"], run_id=job.get("run_id"),
+                   filename=entry["name"],
+                   recorded_sha256=entry["sha256"],
+                   pulled_sha256=None, meta_sha256=None,
+                   detail="found_in_quarantine")
+        return
+    entry["status"] = "missing"
+    entry["detail"] = "absent_no_tombstone"
+    entry["updated_at"] = now_iso()
+    ledger("staging_missing", job_id=job["id"], key=job["key"],
+           run_id=job.get("run_id"), filename=entry["name"],
+           host=entry.get("host"), bytes=entry["bytes"],
+           checks="ledger,tombstones,quarantine")
+
+
+def _staging_read_meta(job, entry, paths, listing):
+    """Pull and parse the meta file (size-capped, FDB-8).
+    Returns (meta_dict, meta_raw_bytes) or (None, reason) where
+    reason is a defer or terminal classification string."""
+    name = entry["name"]
+    ment = listing.get(name + ".meta.json")
+    if ment is None:
+        return None, "terminal:meta_absent"
+    if ment[0] != "file":
+        return None, "terminal:meta_not_regular"
+    if ment[1] > STAGING_META_MAX_BYTES:
+        return None, "terminal:meta_oversize"
+    tmpd = tempfile.mkdtemp(prefix="gk-staging-meta-")
+    try:
+        local = os.path.join(tmpd, "meta.json")
+        rc = _sftp_get(paths["dir"] + "/" + name + ".meta.json",
+                       local, timeout=90)
+        if rc != 0:
+            return None, "defer:meta_pull_failed"
+        with open(local, "rb") as f:
+            raw = f.read()
+    finally:
+        try:
+            os.unlink(os.path.join(tmpd, "meta.json"))
+        except OSError:
+            pass
+        try:
+            os.rmdir(tmpd)
+        except OSError:
+            pass
+    try:
+        meta = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None, "terminal:meta_unparseable"
+    if not isinstance(meta, dict):
+        return None, "terminal:meta_unparseable"
+    return (meta, raw), None
+
+
+def _staging_mismatch(job, entry, paths, meta, detail,
+                      pulled_sha256=None):
+    """The records-mismatch path (F9/FBB-2): both hashes ledgered,
+    no delivery, staged pair quarantined as evidence. The verdict
+    is ledgered and saved BEFORE the quarantine move (FDB-2)."""
+    entry["status"] = "hash_mismatch"
+    entry["detail"] = detail
+    entry["updated_at"] = now_iso()
+    ledger("staging_hash_mismatch", job_id=job["id"], key=job["key"],
+           run_id=job.get("run_id"), filename=entry["name"],
+           host=entry.get("host"), bytes=entry["bytes"],
+           recorded_sha256=entry["sha256"],
+           pulled_sha256=pulled_sha256,
+           meta_sha256=(meta or {}).get("sha256"),
+           detail=detail)
+    if _staging_save_or_stop(job):
+        _staging_quarantine(job, entry, paths, with_meta=True)
+
+
+def _staging_process_entry(job, entry):
+    host = entry.get("host")
+    name = entry["name"]
+    if not host:
+        entry["status"] = "refused"
+        entry["detail"] = "no_host_for_lane"
+        entry["updated_at"] = now_iso()
+        ledger("staging_refused", job_id=job["id"], key=job["key"],
+               run_id=job.get("run_id"), filename=name,
+               reason="no_host_for_lane")
+        return
+    paths = _staging_remote(job, host)
+    rdir = paths["dir"]
+
+    # FDB-2 fast path: a prior pass delivered and ledgered this
+    # pair but its record save failed in a wave. The delete was
+    # never issued, so the staged copy still stands: re-verify the
+    # landed bytes locally and finish the conditional delete.
+    final_path = os.path.join(STAGING_HARVEST_DIR, job["id"], name)
+    if _staging_ledger_has("staging_harvested", job["id"], name) \
+            and os.path.isfile(final_path):
+        h = hashlib.sha256()
+        with open(final_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1048576), b""):
+                h.update(chunk)
+        if h.hexdigest() == entry["sha256"]:
+            state, listing = _sftp_list(rdir)
+            if state == "ok" and name in listing:
+                got = _staging_read_meta(job, entry, paths, listing)
+                if got[0] is not None:
+                    entry["status"] = "harvested"
+                    entry["detail"] = "recovered_from_ledger"
+                    entry["updated_at"] = now_iso()
+                    if _staging_save_or_stop(job):
+                        _staging_conditional_delete(
+                            job, entry, paths, got[0][1])
+                    return
+            entry["status"] = "harvested"
+            entry["detail"] = "recovered_from_ledger"
+            entry["updated_at"] = now_iso()
+            return
+
+    state, listing = _sftp_list(rdir)
+    if state == "error":
+        _staging_defer(job, entry, "job_dir_list_failed")
+        return
+    if state == "absent" or name not in listing:
+        _staging_absence(job, entry, paths)
+        return
+    kind, size = listing[name]
+    if kind != "file":
+        entry["status"] = "refused"
+        entry["detail"] = "not_a_regular_file:" + kind
+        entry["updated_at"] = now_iso()
+        ledger("staging_refused", job_id=job["id"], key=job["key"],
+               run_id=job.get("run_id"), filename=name,
+               reason="not_a_regular_file", remote_kind=kind)
+        return
+
+    got, why = _staging_read_meta(job, entry, paths, listing)
+    if got is None:
+        if why.startswith("defer:"):
+            _staging_defer(job, entry, why[6:])
+            return
+        reason = why[9:]
+        if reason == "meta_absent":
+            entry["status"] = "missing"
+            entry["detail"] = "incomplete_push_meta_absent"
+            entry["updated_at"] = now_iso()
+            ledger("staging_missing", job_id=job["id"],
+                   key=job["key"], run_id=job.get("run_id"),
+                   filename=name, host=host, bytes=entry["bytes"],
+                   checks="meta_absent")
+            return
+        entry["status"] = "refused"
+        entry["detail"] = reason
+        entry["updated_at"] = now_iso()
+        ledger("staging_refused", job_id=job["id"], key=job["key"],
+               run_id=job.get("run_id"), filename=name,
+               reason=reason)
+        return
+    meta, meta_raw = got
+
+    # Clock-skew cross-check (F3): the meta's own pushed_at against
+    # the job's run window. Advisory only; TTL is the sweeper's
+    # registry clock on mini-server and never reads this.
+    pushed = meta.get("pushed_at_epoch")
+    if isinstance(pushed, (int, float)) \
+            and not entry.get("skew_ledgered"):
+        start = parse_iso(job.get("run_created_at") or "")
+        end = parse_iso(job.get("log_fetched_at") or "")
+        skew = None
+        if start is not None and pushed < start.timestamp() \
+                - STAGING_SKEW_S:
+            skew = "meta predates run window"
+        elif end is not None and pushed > end.timestamp() \
+                + STAGING_SKEW_S:
+            skew = "meta postdates run window"
+        if skew:
+            entry["skew_ledgered"] = True
+            ledger("staging_clock_skew", job_id=job["id"],
+                   key=job["key"], run_id=job.get("run_id"),
+                   filename=name, pushed_at_epoch=pushed,
+                   detail=skew)
+
+    # Three-way agreement before any data pull (FDB-8), and the
+    # marker governs over the meta on every field (F9/FBB-2). On a
+    # records disagreement the meta is re-read once (D6 stability)
+    # before the mismatch verdict.
+    def _records_agree(meta, size):
+        return (meta.get("job_id") == job["id"]
+                and meta.get("filename") == name
+                and meta.get("bytes") == entry["bytes"]
+                and meta.get("sha256") == entry["sha256"]
+                and size == entry["bytes"])
+
+    if not _records_agree(meta, size):
+        got2, _why2 = _staging_read_meta(job, entry, paths, listing)
+        if got2 is not None:
+            meta, meta_raw = got2
+        if not _records_agree(meta, size):
+            _staging_mismatch(job, entry, paths, meta,
+                              "records_disagree")
+            return
+
+    # Free-space gate on this VM before the pull (D10/FDB-6).
+    try:
+        st = os.statvfs(BASE)
+        free = st.f_bavail * st.f_frsize
+    except OSError:
+        free = 0
+    if free < entry["bytes"] + STAGING_MIN_FREE_BYTES:
+        _staging_defer(job, entry, "vm_disk_low")
+        return
+
+    # Claim the pair so the sweeper leaves it alone mid-pull (F4).
+    incoming = os.path.join(STAGING_HARVEST_DIR,
+                            ".incoming-" + job["id"])
+    os.makedirs(incoming, exist_ok=True)
+    claim_local = os.path.join(incoming, ".claim-" + name)
+    with open(claim_local, "w", encoding="utf-8") as f:
+        f.write("%s %s %s\n" % (job["id"], name, now_iso()))
+    if _sftp_put(claim_local, rdir + "/.claim-" + name) != 0:
+        _staging_defer(job, entry, "claim_failed")
+        return
+
+    scratch = os.path.join(incoming, name)
+    timeout = min(3600, 180 + entry["bytes"] // 200000)
+    rc = _sftp_get(rdir + "/" + name, scratch, timeout=timeout)
+    if rc != 0:
+        _sftp_run(["-rm %s/.claim-%s" % (rdir, name)], timeout=60)
+        _staging_defer(job, entry, "data_pull_failed")
+        return
+    pulled_size = os.path.getsize(scratch)
+    if pulled_size != entry["bytes"]:
+        # FBB-8 step 2: a short or long pull is a pull failure,
+        # never a mismatch verdict against the staged bytes.
+        try:
+            os.unlink(scratch)
+        except OSError:
+            pass
+        _sftp_run(["-rm %s/.claim-%s" % (rdir, name)], timeout=60)
+        _staging_defer(job, entry, "pull_size_mismatch")
+        return
+    h = hashlib.sha256()
+    with open(scratch, "rb") as f:
+        for chunk in iter(lambda: f.read(1048576), b""):
+            h.update(chunk)
+    pulled_sha = h.hexdigest()
+
+    if pulled_sha != entry["sha256"]:
+        # D6: re-read the meta before quarantining. If the staged
+        # pair was replaced mid-harvest by a newer push under the
+        # same key, the pulled bytes matching the CURRENT meta
+        # means requeue against the newer state, not quarantine.
+        got3, _why3 = _staging_read_meta(job, entry, paths, listing)
+        if got3 is not None:
+            meta3 = got3[0]
+            if meta3.get("sha256") == pulled_sha \
+                    and meta3.get("bytes") == pulled_size \
+                    and meta3.get("sha256") != entry["sha256"]:
+                try:
+                    os.unlink(scratch)
+                except OSError:
+                    pass
+                _sftp_run(["-rm %s/.claim-%s" % (rdir, name)],
+                          timeout=60)
+                entry["attempts"] = int(entry.get("attempts")
+                                        or 0) + 1
+                entry["detail"] = "duplicate_push_race_requeue"
+                entry["updated_at"] = now_iso()
+                ledger("staging_requeued", job_id=job["id"],
+                       key=job["key"], run_id=job.get("run_id"),
+                       filename=name, pulled_sha256=pulled_sha,
+                       meta_sha256=meta3.get("sha256"))
+                return
+            meta = meta3
+        try:
+            os.unlink(scratch)
+        except OSError:
+            pass
+        _staging_mismatch(job, entry, paths, meta,
+                          "pulled_hash_mismatch",
+                          pulled_sha256=pulled_sha)
+        return
+
+    # Verified. Deliver locally, ledger, save, THEN delete (FDB-2).
+    final_dir = os.path.join(STAGING_HARVEST_DIR, job["id"])
+    os.makedirs(final_dir, exist_ok=True)
+    os.replace(scratch, os.path.join(final_dir, name))
+    entry["status"] = "harvested"
+    entry["detail"] = None
+    entry["harvested_at"] = now_iso()
+    entry["updated_at"] = now_iso()
+    entry["harvest_path"] = os.path.join(final_dir, name)
+    ledger("staging_harvested", job_id=job["id"], key=job["key"],
+           run_id=job.get("run_id"), filename=name, host=host,
+           bytes=entry["bytes"], sha256=entry["sha256"])
+    if _staging_save_or_stop(job):
+        _staging_conditional_delete(job, entry, paths, meta_raw)
+
+
+def _staging_run_attempt(job):
+    rc, out, _err = run_cmd(
+        ["gh", "api", "repos/%s/actions/runs/%s"
+         % (REPO, job["run_id"]), "--jq", ".run_attempt"],
+        timeout=60)
+    if rc != 0:
+        return None
+    try:
+        return int(out.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+def staging_pass(jobs, only_job_id=None, limit=1):
+    """Process completed jobs with pending staging entries, ONE
+    job per pass inside the sweep (FBB-1/FDB-6); the staging-run
+    verb raises the limit for operator-paced work. Returns the
+    number of jobs processed. Every verdict is read from records
+    and listings, never from a wrapper's completion state."""
+    processed = 0
+    for job in sorted(jobs, key=lambda j: j["id"]):
+        if processed >= limit:
+            break
+        if only_job_id and job["id"] != only_job_id:
+            continue
+        if job.get("state") != "completed":
+            continue
+        pending = [e for e in job.get("staging") or []
+                   if e.get("status") == "pending"]
+        if not pending:
+            continue
+        # FDB-5: pin the run attempt; a change re-derives the
+        # marker set from the new attempt's log before any pull.
+        attempt = _staging_run_attempt(job)
+        if attempt is not None:
+            if job.get("run_attempt") is None:
+                job["run_attempt"] = attempt
+                save_job_safe(job, "staging_attempt_pin")
+            elif job["run_attempt"] != attempt:
+                ledger("staging_attempt_changed", job_id=job["id"],
+                       key=job["key"], run_id=job.get("run_id"),
+                       from_attempt=job["run_attempt"],
+                       to_attempt=attempt)
+                job["run_attempt"] = attempt
+                job["log_fetched_at"] = None
+                fetch_log_once(job)
+                staging_init(job, force=True)
+                save_job_safe(job, "staging_attempt_rederive")
+                processed += 1
+                continue
+        for entry in pending:
+            try:
+                _staging_process_entry(job, entry)
+            except Exception as exc:  # one bad entry never wedges
+                hlog("STAGING entry error job=%s file=%s error=%s"
+                     % (job["id"], entry.get("name"), exc))
+                _staging_defer(job, entry,
+                               "internal_error:" + type(exc).__name__)
+            save_job_safe(job, "staging_pass")
+        processed += 1
+    return processed
+
+
+def cmd_staging_run(args):
+    """Operator-paced staging harvest: the same staging_pass the
+    sweep runs (one job per pass there), driven by hand for the
+    acceptance proof and for incident recovery."""
+    jobs = load_jobs()
+    limit = 1000000 if args.all else 1
+    n = staging_pass(jobs, only_job_id=args.job, limit=limit)
+    print("STAGING_RUN processed=%d" % n)
+    return 0
+
+
 def exec_thresholds(job):
     exp = job.get("expected_min")
     lane = job["lane"]
@@ -2647,6 +3422,11 @@ def watch_pass(jobs, runs_by_id):
                 # harvested log becomes the host's capability
                 # snapshot (its flags persist with this save).
                 _maybe_ingest_probe(job)
+                # Staging store (FBB-1): completing a job only
+                # INITIALIZES its pending-staging entries from the
+                # harvested markers; the sweep's staging pass (and
+                # the staging-run verb) do the pulling.
+                staging_init(job)
                 save_job_safe(job, "completed")
         else:
             breaches += eval_watermarks(job, run)
@@ -2762,6 +3542,18 @@ def cmd_sweep(_args):
         if not lerr:
             changes, breaches = watch_pass(jobs, runs_by_id)
             maybe_settle_drain()
+            # Staging store (FBB-1): one pending-staging job per
+            # sweep pass. A staging failure must never break the
+            # fleet's only watcher, so the pass is fully contained.
+            try:
+                _staged = staging_pass(load_jobs())
+                if _staged:
+                    hlog("STAGING pass: processed %d job(s)"
+                         % _staged)
+            except Exception as _exc:
+                ledger("staging_pass_error",
+                       error=str(_exc)[:200])
+                hlog("STAGING pass error: %s" % _exc)
         active = len([j for j in load_jobs()
                       if j["state"] in RUN_HOLDING_STATES
                       and j.get("run_status") != "completed"])
@@ -5226,6 +6018,16 @@ def main(argv=None):
                    help="advance the outbox cursor to the current "
                         "ledger end (after the pushes are delivered)")
     p.set_defaults(fn=cmd_outbox)
+
+    p = sub.add_parser("staging-run")
+    p.add_argument("--job", default=None,
+                   help="only this job id (default: the oldest "
+                        "completed job with pending staging)")
+    p.add_argument("--all", action="store_true",
+                   help="process every completed job with pending "
+                        "staging, not just one (the sweep's own "
+                        "cadence stays one job per pass)")
+    p.set_defaults(fn=cmd_staging_run)
 
     p = sub.add_parser("adopt")
     p.add_argument("--run-id", required=True)
