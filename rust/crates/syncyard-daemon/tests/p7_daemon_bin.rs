@@ -56,7 +56,7 @@ fn daemon_binary_boots_serves_and_shuts_down() {
     let root = scratch("boot");
     let home_dir = root.join("home");
     let offvm = root.join("offvm");
-    let mut child = Command::new(bin)
+    let child = Command::new(bin)
         .args([
             "serve",
             "--home",
@@ -104,7 +104,7 @@ fn daemon_binary_second_instance_refused_by_lock() {
     let root = scratch("lock");
     let home_dir = root.join("home");
     let offvm = root.join("offvm");
-    let mut child = Command::new(bin)
+    let child = Command::new(bin)
         .args([
             "serve",
             "--home",
