@@ -3475,7 +3475,8 @@ def cmd_host_resume(args):
 
 PROBE_KEY_PREFIX = "gk-probe-"
 
-PROBE_SCRIPT_WINDOWS = r"""Write-Output "SYNCYARD_PROBE 1 platform=windows"
+PROBE_SCRIPT_WINDOWS = r"""#Requires -Version 7.0
+Write-Output "SYNCYARD_PROBE 1 platform=windows"
 Write-Output "## hostname"
 hostname
 Write-Output "## cpu"
