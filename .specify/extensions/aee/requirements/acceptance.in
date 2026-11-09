@@ -1,0 +1,3 @@
+# Acceptance tests install Spec Kit alone: AEE must provision the engine,
+# jsonschema, and the evaluator extension itself.
+specify-cli==1.2.0

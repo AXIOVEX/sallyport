@@ -1,0 +1,102 @@
+name: Acceptance
+
+# Sandbox acceptance on every target: a fresh runner with Spec Kit alone.
+# specify installs AEE from a GitHub archive, and the first AEE operation,
+# run on a package-free Python, must install the engine, jsonschema, and
+# the evaluator extension by itself. Called by the Test workflow with this
+# commit's archive; run on every published release against the exact
+# public tag archive; or dispatched with any archive URL.
+on:
+  workflow_call:
+    inputs:
+      archive_url:
+        description: GitHub archive URL of the AEE extension to install
+        required: true
+        type: string
+      expected_version:
+        description: AEE version specify must report (empty to skip)
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      archive_url:
+        description: GitHub archive URL of the AEE extension to install (e.g. https://github.com/electrohire/spec-kit-aee/archive/refs/tags/v1.5.0.zip)
+        required: true
+        type: string
+      expected_version:
+        description: AEE version specify must report (empty to skip)
+        required: false
+        type: string
+        default: ''
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    strategy:
+      fail-fast: false
+      # Same targets as applied-epistemic-engineering and spec-kit-evaluator.
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.11', '3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install Spec Kit alone into a clean environment
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/specify-env"
+          bin="$RUNNER_TEMP/specify-env/bin"
+          [ -d "$bin" ] || bin="$RUNNER_TEMP/specify-env/Scripts"
+          "$bin/python" -m pip install --require-hashes -r requirements/acceptance.txt
+          echo "$bin" >> "$GITHUB_PATH"
+      - name: Confirm no AEE dependency is preinstalled
+        shell: bash
+        run: |
+          python -c "import sys, importlib.util as u; print(sys.executable); sys.exit(u.find_spec('aee') is not None)"
+          if command -v aee; then echo "aee must not be on PATH"; exit 1; fi
+          specify --version
+      - name: Install AEE with specify from its GitHub archive; dependencies install automatically
+        shell: bash
+        env:
+          INPUT_ARCHIVE_URL: ${{ inputs.archive_url }}
+          INPUT_EXPECTED_VERSION: ${{ inputs.expected_version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          url="$INPUT_ARCHIVE_URL"
+          expected="$INPUT_EXPECTED_VERSION"
+          if [ -n "$RELEASE_TAG" ]; then
+            url="https://github.com/$REPOSITORY/archive/refs/tags/$RELEASE_TAG.zip"
+            expected="${RELEASE_TAG#v}"
+          fi
+          case "$url" in
+            https://github.com/*/archive/*.zip) ;;
+            *) echo "refusing archive URL: '$url'"; exit 1 ;;
+          esac
+          args=(--from-url "$url" --clean-interpreter)
+          [ -z "$expected" ] || args+=(--expect-aee-version "$expected")
+          echo "Installing AEE from $url ${expected:+(expecting $expected)}"
+          python scripts/check_install.py "${args[@]}"
+
+  # Fail closed: succeeds only when every sandbox target passed.
+  gate:
+    if: always()
+    needs: sandbox
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every sandbox target to pass
+        env:
+          SANDBOX_RESULT: ${{ needs.sandbox.result }}
+        run: test "$SANDBOX_RESULT" = success

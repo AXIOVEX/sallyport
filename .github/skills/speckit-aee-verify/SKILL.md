@@ -1,0 +1,1 @@
+../../../.specify/extensions/aee/.specify-dev/extension-skills/speckit-aee-verify/SKILL.md

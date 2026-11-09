@@ -1,0 +1,61 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      # Same targets as applied-epistemic-engineering and
+      # spec-kit-evaluator; every step below runs on every target.
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.11', '3.12', '3.13']
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements/dev.txt
+      - run: python -m pip install --require-hashes -r requirements/dev.txt
+      - run: ruff check scripts tests
+      - run: pytest -q
+      - run: python scripts/python/run_aee.py --help
+      # The v1.1.2 tag commit, matching run_aee.py EVALUATOR_ARCHIVE_URL.
+      - name: Check out pinned Evaluator dependency
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: electrohire/spec-kit-evaluator
+          ref: 40413aef4951f4eea947ed2e2291a7b123a6bac3 # v1.1.2
+          path: artifacts/evaluator
+          persist-credentials: false
+      - run: python scripts/check_install.py --evaluator-dir artifacts/evaluator
+
+  # Sandbox acceptance (Spec Kit alone, AEE installed by specify from this
+  # commit's immutable GitHub archive, dependencies installed by AEE).
+  acceptance:
+    uses: ./.github/workflows/acceptance.yml
+    with:
+      archive_url: https://github.com/${{ github.repository }}/archive/${{ github.event.pull_request.head.sha || github.sha }}.zip
+
+  # Preserve the existing protected-branch check name while expanding coverage.
+  validate:
+    if: always()
+    needs: [test, acceptance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every matrix job to pass
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          ACCEPTANCE_RESULT: ${{ needs.acceptance.result }}
+        run: test "$TEST_RESULT" = success && test "$ACCEPTANCE_RESULT" = success

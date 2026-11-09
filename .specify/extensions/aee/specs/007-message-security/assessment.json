@@ -1,0 +1,884 @@
+{
+  "schema_version": "1.0",
+  "methodology_version": "2.1",
+  "project": "leg3-speckit",
+  "phase": "after_specify",
+  "outcome": "iterate",
+  "summary": "Assessed 5 claim(s); found 16 failure mode(s); 2 claim(s) below the 0.70 confidence threshold. Shared evidence: 1 supporting source(s) shared across 5 of 5 claim(s); the same evidence set supports multiple claims (FR-2.8, reporting only, no outcome effect in this phase). Draft cap: 5 draft claim(s) capped at gather_evidence/iterate (FR-2.3). Stage cap: 5 claim(s) below stage 'explained'; the outcome cannot be 'pass' (Spec 004 R1.4). Not understood: 7 residual unknown(s) are recorded on this assessment (Spec 004 R5.2). Lane 1 (machine verification): outcome iterate; 3 claim(s) at or above the 0.70 threshold, 2 below. Lane 2 (human acceptance): stages by effective stage: created 5. Lane-2 lag: 5 claim(s) below explained.",
+  "created_at": "2026-10-29T12:24:15.022316Z",
+  "claims": [
+    {
+      "id": "MS-007-01",
+      "text": "The extension ships an authority-surface spec section, with guidance on completing it, that a project fills in per spec - principals and their channels, authorized actions, authorized destinations, and standing prohibitions; an action, destination, or channel not listed is not authorized, and the assess command treats a missing or uncompleted section as a gap for a system that acts on read content.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "templates/message-security-authority-surface.md; commands/speckit.aee.assess.md authority-surface check; commands/speckit.aee.message-security.md"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/007-message-security/spec.md#ms-01--authority-surface-section-for-specs",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 007 MS-01, which this claim commits to test.",
+          "source_id": "spec-007-message-security",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "templates/message-security-authority-surface.md; commands/speckit.aee.assess.md",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "The shipped template carries the five required parts (principals and channels, authorized actions, authorized destinations, standing prohibitions, challenge records) and states that an unlisted action or destination is not authorized and a blank row is a refusal; the assess command treats a missing or placeholder section as a gap to report.",
+          "source_id": "ms01-inspection-2026-10-29",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Open the shipped authority-surface template and observe any of the five required parts missing, or read the assess command and observe no instruction to treat a missing or uncompleted authority surface as a gap."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8080625000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-MS-007-01-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "MS-007-01",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-01-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "MS-007-01",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "MS-007-01 may contradict MS-007-04",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-01-INDEPENDENCE-UNMODELED",
+          "claim_id": "MS-007-01",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-007-message-security' (ref(s): specs/007-message-security/spec.md#ms-01--authority-surface-section-for-specs, specs/007-message-security/spec.md#ms-02--the-planted-injection-battery-as-an-assessment-gate, specs/007-message-security/spec.md#ms-03--challenge-record-format, specs/007-message-security/spec.md#ms-04--command-surface, specs/007-message-security/spec.md#ms-05--tests) is shared with claim(s) MS-007-02, MS-007-03, MS-007-04, MS-007-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-01-DRAFT-CAP",
+          "claim_id": "MS-007-01",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "MS-007-02",
+      "text": "The planted-injection battery runs as an assessment gate over the vendored deterministic screener: exit 0 when the bars are met, 1 when a bar is not met, 2 on error as a clean refusal; the bars are an epistemic-layer challenge rate of at least 95% on injections and zero challenged legitimate controls, with notes reported and never gated.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "assets/message-security/battery_corpus.json; scripts/python/message_security_screen.py; scripts/python/message_security_battery.py"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/007-message-security/spec.md#ms-02--the-planted-injection-battery-as-an-assessment-gate",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 007 MS-02, which this claim commits to test.",
+          "source_id": "spec-007-message-security",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "assets/message-security/battery_corpus.json; scripts/python/message_security_battery.py gate report",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Running the vendored screener over the vendored corpus reproduces the design study's recorded results exactly: the epistemic layer challenges 55 of 56 injection fixtures, challenges 0 of 50 legitimate controls, and notes 29 of 50 controls; the single miss is the known self-framing residual fixture.",
+          "source_id": "ms02-battery-run-2026-10-29",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run the battery gate on the vendored corpus and observe the epistemic layer challenge fewer than 95% of injections or any legitimate control, or run it on a corpus built to miss a bar and observe an exit code other than 1."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8080625000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-MS-007-02-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "MS-007-02",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-02-INDEPENDENCE-UNMODELED",
+          "claim_id": "MS-007-02",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-007-message-security' (ref(s): specs/007-message-security/spec.md#ms-01--authority-surface-section-for-specs, specs/007-message-security/spec.md#ms-02--the-planted-injection-battery-as-an-assessment-gate, specs/007-message-security/spec.md#ms-03--challenge-record-format, specs/007-message-security/spec.md#ms-04--command-surface, specs/007-message-security/spec.md#ms-05--tests) is shared with claim(s) MS-007-01, MS-007-03, MS-007-04, MS-007-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-02-DRAFT-CAP",
+          "claim_id": "MS-007-02",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "MS-007-03",
+      "text": "The challenge record format is defined by a JSON Schema and a worked example: span hash, source class and source id, the claim as extracted, the check that fired, the verdict (note or challenge), the action taken, and a timestamp; records are append-only, one JSON object per line, with stable field order and a content hash on every record.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "templates/message-security-challenge-record.schema.json; templates/message-security-challenge-record.json; scripts/python/message_security_battery.py --records-output"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/007-message-security/spec.md#ms-03--challenge-record-format",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 007 MS-03, which this claim commits to test.",
+          "source_id": "spec-007-message-security",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "templates/message-security-challenge-record.json; tests/test_message_security.py",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "The example record validates against the shipped JSON Schema, and every record the battery runner builds for a noted or challenged fixture validates too, with the span hash recomputed from the fixture text matching the record.",
+          "source_id": "ms03-inspection-2026-10-29",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Validate the example challenge record, or a record built by the battery runner, against the shipped schema and observe a validation failure, or recompute a record's span hash from its span text and observe a mismatch."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8080625000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-MS-007-03-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "MS-007-03",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-03-INDEPENDENCE-UNMODELED",
+          "claim_id": "MS-007-03",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-007-message-security' (ref(s): specs/007-message-security/spec.md#ms-01--authority-surface-section-for-specs, specs/007-message-security/spec.md#ms-02--the-planted-injection-battery-as-an-assessment-gate, specs/007-message-security/spec.md#ms-03--challenge-record-format, specs/007-message-security/spec.md#ms-04--command-surface, specs/007-message-security/spec.md#ms-05--tests) is shared with claim(s) MS-007-01, MS-007-02, MS-007-04, MS-007-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-03-DRAFT-CAP",
+          "claim_id": "MS-007-03",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "MS-007-04",
+      "text": "The extension declares an eleventh command, speckit.aee.message-security, in extension.yml with its command file and rendered skill copy; the command checks the active spec's authority surface, runs the battery gate, and reports missed fixture ids and any challenged controls by name.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "commands/speckit.aee.message-security.md; extension.yml provides.commands; .github/skills/speckit-aee-message-security/SKILL.md"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/007-message-security/spec.md#ms-04--command-surface",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 007 MS-04, which this claim commits to test.",
+          "source_id": "spec-007-message-security",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Read extension.yml and observe speckit.aee.message-security missing from provides.commands, or observe its declared command file absent from commands/."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.33062500000000006,
+      "confidence_band": "low",
+      "failures": [
+        {
+          "id": "AEE-MS-007-04-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "MS-007-04",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-04-INDEPENDENCE-UNMODELED",
+          "claim_id": "MS-007-04",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-007-message-security' (ref(s): specs/007-message-security/spec.md#ms-01--authority-surface-section-for-specs, specs/007-message-security/spec.md#ms-02--the-planted-injection-battery-as-an-assessment-gate, specs/007-message-security/spec.md#ms-03--challenge-record-format, specs/007-message-security/spec.md#ms-04--command-surface, specs/007-message-security/spec.md#ms-05--tests) is shared with claim(s) MS-007-01, MS-007-02, MS-007-03, MS-007-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-04-DRAFT-CAP",
+          "claim_id": "MS-007-04",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "MS-007-05",
+      "text": "Tests cover the new pieces in the suite's existing style: schema validation of the sample challenge record and of runner-built records, authority-surface template presence and shape, a battery-runner smoke test on a fixture subset, the full vendored battery meeting its bars with the recorded counts, and the gate failing on a corpus built to miss a bar.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "tests/test_message_security.py"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/007-message-security/spec.md#ms-05--tests",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 007 MS-05, which this claim commits to test.",
+          "source_id": "spec-007-message-security",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run tests/test_message_security.py and observe a failure, or read it and observe any of the named coverage areas missing."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.33062500000000006,
+      "confidence_band": "low",
+      "failures": [
+        {
+          "id": "AEE-MS-007-05-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "MS-007-05",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-05-INDEPENDENCE-UNMODELED",
+          "claim_id": "MS-007-05",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-007-message-security' (ref(s): specs/007-message-security/spec.md#ms-01--authority-surface-section-for-specs, specs/007-message-security/spec.md#ms-02--the-planted-injection-battery-as-an-assessment-gate, specs/007-message-security/spec.md#ms-03--challenge-record-format, specs/007-message-security/spec.md#ms-04--command-surface, specs/007-message-security/spec.md#ms-05--tests) is shared with claim(s) MS-007-01, MS-007-02, MS-007-03, MS-007-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-MS-007-05-DRAFT-CAP",
+          "claim_id": "MS-007-05",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    }
+  ],
+  "scores": {
+    "MS-007-01": {
+      "claim_id": "MS-007-01",
+      "direct_score": 0.8080625000000001,
+      "propagated_score": 0.8080625000000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.9237500000000001,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'templates/message-security-authority-surface.md; commands/speckit.aee.assess.md authority-surface check; commands/speckit.aee.message-security.md' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 2 unknown of 2 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    },
+    "MS-007-02": {
+      "claim_id": "MS-007-02",
+      "direct_score": 0.8080625000000001,
+      "propagated_score": 0.8080625000000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.9237500000000001,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'assets/message-security/battery_corpus.json; scripts/python/message_security_screen.py; scripts/python/message_security_battery.py' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 2 unknown of 2 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    },
+    "MS-007-03": {
+      "claim_id": "MS-007-03",
+      "direct_score": 0.8080625000000001,
+      "propagated_score": 0.8080625000000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.9237500000000001,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'templates/message-security-challenge-record.schema.json; templates/message-security-challenge-record.json; scripts/python/message_security_battery.py --records-output' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 2 unknown of 2 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    },
+    "MS-007-04": {
+      "claim_id": "MS-007-04",
+      "direct_score": 0.33062500000000006,
+      "propagated_score": 0.33062500000000006,
+      "band": "low",
+      "components": {
+        "evidence": 0.23750000000000004,
+        "independence": 0.5,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "No observed supporting evidence",
+        "Fewer than two independent supporting sources",
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'commands/speckit.aee.message-security.md; extension.yml provides.commands; .github/skills/speckit-aee-message-security/SKILL.md' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 1 unknown of 1 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    },
+    "MS-007-05": {
+      "claim_id": "MS-007-05",
+      "direct_score": 0.33062500000000006,
+      "propagated_score": 0.33062500000000006,
+      "band": "low",
+      "components": {
+        "evidence": 0.23750000000000004,
+        "independence": 0.5,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "No observed supporting evidence",
+        "Fewer than two independent supporting sources",
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'tests/test_message_security.py' earns partial credit (FR-8.7): failed criteria: placeholder content; names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 1 unknown of 1 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    }
+  },
+  "verdicts": {},
+  "recoveries": [
+    {
+      "failure_id": "AEE-MS-007-01-INDEPENDENCE-UNMODELED",
+      "claim_id": "MS-007-01",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-MS-007-01-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "MS-007-01",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-MS-007-01-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "MS-007-01",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-MS-007-02-INDEPENDENCE-UNMODELED",
+      "claim_id": "MS-007-02",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-MS-007-02-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "MS-007-02",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-MS-007-03-INDEPENDENCE-UNMODELED",
+      "claim_id": "MS-007-03",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-MS-007-03-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "MS-007-03",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-MS-007-04-INDEPENDENCE-UNMODELED",
+      "claim_id": "MS-007-04",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-MS-007-04-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "MS-007-04",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-MS-007-05-INDEPENDENCE-UNMODELED",
+      "claim_id": "MS-007-05",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-MS-007-05-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "MS-007-05",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-MS-007-01-DRAFT-CAP",
+      "claim_id": "MS-007-01",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-MS-007-02-DRAFT-CAP",
+      "claim_id": "MS-007-02",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-MS-007-03-DRAFT-CAP",
+      "claim_id": "MS-007-03",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-MS-007-04-DRAFT-CAP",
+      "claim_id": "MS-007-04",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-MS-007-05-DRAFT-CAP",
+      "claim_id": "MS-007-05",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    }
+  ],
+  "metadata": {
+    "threshold": 0.7,
+    "input": "/home/hatch/workspace/needle-modeling/window8-work/impl/leg3-speckit/specs/007-message-security/claims.json",
+    "ledger": {
+      "mode": "custom",
+      "path": "/home/hatch/workspace/needle-modeling/window8-work/impl/leg3-speckit/.specify/extensions/aee/ledger/epistemic-ledger.jsonl"
+    },
+    "loading_mode": "lenient",
+    "engine_version": "1.6.0",
+    "extension_version": "1.7.0"
+  },
+  "reported_statuses": {
+    "MS-007-01": "draft",
+    "MS-007-02": "draft",
+    "MS-007-03": "draft",
+    "MS-007-04": "draft",
+    "MS-007-05": "draft"
+  },
+  "stage_caps": [],
+  "not_understood": [
+    "MS-007-01: open challenges this assessment does not resolve: contradiction, coverage_gap, independence_unmodeled.",
+    "MS-007-02: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "MS-007-03: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "MS-007-04: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "MS-007-04: propagated score 0.331 is below the 0.70 threshold - the claim is not established by its evidence as recorded.",
+    "MS-007-05: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "MS-007-05: propagated score 0.331 is below the 0.70 threshold - the claim is not established by its evidence as recorded."
+  ],
+  "lanes": {
+    "lane_1": {
+      "label": "machine verification",
+      "outcome": "iterate",
+      "threshold": 0.7,
+      "claims_at_or_above_threshold": 3,
+      "claims_below_threshold": 2
+    },
+    "lane_2": {
+      "label": "human acceptance",
+      "stage_counts": {
+        "created": 5,
+        "checked": 0,
+        "explained": 0,
+        "accepted": 0,
+        "digested": 0
+      },
+      "claims_below_explained": 5,
+      "exposition_covered_claims": 0,
+      "exposition_missing_claims": 5,
+      "verified_unexplained_claims": 0,
+      "stage_capped_claims": 0,
+      "attribution_contested_claims": 0
+    },
+    "per_claim": {
+      "MS-007-01": {
+        "lane_1": {
+          "score": 0.8080625000000001,
+          "direct_score": 0.8080625000000001,
+          "author_status": "draft",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "MS-007-02": {
+        "lane_1": {
+          "score": 0.8080625000000001,
+          "direct_score": 0.8080625000000001,
+          "author_status": "draft",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "MS-007-03": {
+        "lane_1": {
+          "score": 0.8080625000000001,
+          "direct_score": 0.8080625000000001,
+          "author_status": "draft",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "MS-007-04": {
+        "lane_1": {
+          "score": 0.33062500000000006,
+          "direct_score": 0.33062500000000006,
+          "author_status": "draft",
+          "at_or_above_threshold": false
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "MS-007-05": {
+        "lane_1": {
+          "score": 0.33062500000000006,
+          "direct_score": 0.33062500000000006,
+          "author_status": "draft",
+          "at_or_above_threshold": false
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      }
+    }
+  },
+  "digestion": {
+    "MS-007-01": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "MS-007-02": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "MS-007-03": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "MS-007-04": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "MS-007-05": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    }
+  }
+}

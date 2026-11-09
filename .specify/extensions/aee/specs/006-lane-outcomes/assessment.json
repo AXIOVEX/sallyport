@@ -1,0 +1,978 @@
+{
+  "schema_version": "1.0",
+  "methodology_version": "2.0",
+  "project": "spec-kit-aee",
+  "phase": "after_specify",
+  "outcome": "iterate",
+  "summary": "Assessed 5 claim(s); found 20 failure mode(s); 0 claim(s) below the 0.70 confidence threshold. Shared evidence: 2 supporting source(s) shared across 5 of 5 claim(s); the same evidence set supports multiple claims (FR-2.8, reporting only, no outcome effect in this phase). Draft cap: 5 draft claim(s) capped at gather_evidence/iterate (FR-2.3). Stage cap: 5 claim(s) below stage 'explained'; the outcome cannot be 'pass' (Spec 004 R1.4). Not understood: 5 residual unknown(s) are recorded on this assessment (Spec 004 R5.2). Lane 1 (machine verification): outcome iterate; 5 claim(s) at or above the 0.70 threshold, 0 below. Lane 2 (human acceptance): stages by effective stage: created 5. Lane-2 lag: 5 claim(s) below explained.",
+  "created_at": "2026-10-20T19:59:36.932645Z",
+  "claims": [
+    {
+      "id": "LO-006-01",
+      "text": "assess displays the pair alongside the headline: the runner's assess JSON summary carries a lane_pair block with the headline outcome copied unchanged, the lane-1 outcome copied from the assessment's lanes.lane_1 record, a lane-2 state (open or complete) with the plain lane-2 facts behind it as reasons, and a one-line display in the shape 'headline: <outcome> - lane 1: <outcome>, lane 2: <state> (<reasons>)' - including the case where lane 1 passes while the headline is iterate; an assessment with no lane record yields lane_pair null and no pair is invented.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "scripts/python/run_aee.py _assess and _verdict_display; commands/speckit.aee.assess.md reporting guidance"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/006-lane-outcomes/spec.md#lo-01--assess-displays-the-pair-alongside-the-headline",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 006 LO-01, which this claim commits to test.",
+          "source_id": "spec-006-lane-outcomes",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/python/run_aee.py _verdict_display; specs/005-evaluator-required/assessment.json lanes",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before: _verdict_display copies the assessment's lanes into verdict_display, but the assess summary has no lane_pair block, no lane-2 state, and no one-line display, so a reader sees the raw lane records or the lone headline; the recorded 1.5.x assessment shows lanes.lane_1.outcome copying the headline iterate even with all claims at or above threshold.",
+          "source_id": "lo-before-inspection-2026-10-20",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run assess against an engine assessment whose lane 1 passes while the headline is iterate and observe the summary lack lane_pair, report a lane-1 outcome other than the assessment's recorded one, or show a lane-2 state with no recorded facts behind it; or run assess on an assessment with no lanes and observe a non-null lane_pair."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8080625000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-LO-006-01-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "LO-006-01",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-01-INDEPENDENCE-UNMODELED",
+          "claim_id": "LO-006-01",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'lo-before-inspection-2026-10-20' (ref(s): extension.yml; CHANGELOG.md, scripts/check_install.py _run_checks, scripts/python/run_aee.py REQUIRED_AEE_VERSION; extension.yml, scripts/python/run_aee.py _gate, scripts/python/run_aee.py _verdict_display; specs/005-evaluator-required/assessment.json lanes) is shared with claim(s) LO-006-02, LO-006-03, LO-006-04, LO-006-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-01-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "LO-006-01",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-006-lane-outcomes' (ref(s): specs/006-lane-outcomes/spec.md#lo-01--assess-displays-the-pair-alongside-the-headline, specs/006-lane-outcomes/spec.md#lo-02--gate-can-require-a-lane-1-pass-on-its-own, specs/006-lane-outcomes/spec.md#lo-03--the-engine-floor-moves-to-the-engine-with-the-fix, specs/006-lane-outcomes/spec.md#lo-04--the-extension-version-and-its-documents-move-together, specs/006-lane-outcomes/spec.md#lo-05--the-install-check-exercises-the-pair-end-to-end) is shared with claim(s) LO-006-02, LO-006-03, LO-006-04, LO-006-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-01-DRAFT-CAP",
+          "claim_id": "LO-006-01",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "LO-006-02",
+      "text": "gate can require a lane-1 pass on its own: the runner's gate command accepts --require-lane1-pass, forwards it to the engine gate unchanged, and returns the engine exit code exactly (0 lane-1 pass, 1 lane-1 iterate family, 2 block or integrity refusal); without the flag gate behavior is unchanged, and the flag is never silently dropped.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "scripts/python/run_aee.py gate parser and _gate; commands/speckit.aee.gate.md"
+      ],
+      "depends_on": [
+        "LO-006-01"
+      ],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/006-lane-outcomes/spec.md#lo-02--gate-can-require-a-lane-1-pass-on-its-own",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 006 LO-02, which this claim commits to test.",
+          "source_id": "spec-006-lane-outcomes",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/python/run_aee.py _gate",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before: _gate builds only [aee, gate, --input, <assessment>] and the gate parser has no --require-lane1-pass flag, so the extension cannot ask the engine for a lane-1-only decision.",
+          "source_id": "lo-before-inspection-2026-10-20",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run the runner gate with --require-lane1-pass against engine assessments scoring lane-1 pass, lane-1 iterate, and block-or-forged, and observe any exit code other than 0, 1, and 2 respectively, or run it without the flag and observe the forwarded engine command change."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8080625000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-LO-006-02-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "LO-006-02",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-02-INDEPENDENCE-UNMODELED",
+          "claim_id": "LO-006-02",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'lo-before-inspection-2026-10-20' (ref(s): extension.yml; CHANGELOG.md, scripts/check_install.py _run_checks, scripts/python/run_aee.py REQUIRED_AEE_VERSION; extension.yml, scripts/python/run_aee.py _gate, scripts/python/run_aee.py _verdict_display; specs/005-evaluator-required/assessment.json lanes) is shared with claim(s) LO-006-01, LO-006-03, LO-006-04, LO-006-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-02-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "LO-006-02",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-006-lane-outcomes' (ref(s): specs/006-lane-outcomes/spec.md#lo-01--assess-displays-the-pair-alongside-the-headline, specs/006-lane-outcomes/spec.md#lo-02--gate-can-require-a-lane-1-pass-on-its-own, specs/006-lane-outcomes/spec.md#lo-03--the-engine-floor-moves-to-the-engine-with-the-fix, specs/006-lane-outcomes/spec.md#lo-04--the-extension-version-and-its-documents-move-together, specs/006-lane-outcomes/spec.md#lo-05--the-install-check-exercises-the-pair-end-to-end) is shared with claim(s) LO-006-01, LO-006-03, LO-006-04, LO-006-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-02-DRAFT-CAP",
+          "claim_id": "LO-006-02",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "LO-006-03",
+      "text": "the engine floor moves to the engine with the fix: every live declaration of the engine range reads >=1.6.0,<2 (runner REQUIRED_AEE_VERSION and minimum tuple, extension.yml, README, command documents and rendered skill copies, usage and installation docs, security note, development dependency row, requirements/dev.in), and the runner refuses a 1.5.x engine at startup with exit 2 naming the found and required versions; records of already-published releases keep the versions they recorded.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "scripts/python/run_aee.py version check; extension.yml requires.tools[aee]; README.md; commands/; docs/usage.md; requirements/dev.in"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/006-lane-outcomes/spec.md#lo-03--the-engine-floor-moves-to-the-engine-with-the-fix",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 006 LO-03, which this claim commits to test.",
+          "source_id": "spec-006-lane-outcomes",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/python/run_aee.py REQUIRED_AEE_VERSION; extension.yml",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before: REQUIRED_AEE_VERSION is >=1.5.0,<2 with minimum tuple (1, 5, 0), extension.yml declares '>=1.5.0,<2', and the same range appears in the README, command documents, and docs, so a 1.5.x engine - whose lane-1 outcome copies the headline - is accepted.",
+          "source_id": "lo-before-inspection-2026-10-20",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Search the live surfaces named in the boundary after the change and find >=1.5.0,<2 still declared as the engine range, or run the runner against a 1.5.x engine and observe it score instead of refusing with exit 2 naming both versions."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8080625000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-LO-006-03-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "LO-006-03",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-03-INDEPENDENCE-UNMODELED",
+          "claim_id": "LO-006-03",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'lo-before-inspection-2026-10-20' (ref(s): extension.yml; CHANGELOG.md, scripts/check_install.py _run_checks, scripts/python/run_aee.py REQUIRED_AEE_VERSION; extension.yml, scripts/python/run_aee.py _gate, scripts/python/run_aee.py _verdict_display; specs/005-evaluator-required/assessment.json lanes) is shared with claim(s) LO-006-01, LO-006-02, LO-006-04, LO-006-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-03-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "LO-006-03",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-006-lane-outcomes' (ref(s): specs/006-lane-outcomes/spec.md#lo-01--assess-displays-the-pair-alongside-the-headline, specs/006-lane-outcomes/spec.md#lo-02--gate-can-require-a-lane-1-pass-on-its-own, specs/006-lane-outcomes/spec.md#lo-03--the-engine-floor-moves-to-the-engine-with-the-fix, specs/006-lane-outcomes/spec.md#lo-04--the-extension-version-and-its-documents-move-together, specs/006-lane-outcomes/spec.md#lo-05--the-install-check-exercises-the-pair-end-to-end) is shared with claim(s) LO-006-01, LO-006-02, LO-006-04, LO-006-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-03-DRAFT-CAP",
+          "claim_id": "LO-006-03",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "LO-006-04",
+      "text": "the extension version and its documents move together: extension.yml declares extension version 1.6.0, the tests that pin the extension version agree with it, the CHANGELOG carries a 1.6.0 entry in plain language covering the pair display, the gate option, and the new engine requirement, and the README and usage docs explain what the pair means and how the gate option behaves.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "extension.yml extension.version; CHANGELOG.md; README.md; docs/usage.md; tests/test_evaluator_required.py; tests/test_draft_claims.py"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/006-lane-outcomes/spec.md#lo-04--the-extension-version-and-its-documents-move-together",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 006 LO-04, which this claim commits to test.",
+          "source_id": "spec-006-lane-outcomes",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "extension.yml; CHANGELOG.md",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before: extension.yml declares version 1.5.2, the version-pinning tests assert 1.5.2, and the CHANGELOG's newest entry is 1.5.2 followed by an Unreleased section that does not mention lane pairs, a lane-1 gate option, or an engine 1.6.0 requirement.",
+          "source_id": "lo-before-inspection-2026-10-20",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Read extension.yml after the change and find a version other than 1.6.0, find a version-pinning test disagreeing with it, or find the CHANGELOG without a 1.6.0 entry covering all three changes."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8080625000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-LO-006-04-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "LO-006-04",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-04-INDEPENDENCE-UNMODELED",
+          "claim_id": "LO-006-04",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'lo-before-inspection-2026-10-20' (ref(s): extension.yml; CHANGELOG.md, scripts/check_install.py _run_checks, scripts/python/run_aee.py REQUIRED_AEE_VERSION; extension.yml, scripts/python/run_aee.py _gate, scripts/python/run_aee.py _verdict_display; specs/005-evaluator-required/assessment.json lanes) is shared with claim(s) LO-006-01, LO-006-02, LO-006-03, LO-006-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-04-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "LO-006-04",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-006-lane-outcomes' (ref(s): specs/006-lane-outcomes/spec.md#lo-01--assess-displays-the-pair-alongside-the-headline, specs/006-lane-outcomes/spec.md#lo-02--gate-can-require-a-lane-1-pass-on-its-own, specs/006-lane-outcomes/spec.md#lo-03--the-engine-floor-moves-to-the-engine-with-the-fix, specs/006-lane-outcomes/spec.md#lo-04--the-extension-version-and-its-documents-move-together, specs/006-lane-outcomes/spec.md#lo-05--the-install-check-exercises-the-pair-end-to-end) is shared with claim(s) LO-006-01, LO-006-02, LO-006-03, LO-006-05 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-04-DRAFT-CAP",
+          "claim_id": "LO-006-04",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "LO-006-05",
+      "text": "the install check exercises the pair end to end: scripts/check_install.py, after its first installed assess, checks that the summary carries a lane_pair whose lane-1 outcome matches the installed assessment's recorded lane-1 outcome and whose display line names both lanes, and fails otherwise.",
+      "kind": "requirement",
+      "status": "draft",
+      "boundary": [
+        "scripts/check_install.py _run_checks assess exercise"
+      ],
+      "depends_on": [
+        "LO-006-01"
+      ],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/006-lane-outcomes/spec.md#lo-05--the-install-check-exercises-the-pair-end-to-end",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 006 LO-05, which this claim commits to test.",
+          "source_id": "spec-006-lane-outcomes",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/check_install.py _run_checks",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before: check_install.py parses the first assess summary and checks the assessment and evaluator-result files exist, but never looks for a lane pair in the summary, so an installed extension that stopped showing the pair would still pass.",
+          "source_id": "lo-before-inspection-2026-10-20",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run check_install.py against an installed runner whose assess summary lacks lane_pair, or whose lane-1 outcome disagrees with the assessment file, and observe it print PASS."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8080625000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-LO-006-05-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "LO-006-05",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-05-INDEPENDENCE-UNMODELED",
+          "claim_id": "LO-006-05",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'lo-before-inspection-2026-10-20' (ref(s): extension.yml; CHANGELOG.md, scripts/check_install.py _run_checks, scripts/python/run_aee.py REQUIRED_AEE_VERSION; extension.yml, scripts/python/run_aee.py _gate, scripts/python/run_aee.py _verdict_display; specs/005-evaluator-required/assessment.json lanes) is shared with claim(s) LO-006-01, LO-006-02, LO-006-03, LO-006-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-05-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "LO-006-05",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-006-lane-outcomes' (ref(s): specs/006-lane-outcomes/spec.md#lo-01--assess-displays-the-pair-alongside-the-headline, specs/006-lane-outcomes/spec.md#lo-02--gate-can-require-a-lane-1-pass-on-its-own, specs/006-lane-outcomes/spec.md#lo-03--the-engine-floor-moves-to-the-engine-with-the-fix, specs/006-lane-outcomes/spec.md#lo-04--the-extension-version-and-its-documents-move-together, specs/006-lane-outcomes/spec.md#lo-05--the-install-check-exercises-the-pair-end-to-end) is shared with claim(s) LO-006-01, LO-006-02, LO-006-03, LO-006-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-05-DRAFT-CAP",
+          "claim_id": "LO-006-05",
+          "challenge": "Draft outcome cap",
+          "breakpoint": "Claim status is draft: the assessment outcome is capped at gather_evidence/iterate and policy verdicts below accept regardless of score (Spec 003 FR-2.3); a human ratification (status change) lifts the cap",
+          "severity": "low",
+          "category": "draft_cap",
+          "recovery_hint": "Ratify the claim (change its status from draft) to lift the cap.",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    }
+  ],
+  "scores": {
+    "LO-006-01": {
+      "claim_id": "LO-006-01",
+      "direct_score": 0.8080625000000001,
+      "propagated_score": 0.8080625000000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.9237500000000001,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'scripts/python/run_aee.py _assess and _verdict_display; commands/speckit.aee.assess.md reporting guidance' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 2 unknown of 2 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    },
+    "LO-006-02": {
+      "claim_id": "LO-006-02",
+      "direct_score": 0.8080625000000001,
+      "propagated_score": 0.8080625000000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.9237500000000001,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'scripts/python/run_aee.py gate parser and _gate; commands/speckit.aee.gate.md' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 2 unknown of 2 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    },
+    "LO-006-03": {
+      "claim_id": "LO-006-03",
+      "direct_score": 0.8080625000000001,
+      "propagated_score": 0.8080625000000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.9237500000000001,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'scripts/python/run_aee.py version check; extension.yml requires.tools[aee]; README.md; commands/; docs/usage.md; requirements/dev.in' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 2 unknown of 2 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    },
+    "LO-006-04": {
+      "claim_id": "LO-006-04",
+      "direct_score": 0.8080625000000001,
+      "propagated_score": 0.8080625000000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.9237500000000001,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'extension.yml extension.version; CHANGELOG.md; README.md; docs/usage.md; tests/test_evaluator_required.py; tests/test_draft_claims.py' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 2 unknown of 2 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    },
+    "LO-006-05": {
+      "claim_id": "LO-006-05",
+      "direct_score": 0.8080625000000001,
+      "propagated_score": 0.8080625000000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.9237500000000001,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "draft",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'scripts/check_install.py _run_checks assess exercise' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 2 unknown of 2 item(s); unknown freshness counts as stale (FR-8.6)"
+      ]
+    }
+  },
+  "verdicts": {},
+  "recoveries": [
+    {
+      "failure_id": "AEE-LO-006-01-INDEPENDENCE-UNMODELED",
+      "claim_id": "LO-006-01",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-01-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "LO-006-01",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-01-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "LO-006-01",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-LO-006-02-INDEPENDENCE-UNMODELED",
+      "claim_id": "LO-006-02",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-02-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "LO-006-02",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-02-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "LO-006-02",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-LO-006-03-INDEPENDENCE-UNMODELED",
+      "claim_id": "LO-006-03",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-03-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "LO-006-03",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-03-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "LO-006-03",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-LO-006-04-INDEPENDENCE-UNMODELED",
+      "claim_id": "LO-006-04",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-04-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "LO-006-04",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-04-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "LO-006-04",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-LO-006-05-INDEPENDENCE-UNMODELED",
+      "claim_id": "LO-006-05",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-05-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "LO-006-05",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-LO-006-05-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "LO-006-05",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-LO-006-01-DRAFT-CAP",
+      "claim_id": "LO-006-01",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-LO-006-02-DRAFT-CAP",
+      "claim_id": "LO-006-02",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-LO-006-03-DRAFT-CAP",
+      "claim_id": "LO-006-03",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-LO-006-04-DRAFT-CAP",
+      "claim_id": "LO-006-04",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-LO-006-05-DRAFT-CAP",
+      "claim_id": "LO-006-05",
+      "strategy": "define_falsifier",
+      "action": "Ratify the claim (change its status from draft) to lift the cap.",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    }
+  ],
+  "metadata": {
+    "threshold": 0.7,
+    "input": "specs/006-lane-outcomes/claims.json",
+    "ledger": {
+      "mode": "disabled",
+      "path": null
+    },
+    "engine_version": "1.5.3"
+  },
+  "reported_statuses": {
+    "LO-006-01": "draft",
+    "LO-006-02": "draft",
+    "LO-006-03": "draft",
+    "LO-006-04": "draft",
+    "LO-006-05": "draft"
+  },
+  "stage_caps": [],
+  "not_understood": [
+    "LO-006-01: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "LO-006-02: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "LO-006-03: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "LO-006-04: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "LO-006-05: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled."
+  ],
+  "lanes": {
+    "lane_1": {
+      "label": "machine verification",
+      "outcome": "iterate",
+      "threshold": 0.7,
+      "claims_at_or_above_threshold": 5,
+      "claims_below_threshold": 0
+    },
+    "lane_2": {
+      "label": "human acceptance",
+      "stage_counts": {
+        "created": 5,
+        "checked": 0,
+        "explained": 0,
+        "accepted": 0,
+        "digested": 0
+      },
+      "claims_below_explained": 5,
+      "exposition_covered_claims": 0,
+      "exposition_missing_claims": 5,
+      "verified_unexplained_claims": 0,
+      "stage_capped_claims": 0,
+      "attribution_contested_claims": 0
+    },
+    "per_claim": {
+      "LO-006-01": {
+        "lane_1": {
+          "score": 0.8080625000000001,
+          "direct_score": 0.8080625000000001,
+          "author_status": "draft",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "LO-006-02": {
+        "lane_1": {
+          "score": 0.8080625000000001,
+          "direct_score": 0.8080625000000001,
+          "author_status": "draft",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "LO-006-03": {
+        "lane_1": {
+          "score": 0.8080625000000001,
+          "direct_score": 0.8080625000000001,
+          "author_status": "draft",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "LO-006-04": {
+        "lane_1": {
+          "score": 0.8080625000000001,
+          "direct_score": 0.8080625000000001,
+          "author_status": "draft",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "LO-006-05": {
+        "lane_1": {
+          "score": 0.8080625000000001,
+          "direct_score": 0.8080625000000001,
+          "author_status": "draft",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": false,
+          "cap_reasons": [],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      }
+    }
+  },
+  "digestion": {
+    "LO-006-01": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "LO-006-02": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "LO-006-03": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "LO-006-04": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "LO-006-05": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    }
+  }
+}

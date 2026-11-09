@@ -1,0 +1,127 @@
+{
+  "schema_version": "1.0",
+  "claims": [
+    {
+      "boundary": [
+        "scripts/python/run_aee.py version enforcement, extension.yml requires, README requirements table"
+      ],
+      "conflicts_with": [],
+      "depends_on": [],
+      "evidence": [
+        {
+          "ref": "tests/test_p5_vocabulary.py::test_pre_realignment_engine_is_refused_cleanly",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "source_id": "p5-suite-2026-10-12",
+          "description": "Stub aee 1.4.0 refused with exit 2 naming the found version and >=1.5.0,<2; floor constants asserted equal across run_aee.py, extension.yml, README."
+        },
+        {
+          "ref": "scripts/python/run_aee.py",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "source_id": "p5-after-inspection-2026-10-12",
+          "description": "_AEE_VERSION_MIN = (1, 5, 0); REQUIRED_AEE_VERSION = \">=1.5.0,<2\"; the RT3 enforcement machinery refuses cleanly at startup."
+        }
+      ],
+      "falsification_tests": [
+        "Run the runner against a stub aee reporting version 1.4.0 and observe it start instead of refusing, or find the floor declared as >=1.4.0 in any of the three places after this change."
+      ],
+      "id": "EXT-P5-01",
+      "kind": "requirement",
+      "status": "supported",
+      "text": "The extension's engine floor names the realigned engine: the runner refuses an engine below the floor at startup with exit 2 naming the found and required versions, and extension.yml plus the README declare the same range."
+    },
+    {
+      "boundary": [
+        "scripts/python/run_aee.py assess output construction"
+      ],
+      "conflicts_with": [],
+      "depends_on": [],
+      "evidence": [
+        {
+          "ref": "tests/test_p5_vocabulary.py::test_realigned_engine_runs_and_display_matches_assessment",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "source_id": "p5-suite-2026-10-12",
+          "description": "verdict_display values asserted equal to the produced assessment's outcome, reported_statuses, stage_caps, lanes, not_understood; legacy-shaped stub yields null display, never fabricated values."
+        },
+        {
+          "ref": "scripts/python/run_aee.py _verdict_display",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "source_id": "p5-after-inspection-2026-10-12",
+          "description": "The display is copied from the stamped assessment after ledgering; the runner computes no verdict of its own."
+        }
+      ],
+      "falsification_tests": [
+        "Run runner assess on a bundle with a stage-capped claim and observe the runner JSON omit reported_statuses, lanes, or not_understood, or show values differing from the assessment file it produced."
+      ],
+      "id": "EXT-P5-02",
+      "kind": "requirement",
+      "status": "supported",
+      "text": "The runner's assess JSON displays the realigned verdict vocabulary - outcome, methodology_version, stage-capped reported_statuses, stage_caps, the lane pair, and not_understood - copied from the stamped assessment it produced, identical to what the bare CLI reports on the same bundle."
+    },
+    {
+      "boundary": [
+        "commands/speckit.aee.assess.md, commands/speckit.aee.gate.md"
+      ],
+      "conflicts_with": [],
+      "depends_on": [],
+      "evidence": [
+        {
+          "ref": "commands/speckit.aee.assess.md",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "source_id": "p5-after-inspection-2026-10-12",
+          "description": "Vocabulary section carries stage values, headline/role, exposition with the identity-registry rule; reporting requires reported_statuses, the lane pair, not_understood with every verdict, unjudged named separately from abstentions."
+        },
+        {
+          "ref": "commands/speckit.aee.gate.md",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "source_id": "p5-after-inspection-2026-10-12",
+          "description": "The gate is documented as a lane-1 checking decision that does not establish explanation, acceptance, or digestion."
+        }
+      ],
+      "falsification_tests": [
+        "Read the two command files after this change and find no stage vocabulary, no exposition kind, or reporting instructions that present author-declared statuses or a lane-1 outcome as settled."
+      ],
+      "id": "EXT-P5-03",
+      "kind": "requirement",
+      "status": "supported",
+      "text": "The assess and gate command documents teach the realigned vocabulary: stage values and headline/role on claims, exposition as an evidence kind, reported (stage-capped) statuses in reporting, the two lanes reported as a pair, not_understood rendered with every verdict, unjudged distinct from abstained, and the gate described as a lane-1 checking decision."
+    },
+    {
+      "boundary": [
+        "runner assess end-to-end against the joint engine on PATH"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "EXT-P5-02"
+      ],
+      "evidence": [
+        {
+          "ref": "end-to-end acceptance run 2026-10-12 (runner vs bare CLI on /tmp/p5-proj bundle)",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "source_id": "p5-acceptance-2026-10-12",
+          "description": "On a bundle with a stage-capped claim and a stage-less claim: runner verdict_display equals the bare CLI's reported_statuses, stage_caps, both lanes, and not_understood value for value; the capped claim reports partially_supported; the stage-less claim's default is recorded (loading_mode=lenient, stage_defaulted_claims=[the claim])."
+        }
+      ],
+      "falsification_tests": [
+        "Run both paths on the same bundle and diff the displayed caps, lanes, and not_understood: any divergence falsifies this claim."
+      ],
+      "id": "EXT-P5-04",
+      "kind": "requirement",
+      "status": "supported",
+      "text": "Acceptance: an assessment produced through the extension on a bundle with stage caps and residual unknowns displays the same caps, lanes, and not_understood as the bare engine CLI produces on the same bundle."
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+# Reference settings only: NO script loads this file — neither
+# run_aee.py nor aee_token_economy.py reads it. Every value below is
+# operator reference for both adapters; translate choices to explicit
+# CLI flags; see docs/usage.md.
+schema_version: '1.0'
+
+# Claims below this transparent score require recovery before passing.
+threshold: 0.70
+
+# Keep the SHA-256 chain on by default. This proves record continuity, not truth.
+ledger:
+  enabled: true
+  actor: spec-kit-aee
+
+# Lifecycle hooks remain optional and ask before running.
+phases:
+  after_specify: true
+  after_plan: true
+  after_tasks: true
+  after_implement: true
+  after_verify: true
+
+# Gap register configuration.
+# The optional after_verify hook requires a host workflow that emits the event.
+# Pass --matrix, --evidence, and --output explicitly.
+gap_register:
+  matrix_path: docs/verification-matrix.md
+  evidence_dir: evidence
+  output_path: GAPS.md
+
+# Token economy: optional tools that compress or route context. AEE cores the
+# policy (measured-only savings, cite-original-lines evidence) and depends on
+# the tools; all four are optional and every workflow degrades gracefully.
+# See docs/token-economy.md. rtk: https://github.com/rtk-ai/rtk
+# headroom: https://github.com/headroomlabs-ai/headroom
+# token-router: https://github.com/sleeplesshan/token-router
+token_economy:
+  routing:
+    max_direct_lines: 300
+    token_router_home: ""
+    default_mode: error_log
+    ollama_model: "gemma4:e2b-it-q4_K_M"
+    ollama_num_ctx: 8192
+    ollama_keep_alive: "0s"
+    max_output_lines: 160
+  savings:
+    headroom_hours: 168
+    measured_only: true
+  state:
+    evidence_dir: .specify/extensions/aee/evidence
+    report_dir: .specify/extensions/aee/reports
+    telemetry_file: .specify/extensions/aee/telemetry/shell-calls.jsonl
+
