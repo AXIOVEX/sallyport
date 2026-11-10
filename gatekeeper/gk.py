@@ -1397,10 +1397,10 @@ def new_job_id(key):
                          uuid.uuid4().hex[:6])
 
 
-def run_cmd(args, timeout=120):
+def run_cmd(args, timeout=120, input_text=None):
     try:
         p = subprocess.run(args, capture_output=True, text=True,
-                           timeout=timeout)
+                           timeout=timeout, input=input_text)
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         return 124, "", "timeout"
@@ -2631,17 +2631,10 @@ def _sftp_run(commands, timeout=180):
     prefixed with '-' makes sftp log its failure and continue; an
     unprefixed failure aborts the batch with a non-zero exit.
     Returns (rc, stdout, stderr); rc 124 on timeout, 127 on spawn
-    failure (the run_cmd discipline)."""
-    try:
-        p = subprocess.run(_staging_sftp_argv(),
-                           input="\n".join(commands) + "\n",
-                           capture_output=True, text=True,
-                           timeout=timeout)
-        return p.returncode, p.stdout, p.stderr
-    except subprocess.TimeoutExpired:
-        return 124, "", "timeout"
-    except OSError as e:
-        return 127, "", str(e)
+    failure (the run_cmd discipline, via run_cmd itself so the
+    launch goes through the gatekeeper's one disciplined helper)."""
+    return run_cmd(_staging_sftp_argv(), timeout=timeout,
+                   input_text="\n".join(commands) + "\n")
 
 
 def _sftp_list(path):
