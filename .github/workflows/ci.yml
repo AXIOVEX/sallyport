@@ -42,6 +42,9 @@ jobs:
       - name: Transport workflow contract battery
         run: python3 runner/test_workflow_contract.py
 
+      - name: PowerShell 7 policy battery (2026-11-08)
+        run: python3 runner/test_powershell7_policy.py
+
       - name: POSIX transport smoke battery
         run: python3 runner/test_transport_smoke.py
 
@@ -49,6 +52,9 @@ jobs:
         run: python3 runner/tray/test_tray_source.py
       - name: Guard source battery (spec 011 Phase 3)
         run: python3 runner/guard/test_guard_source.py
+
+      - name: Launch discipline battery (no visible consoles, 2026-11-06)
+        run: python3 runner/test_launch_discipline.py
 
       - name: Backchannel batteries (unit + chaos)
         run: |

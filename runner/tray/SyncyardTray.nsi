@@ -48,6 +48,19 @@ Section "Syncyard Tray" SecMain
   File "logo.png"
   File "logo.ico"
 
+  ; The per-machine profile (spec 028 FR-002): this machine's
+  ; own paths, stale bounds, host name, and lane set, as data
+  ; beside the exe. The build machine picks the profile for
+  ; the machine being installed (profiles\<machine>\ in the
+  ; repo; see the build README) and stages it next to this
+  ; script as tray-profile.json before makensis runs; a
+  ; release built without one installs none, and the tray
+  ; then falls back to its settings and compiled defaults.
+  ; IfFileExists keeps a staged profile optional and keeps
+  ; an absent one from failing the install.
+  IfFileExists "$EXEDIR\tray-profile.json" 0 +2
+  File "tray-profile.json"
+
   ; Autostart at logon, windowless by design (winexe, no console).
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" \
     "SyncyardTray" '"$INSTDIR\SyncyardTray.exe"'
@@ -83,6 +96,7 @@ Section "Uninstall"
   Delete "$INSTDIR\SyncyardTray.exe"
   Delete "$INSTDIR\logo.png"
   Delete "$INSTDIR\logo.ico"
+  Delete "$INSTDIR\tray-profile.json"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
 SectionEnd

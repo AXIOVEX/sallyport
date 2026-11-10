@@ -46,7 +46,7 @@ poster to `cmd.json` and the owner of the channel.
 python3 backchannel/bc.py heartbeat
 python3 backchannel/bc.py status
 
-# Send a command file (bash; may call powershell.exe / /mnt/c/...)
+# Send a command file (bash; may call '/mnt/c/Program Files/PowerShell/7/pwsh.exe' / /mnt/c/...)
 python3 backchannel/bc.py send --file recovery-command.sh
 # prints: BC_SENT id=<id> sha256=<hash>
 
@@ -91,8 +91,8 @@ unless the recovery itself is the act ordered.
    command calling PowerShell:
 
    ```bash
-   powershell.exe -NoProfile -Command "Start-ScheduledTask -TaskName 'SyncyardTrayStart'"
-   powershell.exe -NoProfile -Command "Get-Process SyncyardTray | Select-Object Id,Path"
+   '/mnt/c/Program Files/PowerShell/7/pwsh.exe' -NoProfile -Command "Start-ScheduledTask -TaskName 'SyncyardTrayStart'"
+   '/mnt/c/Program Files/PowerShell/7/pwsh.exe' -NoProfile -Command "Get-Process SyncyardTray | Select-Object Id,Path"
    ```
 
    Verify from the second command: the process path is the
@@ -111,7 +111,7 @@ unless the recovery itself is the act ordered.
    lane directory if the tray itself is the casualty:
 
    ```bash
-   powershell.exe -NoProfile -Command "Get-Process -Name 'Runner.Listener' | Select-Object Id,Path"
+   '/mnt/c/Program Files/PowerShell/7/pwsh.exe' -NoProfile -Command "Get-Process -Name 'Runner.Listener' | Select-Object Id,Path"
    ```
 
    Then act on the specific lane only, and verify with a fresh
@@ -120,7 +120,7 @@ unless the recovery itself is the act ordered.
 4. **Read-only network diagnostics** (the wired-interface case):
 
    ```bash
-   powershell.exe -NoProfile -Command "Get-NetAdapter | Select-Object Name,Status,LinkSpeed; Get-NetIPAddress -AddressFamily IPv4 | Select-Object InterfaceAlias,IPAddress,PrefixOrigin; Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Select-Object InterfaceAlias,NextHop,RouteMetric,InterfaceMetric"
+   '/mnt/c/Program Files/PowerShell/7/pwsh.exe' -NoProfile -Command "Get-NetAdapter | Select-Object Name,Status,LinkSpeed; Get-NetIPAddress -AddressFamily IPv4 | Select-Object InterfaceAlias,IPAddress,PrefixOrigin; Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Select-Object InterfaceAlias,NextHop,RouteMetric,InterfaceMetric"
    ping -c 3 10.42.0.2 || true   # board leg, from WSL
    ```
 

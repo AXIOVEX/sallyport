@@ -45,6 +45,26 @@
 // item, which hunted session windows by title and could
 // never show a healthy runner.
 //
+// Spec 028: settings resilience, per-machine lane sets, and
+// multi-instance supervision. The settings save is atomic
+// (temp + replace, the previous file kept as .bak) and the
+// load falls back live file -> .bak -> the machine profile
+// (tray-profile.json beside the exe, written by the
+// installer: this machine's paths, stale bounds, host name,
+// and lane set) -> compiled defaults, logging which source
+// won whenever it is not the live file. The runner table is
+// built from the machine's lane set (the profile's, else the
+// directories under the runner root), and a lane may name
+// several instance directories, each supervised on its own.
+// Restart history and Faulted state persist beside the log
+// (tray-restart-state.json), so a tray restart no longer
+// zeroes a crash-looping instance's cap. Listener identity
+// is the exact runner directory, in this tray and in
+// runner/runner-watchdog.ps1. A tray whose runner root is
+// missing, or under which no enabled lane directory exists,
+// says "supervising nothing" in its menu header and its
+// heartbeat instead of presenting a normal state.
+//
 // Spec 025 (0.4.4.0): the tray beats. Every ~30 s and once at
 // startup the tray writes tray-heartbeat.json beside its log
 // (host, build, pid, session, started_at, ts, tick, and the
@@ -100,6 +120,13 @@ namespace SyncyardTray
     internal sealed class RunnerDef
     {
         public string Lane;
+        // Spec 028: a lane may carry several instance
+        // directories (the desktop's normal lane: normal,
+        // normal2, normal3). Instance is the directory's leaf
+        // name; supervision, restart accounting, and listener
+        // identity are per instance, and Dir is this
+        // instance's own directory.
+        public string Instance;
         public string Dir;
         public Process StartedByUs;          // cmd.exe hosting run.cmd
         public List<DateTime> RestartTimes = new List<DateTime>();
@@ -108,7 +135,100 @@ namespace SyncyardTray
 
         public string DisplayName
         {
-            get { return "lane-" + Lane + "  (" + Dir + ")"; }
+            get
+            {
+                return "lane-" + Lane +
+                    (Instance != null && Instance != Lane
+                        ? " [" + Instance + "]" : "") +
+                    "  (" + Dir + ")";
+            }
+        }
+    }
+
+    // The per-machine profile (spec 028 FR-002): installed
+    // data beside the exe (tray-profile.json), written by the
+    // installer for THIS machine - its runner root, fleet
+    // path, heartbeat path, host name, stale bounds, and lane
+    // set. Load's fallback chain consults it after the
+    // settings file and its .bak, so a lost or corrupt
+    // settings file falls back to this machine's own shape,
+    // never to another machine's compiled-in paths. Compiled
+    // defaults remain only as the no-profile-anywhere floor.
+    // Reading is tolerant like everything here: an absent or
+    // malformed profile yields null, never an exception.
+    internal sealed class TrayProfile
+    {
+        public string RunnerRoot;
+        public string FleetStatusPath;
+        public string ConnectionHeartbeatPath;
+        public string HeartbeatHost;
+        public int? FleetStaleSeconds;
+        public int? ConnectionStaleSeconds;
+        public int? ConnectionDownSeconds;
+        // Lane name -> its instance directory leaf names, in
+        // profile order; a missing list on a named lane means
+        // the single instance named after the lane.
+        public readonly List<string> LaneNames =
+            new List<string>();
+        public readonly Dictionary<string, List<string>> LaneMap =
+            new Dictionary<string, List<string>>();
+
+        public static string FilePath
+        {
+            get
+            {
+                return Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    "tray-profile.json");
+            }
+        }
+
+        public static TrayProfile Load()
+        {
+            try
+            {
+                if (!File.Exists(FilePath)) return null;
+                string text = File.ReadAllText(FilePath);
+                var p = new TrayProfile();
+                p.RunnerRoot = MiniJson.GetString(text, "runnerRoot");
+                p.FleetStatusPath = MiniJson.GetString(text,
+                    "fleetStatusPath");
+                p.ConnectionHeartbeatPath = MiniJson.GetString(text,
+                    "connectionHeartbeatPath");
+                p.HeartbeatHost = MiniJson.GetString(text,
+                    "heartbeatHost");
+                int v;
+                if (MiniJson.HasKey(text, "fleetStaleSeconds"))
+                {
+                    v = MiniJson.GetInt(text, "fleetStaleSeconds", -1);
+                    if (v > 0) p.FleetStaleSeconds = v;
+                }
+                if (MiniJson.HasKey(text, "connectionStaleSeconds"))
+                {
+                    v = MiniJson.GetInt(text,
+                        "connectionStaleSeconds", -1);
+                    if (v > 0) p.ConnectionStaleSeconds = v;
+                }
+                if (MiniJson.HasKey(text, "connectionDownSeconds"))
+                {
+                    v = MiniJson.GetInt(text,
+                        "connectionDownSeconds", -1);
+                    if (v > 0) p.ConnectionDownSeconds = v;
+                }
+                foreach (var obj in MiniJson.GetObjects(text, "lanes"))
+                {
+                    string lane = MiniJson.GetString(obj, "lane");
+                    if (string.IsNullOrEmpty(lane)) continue;
+                    var inst = MiniJson.GetStringArray(obj,
+                        "instances");
+                    if (inst.Count == 0) inst.Add(lane);
+                    if (!p.LaneMap.ContainsKey(lane))
+                        p.LaneNames.Add(lane);
+                    p.LaneMap[lane] = inst;
+                }
+                return p;
+            }
+            catch { return null; }
         }
     }
 
@@ -392,8 +512,11 @@ namespace SyncyardTray
     // tray-settings.json beside the tray exe, loaded at startup,
     // saved only from the settings dialog. The writer emits exactly
     // the keys the reader consumes - the source battery proves the
-    // parity. Defaults are the pre-spec-014 behavior, so a tray
-    // with no settings file behaves exactly as the old tray did.
+    // parity. Spec 028: the save is atomic with a .bak, and the
+    // load falls back live file -> .bak -> machine profile ->
+    // compiled defaults; the compiled defaults are the
+    // pre-spec-014 behavior, so a tray with no settings file and
+    // no profile anywhere behaves exactly as the old tray did.
     internal sealed class TraySettings
     {
         public bool Autostart = true;
@@ -430,8 +553,52 @@ namespace SyncyardTray
         private readonly Dictionary<string, bool> _laneEnabled =
             new Dictionary<string, bool>();
 
-        public static readonly string[] Lanes =
+        // The compiled lane floor: the four lanes of the
+        // original desktop layout. Spec 028: lane existence is
+        // a property of the machine, not of the build, so this
+        // is only the no-profile-anywhere floor - Load
+        // replaces it with the machine profile's lane set, or
+        // with the set derived from the directories actually
+        // present under the runner root.
+        public static readonly string[] DefaultLanes =
             { "long", "quick", "normal", "gpu" };
+
+        // The lane set this settings object carries: resolved
+        // by Load (profile, else runner-root directories, else
+        // DefaultLanes); a fresh settings object (the dialog's
+        // save draft) carries the floor until ApplySettings
+        // hands it the live set.
+        private string[] _lanes = DefaultLanes;
+
+        public string[] Lanes { get { return _lanes; } }
+
+        // Lane -> instance directory leaf names (spec 028
+        // FR-005), resolved with the lane set; a lane with no
+        // entry has the single instance named after it.
+        private readonly Dictionary<string, List<string>>
+            _laneInstances = new Dictionary<string, List<string>>();
+
+        public List<string> LaneInstances(string lane)
+        {
+            List<string> v;
+            if (_laneInstances.TryGetValue(lane, out v))
+                return v;
+            return new List<string> { lane };
+        }
+
+        // The machine profile Load consulted (null when no
+        // profile is installed): the tray's runner table and
+        // the settings fallback both draw on the one read.
+        private static TrayProfile _profile;
+
+        public static TrayProfile MachineProfile
+        {
+            get
+            {
+                if (_profile == null) _profile = TrayProfile.Load();
+                return _profile;
+            }
+        }
 
         // Set by Load/Save when the file could not be read or
         // written; the tray logs it and carries on with defaults.
@@ -461,78 +628,254 @@ namespace SyncyardTray
         public static TraySettings Defaults()
         {
             var s = new TraySettings();
-            foreach (var lane in Lanes) s._laneEnabled[lane] = true;
+            foreach (var lane in DefaultLanes)
+                s._laneEnabled[lane] = true;
             s.Autostart = AutostartIsRegistered();
             return s;
         }
 
-        public static TraySettings Load()
+        // The base a load starts from (spec 028): the machine
+        // profile applied over the compiled defaults when a
+        // profile is installed, the compiled defaults alone
+        // when none is. The settings file (or its .bak) then
+        // overrides what it names, on top of this base.
+        public static TraySettings BaseSettings()
         {
             var s = Defaults();
+            var p = MachineProfile;
+            if (p != null) s.ApplyProfile(p);
+            return s;
+        }
+
+        private void ApplyProfile(TrayProfile p)
+        {
+            if (!string.IsNullOrEmpty(p.RunnerRoot))
+                RunnerRoot = p.RunnerRoot;
+            if (!string.IsNullOrEmpty(p.FleetStatusPath))
+                FleetStatusPath = p.FleetStatusPath;
+            if (!string.IsNullOrEmpty(p.ConnectionHeartbeatPath))
+                ConnectionHeartbeatPath = p.ConnectionHeartbeatPath;
+            if (!string.IsNullOrEmpty(p.HeartbeatHost))
+                HeartbeatHost = p.HeartbeatHost;
+            if (p.FleetStaleSeconds.HasValue)
+                FleetStaleSeconds = Clamp(p.FleetStaleSeconds.Value,
+                    30, 3600);
+            if (p.ConnectionStaleSeconds.HasValue)
+                ConnectionStaleSeconds = Clamp(
+                    p.ConnectionStaleSeconds.Value, 10, 3600);
+            if (p.ConnectionDownSeconds.HasValue)
+                ConnectionDownSeconds = Clamp(
+                    p.ConnectionDownSeconds.Value, 30, 86400);
+            if (p.LaneNames.Count > 0) SetLaneSet(p);
+            FixConnectionPair();
+        }
+
+        // Adopt a lane set and its instance map (the profile's
+        // shape): every lane enabled unless a settings file
+        // later says otherwise.
+        public void SetLaneSet(TrayProfile p)
+        {
+            _lanes = p.LaneNames.ToArray();
+            _laneInstances.Clear();
+            foreach (var lane in p.LaneNames)
+                _laneInstances[lane] = p.LaneMap[lane];
+            foreach (var lane in _lanes)
+                if (!_laneEnabled.ContainsKey(lane))
+                    _laneEnabled[lane] = true;
+        }
+
+        // Carry another settings object's lane set and
+        // instance map (the dialog's save draft adopts the
+        // live settings' machine-derived set; the dialog edits
+        // values, never the machine's shape).
+        public void AdoptLaneShape(TraySettings other)
+        {
+            _lanes = other._lanes;
+            _laneInstances.Clear();
+            foreach (var kv in other._laneInstances)
+                _laneInstances[kv.Key] = kv.Value;
+            foreach (var lane in _lanes)
+                if (!_laneEnabled.ContainsKey(lane))
+                    _laneEnabled[lane] = true;
+        }
+
+        // Derive the lane set from the directories actually
+        // present under the runner root (spec 028 FR-004's
+        // fallback when no profile names a set): a directory
+        // is an instance; its lane is its name with trailing
+        // digits stripped (normal2 belongs to lane normal).
+        // Canonical lane order first, then any others in
+        // directory order, so the surfaces are stable.
+        private static void DeriveLaneSetFromDirs(TraySettings s)
+        {
+            try
+            {
+                if (!Directory.Exists(s.RunnerRoot)) return;
+                var found = new Dictionary<string, List<string>>();
+                var order = new List<string>();
+                foreach (var dir in Directory.GetDirectories(
+                        s.RunnerRoot))
+                {
+                    string leaf = Path.GetFileName(dir);
+                    string lane = leaf.TrimEnd(
+                        '0', '1', '2', '3', '4',
+                        '5', '6', '7', '8', '9');
+                    if (lane.Length == 0) lane = leaf;
+                    if (!found.ContainsKey(lane))
+                    {
+                        found[lane] = new List<string>();
+                        order.Add(lane);
+                    }
+                    found[lane].Add(leaf);
+                }
+                if (order.Count == 0) return;
+                var lanes = new List<string>();
+                foreach (var c in DefaultLanes)
+                    if (found.ContainsKey(c)) lanes.Add(c);
+                foreach (var l in order)
+                    if (!lanes.Contains(l)) lanes.Add(l);
+                s._lanes = lanes.ToArray();
+                s._laneInstances.Clear();
+                foreach (var lane in lanes)
+                {
+                    var inst = found[lane];
+                    inst.Sort(StringComparer.OrdinalIgnoreCase);
+                    s._laneInstances[lane] = inst;
+                    if (!s._laneEnabled.ContainsKey(lane))
+                        s._laneEnabled[lane] = true;
+                }
+            }
+            catch { /* derivation is best-effort; the floor holds */ }
+        }
+
+        private void FixConnectionPair()
+        {
+            if (ConnectionStaleSeconds >= ConnectionDownSeconds)
+            {
+                // An inverted pair cannot be evaluated; fall
+                // back to the FR-001 defaults rather than
+                // guess which bound the owner meant.
+                ConnectionStaleSeconds = 180;
+                ConnectionDownSeconds = 900;
+            }
+        }
+
+        // The load fallback chain (spec 028 FR-001): the live
+        // file, then its .bak, then the machine profile, then
+        // compiled defaults. Whichever source wins is named in
+        // LastNote whenever it is not the live file, so a
+        // fallback is a recorded event, not a silent one.
+        public static TraySettings Load()
+        {
+            var s = BaseSettings();
+            var p = MachineProfile;
+            if (p == null || p.LaneNames.Count == 0)
+                DeriveLaneSetFromDirs(s);
+            string liveErr = null;
             try
             {
                 if (!File.Exists(FilePath))
                 {
-                    LastNote = "no settings file; defaults in use";
+                    LastNote = "no settings file; " +
+                        (p != null ? "machine profile"
+                                   : "defaults") + " in use";
                     return s;
                 }
-                string text = File.ReadAllText(FilePath);
-                s.Autostart = MiniJson.GetBool(text, "autostart",
-                    s.Autostart);
-                s.SupervisionEnabled = MiniJson.GetBool(text,
-                    "supervisionEnabled", s.SupervisionEnabled);
-                s.MaxRestartsPerHour = Clamp(MiniJson.GetInt(text,
-                    "maxRestartsPerHour", s.MaxRestartsPerHour), 1, 20);
-                s.TickSeconds = Clamp(MiniJson.GetInt(text,
-                    "tickSeconds", s.TickSeconds), 2, 60);
-                s.HideStrayConsoles = MiniJson.GetBool(text,
-                    "hideStrayConsoles", s.HideStrayConsoles);
-                string fp = MiniJson.GetString(text, "fleetStatusPath");
-                if (!string.IsNullOrEmpty(fp)) s.FleetStatusPath = fp;
-                string rr = MiniJson.GetString(text, "runnerRoot");
-                if (!string.IsNullOrEmpty(rr)) s.RunnerRoot = rr;
-                s.FleetStaleSeconds = Clamp(MiniJson.GetInt(text,
-                    "fleetStaleSeconds", s.FleetStaleSeconds), 30, 3600);
-                string hb = MiniJson.GetString(text,
-                    "connectionHeartbeatPath");
-                if (!string.IsNullOrEmpty(hb))
-                    s.ConnectionHeartbeatPath = hb;
-                s.ConnectionStaleSeconds = Clamp(MiniJson.GetInt(text,
-                    "connectionStaleSeconds", s.ConnectionStaleSeconds),
-                    10, 3600);
-                s.ConnectionDownSeconds = Clamp(MiniJson.GetInt(text,
-                    "connectionDownSeconds", s.ConnectionDownSeconds),
-                    30, 86400);
-                string hh = MiniJson.GetString(text, "heartbeatHost");
-                if (!string.IsNullOrEmpty(hh)) s.HeartbeatHost = hh;
-                if (s.ConnectionStaleSeconds >= s.ConnectionDownSeconds)
-                {
-                    // An inverted pair cannot be evaluated; fall
-                    // back to the FR-001 defaults rather than
-                    // guess which bound the owner meant.
-                    s.ConnectionStaleSeconds = 180;
-                    s.ConnectionDownSeconds = 900;
-                }
-                foreach (var lane in Lanes)
-                    s.SetLaneEnabled(lane, MiniJson.GetBool(text,
-                        "laneEnabled_" + lane, true));
+                ParseInto(s, File.ReadAllText(FilePath));
+                LastNote = null;
+                return s;
             }
-            catch (Exception ex)
+            catch (Exception ex) { liveErr = ex.Message; }
+            try
             {
-                LastNote = "settings file unreadable (" + ex.Message +
-                    "); defaults in use";
-                return Defaults();
+                string bak = FilePath + ".bak";
+                if (File.Exists(bak))
+                {
+                    var b = BaseSettings();
+                    if (p == null || p.LaneNames.Count == 0)
+                        DeriveLaneSetFromDirs(b);
+                    ParseInto(b, File.ReadAllText(bak));
+                    LastNote = "settings file unreadable (" +
+                        liveErr + "); last good .bak in use";
+                    return b;
+                }
             }
+            catch { /* the .bak is unreadable too; fall through */ }
+            LastNote = "settings file unreadable (" + liveErr +
+                "); " + (p != null ? "machine profile"
+                                   : "defaults") + " in use";
             return s;
         }
 
+        private static void ParseInto(TraySettings s, string text)
+        {
+            s.Autostart = MiniJson.GetBool(text, "autostart",
+                s.Autostart);
+            s.SupervisionEnabled = MiniJson.GetBool(text,
+                "supervisionEnabled", s.SupervisionEnabled);
+            s.MaxRestartsPerHour = Clamp(MiniJson.GetInt(text,
+                "maxRestartsPerHour", s.MaxRestartsPerHour), 1, 20);
+            s.TickSeconds = Clamp(MiniJson.GetInt(text,
+                "tickSeconds", s.TickSeconds), 2, 60);
+            s.HideStrayConsoles = MiniJson.GetBool(text,
+                "hideStrayConsoles", s.HideStrayConsoles);
+            string fp = MiniJson.GetString(text, "fleetStatusPath");
+            if (!string.IsNullOrEmpty(fp)) s.FleetStatusPath = fp;
+            string rr = MiniJson.GetString(text, "runnerRoot");
+            if (!string.IsNullOrEmpty(rr)) s.RunnerRoot = rr;
+            s.FleetStaleSeconds = Clamp(MiniJson.GetInt(text,
+                "fleetStaleSeconds", s.FleetStaleSeconds), 30, 3600);
+            string hb = MiniJson.GetString(text,
+                "connectionHeartbeatPath");
+            if (!string.IsNullOrEmpty(hb))
+                s.ConnectionHeartbeatPath = hb;
+            s.ConnectionStaleSeconds = Clamp(MiniJson.GetInt(text,
+                "connectionStaleSeconds", s.ConnectionStaleSeconds),
+                10, 3600);
+            s.ConnectionDownSeconds = Clamp(MiniJson.GetInt(text,
+                "connectionDownSeconds", s.ConnectionDownSeconds),
+                30, 86400);
+            string hh = MiniJson.GetString(text, "heartbeatHost");
+            if (!string.IsNullOrEmpty(hh)) s.HeartbeatHost = hh;
+            if (s.ConnectionStaleSeconds >= s.ConnectionDownSeconds)
+            {
+                // An inverted pair cannot be evaluated; fall
+                // back to the FR-001 defaults rather than
+                // guess which bound the owner meant.
+                s.ConnectionStaleSeconds = 180;
+                s.ConnectionDownSeconds = 900;
+            }
+            foreach (var lane in s.Lanes)
+                s.SetLaneEnabled(lane, MiniJson.GetBool(text,
+                    "laneEnabled_" + lane, true));
+            s.FixConnectionPair();
+        }
+
+        // The atomic save (spec 028 FR-001): the new content
+        // lands in a temp file beside the settings file and
+        // replaces it, the replaced file kept as .bak - so a
+        // save interrupted mid-write (kill, power, full disk)
+        // leaves either the old file whole or the new file
+        // whole, and the previous good file survives as the
+        // .bak Load falls back to. No in-place write ever
+        // touches the live path.
         public void Save()
         {
             LastNote = null;
-            try { File.WriteAllText(FilePath, Serialize()); }
+            string tmp = FilePath + ".tmp";
+            try
+            {
+                File.WriteAllText(tmp, Serialize());
+                if (File.Exists(FilePath))
+                    File.Replace(tmp, FilePath, FilePath + ".bak");
+                else
+                    File.Move(tmp, FilePath);
+            }
             catch (Exception ex)
             {
                 LastNote = "settings save failed: " + ex.Message;
+                try { if (File.Exists(tmp)) File.Delete(tmp); }
+                catch { }
             }
         }
 
@@ -1163,9 +1506,14 @@ namespace SyncyardTray
             {
                 if (!created)
                 {
-                    MessageBox.Show("Syncyard Tray is already running.",
-                        "Syncyard Tray", MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                    // Duplicate launch (owner hard constraint,
+                    // 2026-11-06): a modal dialog is a visible
+                    // window in the owner's session, and duplicate
+                    // launches are routine (the watchdog, the Run
+                    // key and a manual start can race). Log the
+                    // line and exit silently instead.
+                    ProgramLog("duplicate launch: tray already " +
+                        "running, exiting silently");
                     return;
                 }
                 Application.EnableVisualStyles();
@@ -1239,6 +1587,11 @@ namespace SyncyardTray
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool DestroyIcon(IntPtr hIcon);
 
+        [DllImport("user32.dll", SetLastError = true,
+            CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr hWnd,
+            StringBuilder lpClassName, int nMaxCount);
+
         private readonly NotifyIcon _icon;
         private readonly System.Windows.Forms.Timer _timer;
         private readonly List<RunnerDef> _runners = new List<RunnerDef>();
@@ -1265,6 +1618,11 @@ namespace SyncyardTray
         // broken write logs once, not every beat).
         private readonly string _heartbeatPath;
         private readonly string _stoppedMarkerPath;
+        // Persisted restart state (spec 028 FR-006): restart
+        // history and Faulted per runner instance, beside the
+        // log, so a tray restart does not zero a crash-looping
+        // instance's cap accounting.
+        private readonly string _restartStatePath;
         private readonly DateTime _startedAtUtc = DateTime.UtcNow;
         private DateTime _lastHeartbeatUtc = DateTime.MinValue;
         private bool _heartbeatWriteFailed;
@@ -1328,6 +1686,8 @@ namespace SyncyardTray
             _heartbeatPath = Path.Combine(baseDir, "tray-heartbeat.json");
             _stoppedMarkerPath = Path.Combine(baseDir,
                 "tray-stopped-by-user.json");
+            _restartStatePath = Path.Combine(baseDir,
+                "tray-restart-state.json");
 
             // The project mark is embedded in this program as the
             // SyncyardLogo.png resource (spec 007 FR-007); a logo.png
@@ -1359,13 +1719,23 @@ namespace SyncyardTray
 
             // Settings load before the runner table exists:
             // the lane dirs are built from the per-machine
-            // runner root the settings carry (spec 021 FR-007).
+            // runner root the settings carry (spec 021 FR-007),
+            // and the table itself from the machine's lane set
+            // with every instance directory of each lane
+            // (spec 028 FR-004/FR-005) - a machine's tray
+            // supervises exactly its own lanes and instances,
+            // never another machine's shape.
             _settings = TraySettings.Load();
 
-            _runners.Add(new RunnerDef { Lane = "long",   Dir = Path.Combine(_settings.RunnerRoot, "long") });
-            _runners.Add(new RunnerDef { Lane = "quick",  Dir = Path.Combine(_settings.RunnerRoot, "quick") });
-            _runners.Add(new RunnerDef { Lane = "normal", Dir = Path.Combine(_settings.RunnerRoot, "normal") });
-            _runners.Add(new RunnerDef { Lane = "gpu",    Dir = Path.Combine(_settings.RunnerRoot, "gpu") });
+            foreach (var lane in _settings.Lanes)
+                foreach (var inst in _settings.LaneInstances(lane))
+                    _runners.Add(new RunnerDef
+                    {
+                        Lane = lane,
+                        Instance = inst,
+                        Dir = Path.Combine(_settings.RunnerRoot, inst)
+                    });
+            LoadRestartState();
 
             _icon = new NotifyIcon();
             _icon.Text = "Syncyard runners";
@@ -1385,6 +1755,9 @@ namespace SyncyardTray
 
             if (TraySettings.LastNote != null)
                 Log("settings: " + TraySettings.LastNote);
+
+            string supNote = SupervisionNote();
+            if (supNote != null) Log(supNote);
 
             Log("tray started");
             Log("tray build " + BuildId);
@@ -1440,6 +1813,103 @@ namespace SyncyardTray
         }
 
         // --- supervision ------------------------------------------------
+
+        // A tray supervising nothing says so (spec 028 FR-003):
+        // the runner root missing, or no enabled lane instance
+        // directory under it, means this tray watches nothing -
+        // the note rides the menu header and the heartbeat in
+        // place of any normal all-up presentation. Null when
+        // at least one enabled instance directory exists.
+        internal string SupervisionNote()
+        {
+            if (!Directory.Exists(_settings.RunnerRoot))
+                return "supervising nothing: runner root missing";
+            foreach (var r in _runners)
+                if (_settings.LaneEnabled(r.Lane) &&
+                    Directory.Exists(r.Dir))
+                    return null;
+            return "supervising nothing: no lane directories " +
+                "under the runner root";
+        }
+
+        // Persisted restart state (spec 028 FR-006): restart
+        // history and Faulted per instance directory, in a
+        // small file beside the log (the runner-watchdog.ps1
+        // restarts.json pattern). Restored at startup, saved
+        // on every change; a tray restart therefore no longer
+        // zeroes a crash-looping instance's cap. Best-effort
+        // both ways: a state file that cannot be read or
+        // written never blocks supervision.
+        private void LoadRestartState()
+        {
+            try
+            {
+                if (!File.Exists(_restartStatePath)) return;
+                string text = File.ReadAllText(_restartStatePath);
+                var now = DateTime.UtcNow;
+                foreach (var obj in MiniJson.GetObjects(text,
+                        "instances"))
+                {
+                    string dir = MiniJson.GetString(obj, "dir");
+                    if (string.IsNullOrEmpty(dir)) continue;
+                    foreach (var r in _runners)
+                    {
+                        if (!string.Equals(r.Dir, dir,
+                                StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        foreach (var ts in MiniJson.GetStringArray(
+                                obj, "restarts"))
+                        {
+                            DateTime t;
+                            if (DateTime.TryParse(ts, null,
+                                    DateTimeStyles.RoundtripKind,
+                                    out t) &&
+                                (now - t).TotalHours <= 1.0)
+                                r.RestartTimes.Add(t);
+                        }
+                        if (MiniJson.GetBool(obj, "faulted", false))
+                            r.Faulted = true;
+                    }
+                }
+            }
+            catch { /* a bad state file costs the history only */ }
+        }
+
+        private void SaveRestartState()
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.Append("{\n  \"instances\": [");
+                bool first = true;
+                foreach (var r in _runners)
+                {
+                    if (!first) sb.Append(", ");
+                    first = false;
+                    sb.Append("{\"dir\": \"").Append(
+                        MiniJson.Escape(r.Dir)).Append(
+                        "\", \"faulted\": ").Append(
+                        r.Faulted ? "true" : "false").Append(
+                        ", \"restarts\": [");
+                    bool firstTs = true;
+                    foreach (var t in r.RestartTimes)
+                    {
+                        if (!firstTs) sb.Append(", ");
+                        firstTs = false;
+                        sb.Append("\"").Append(IsoUtc(t)).Append("\"");
+                    }
+                    sb.Append("]}");
+                }
+                sb.Append("]\n}\n");
+                string tmp = _restartStatePath + ".tmp";
+                File.WriteAllText(tmp, sb.ToString());
+                if (File.Exists(_restartStatePath))
+                    File.Replace(tmp, _restartStatePath, null);
+                else
+                    File.Move(tmp, _restartStatePath);
+            }
+            catch { /* persistence is best-effort, like the beat */ }
+        }
 
         private void OnTick(object sender, EventArgs e)
         {
@@ -1519,6 +1989,15 @@ namespace SyncyardTray
                 sb.Append("  \"ts\": \"").Append(IsoUtc(now)).Append("\",\n");
                 sb.Append("  \"tick\": ").Append(_tick.ToString(
                     CultureInfo.InvariantCulture)).Append(",\n");
+                // Spec 028 FR-003/FR-005: the beat states what
+                // this tray supervises - the supervising-nothing
+                // note when it watches nothing, and one entry
+                // per runner INSTANCE (a multi-instance lane
+                // appears once per instance, with its instance
+                // name and directory).
+                string supNote = SupervisionNote();
+                sb.Append("  \"supervision\": \"").Append(
+                    MiniJson.Escape(supNote ?? "ok")).Append("\",\n");
                 sb.Append("  \"lanes\": [");
                 bool first = true;
                 foreach (var r in _runners)
@@ -1526,7 +2005,12 @@ namespace SyncyardTray
                     if (!first) sb.Append(", ");
                     first = false;
                     sb.Append("{\"lane\": \"").Append(
-                        MiniJson.Escape(r.Lane)).Append("\", \"running\": ")
+                        MiniJson.Escape(r.Lane)).Append(
+                        "\", \"instance\": \"").Append(
+                        MiniJson.Escape(r.Instance)).Append(
+                        "\", \"dir\": \"").Append(
+                        MiniJson.Escape(r.Dir)).Append(
+                        "\", \"running\": ")
                         .Append(r.Running ? "true" : "false")
                         .Append(", \"faulted\": ")
                         .Append(r.Faulted ? "true" : "false").Append("}");
@@ -1636,15 +2120,29 @@ namespace SyncyardTray
                 r.Running = false;
                 foreach (var p in listeners)
                 {
-                    string path = SafePath(p);
-                    if (path != null && path.StartsWith(r.Dir,
-                        StringComparison.OrdinalIgnoreCase))
+                    if (ListenerInDir(p, r.Dir))
                     {
                         r.Running = true;
                         break;
                     }
                 }
             }
+        }
+
+        // Listener identity is the exact runner directory
+        // (spec 028 FR-007, red team H14): the listener exe's
+        // own directory must EQUAL the instance dir - never a
+        // path-prefix match, under which the listener of a
+        // longer sibling dir (normal2) also counted as the
+        // shorter dir's (normal) listener, and the tray
+        // reported a dead instance as running.
+        private static bool ListenerInDir(Process p, string dir)
+        {
+            string path = SafePath(p);
+            if (path == null) return false;
+            string parent = Path.GetDirectoryName(path);
+            return parent != null && string.Equals(parent, dir,
+                StringComparison.OrdinalIgnoreCase);
         }
 
         private static string SafePath(Process p)
@@ -1673,6 +2171,7 @@ namespace SyncyardTray
                 if (r.RestartTimes.Count >= _settings.MaxRestartsPerHour)
                 {
                     r.Faulted = true;
+                    SaveRestartState();
                     Log("OWNER NEEDED: " + r.Lane + " hit the restart cap");
                     continue;
                 }
@@ -1695,6 +2194,7 @@ namespace SyncyardTray
                 psi.WindowStyle = ProcessWindowStyle.Hidden;
                 r.StartedByUs = Process.Start(psi);
                 r.RestartTimes.Add(DateTime.UtcNow);
+                SaveRestartState();
                 Log("started " + r.Lane + " hidden (dir " + r.Dir + ")");
             }
             catch (Exception ex)
@@ -1712,9 +2212,7 @@ namespace SyncyardTray
             {
                 foreach (var p in Process.GetProcessesByName("Runner.Listener"))
                 {
-                    string path = SafePath(p);
-                    if (path != null && path.StartsWith(r.Dir,
-                        StringComparison.OrdinalIgnoreCase))
+                    if (ListenerInDir(p, r.Dir))
                     {
                         p.Kill();
                         Log("stopped listener for " + r.Lane);
@@ -1738,6 +2236,7 @@ namespace SyncyardTray
                 r.Faulted = false;
                 r.RestartTimes.Clear();
             }
+            SaveRestartState();
             RefreshStates();
             StartMissing(true);
             RefreshStates();
@@ -1751,6 +2250,7 @@ namespace SyncyardTray
             StopRunner(r);
             r.Faulted = false;
             r.RestartTimes.Clear();
+            SaveRestartState();
             RefreshStates();
             if (!r.Running) StartRunner(r);
             RefreshStates();
@@ -1767,9 +2267,35 @@ namespace SyncyardTray
         {
             r.Faulted = false;
             r.RestartTimes.Clear();
+            SaveRestartState();
             StartRunner(r);
             RefreshStates();
             RebuildMenu();
+        }
+
+        // The lane-aggregated state the settings dialog shows
+        // (spec 028 FR-005): a lane's row summarizes its
+        // instances - any faulted instance faults the row, and
+        // the running count is over the lane's instances.
+        internal string LaneStateText(string lane)
+        {
+            int total = 0, running = 0;
+            bool anyFaulted = false;
+            foreach (var r in _runners)
+            {
+                if (!string.Equals(r.Lane, lane,
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                total++;
+                if (r.Running) running++;
+                if (r.Faulted) anyFaulted = true;
+            }
+            if (total == 0) return "not registered";
+            if (anyFaulted) return "FAULTED - owner needed";
+            if (total > 1)
+                return running + " of " + total +
+                    " instances running";
+            return running == 1 ? "running" : "stopped";
         }
 
         internal void LaneStop(RunnerDef r)
@@ -1787,6 +2313,11 @@ namespace SyncyardTray
 
         internal void ApplySettings(TraySettings s)
         {
+            // The dialog's draft carries the live settings'
+            // machine-derived lane shape (spec 028): the save
+            // writes the machine's lanes, never the compiled
+            // floor a fresh draft starts from.
+            s.AdoptLaneShape(_settings);
             _settings = s;
             _settings.Save();
             if (TraySettings.LastNote != null)
@@ -2329,10 +2860,78 @@ namespace SyncyardTray
         }
 
         // --- stray console hiding ----------------------------------------
+        //
+        // Invisibility follow-through (owner hard constraint,
+        // 2026-11-06; desktop window audit run 42239836804):
+        // the title-only test this replaces could not see the
+        // windows that actually appear. The audit's two visible
+        // consoles were a PseudoConsoleWindow with an EMPTY
+        // title (a powershell launched WITH the hidden flag,
+        // whose window still surfaced) and a Terminal-hosted
+        // window whose title matched neither substring. The
+        // hider now decides by OWNER PROCESS and WINDOW CLASS:
+        // any process in the fleet console set whose main
+        // window is a console-class window is hidden, whatever
+        // its title says; the original title matches still hide
+        // as before. The one guarded owner is WindowsTerminal
+        // itself: the terminal host is also the owner's own
+        // interactive terminal, so its windows are hidden ONLY
+        // when the title carries a fleet substring. Fleet
+        // consoles hosted inside Terminal are covered where
+        // Windows exposes the tenant process's own handle, and
+        // where it does not, launch-side discipline (hidden
+        // flags, pinned by the launch-discipline battery) is
+        // the fix, not hiding the owner's terminal.
+
+        private static readonly string[] FleetConsoleProcesses =
+            new[] { "conhost", "cmd", "powershell", "pwsh" };
+
+        private static readonly string[] FleetConsoleWindowClasses =
+            new[] { "ConsoleWindowClass", "PseudoConsoleWindow",
+                    "CASCADIA_HOSTING_WINDOW_CLASS" };
+
+        private static bool TitleMatchesFleet(string title)
+        {
+            return title.IndexOf("actions-runner",
+                       StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   title.IndexOf("run.cmd",
+                       StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string WindowClassName(IntPtr hWnd)
+        {
+            try
+            {
+                var sb = new StringBuilder(256);
+                if (GetClassName(hWnd, sb, sb.Capacity) > 0)
+                    return sb.ToString();
+            }
+            catch { }
+            return "";
+        }
+
+        private static bool IsConsoleWindowClass(string cls)
+        {
+            foreach (var c in FleetConsoleWindowClasses)
+                if (string.Equals(cls, c,
+                        StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        private void HideOneStray(Process p, string title,
+            string cls, int cmd)
+        {
+            ShowWindow(p.MainWindowHandle, cmd);
+            if (cmd == SW_HIDE)
+                Log("hid stray console '" + title +
+                    "' process=" + p.ProcessName +
+                    " pid=" + p.Id + " class=" + cls);
+        }
 
         private void SetStrayConsoles(int cmd)
         {
-            foreach (var name in new[] { "conhost", "cmd", "powershell", "pwsh" })
+            foreach (var name in FleetConsoleProcesses)
             {
                 Process[] procs;
                 try { procs = Process.GetProcessesByName(name); }
@@ -2343,19 +2942,36 @@ namespace SyncyardTray
                     {
                         if (p.MainWindowHandle == IntPtr.Zero) continue;
                         string title = p.MainWindowTitle ?? "";
-                        if (title.IndexOf("actions-runner",
-                                StringComparison.OrdinalIgnoreCase) >= 0 ||
-                            title.IndexOf("run.cmd",
-                                StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            ShowWindow(p.MainWindowHandle, cmd);
-                            if (cmd == SW_HIDE)
-                                Log("hid stray console '" + title + "'");
-                        }
+                        string cls = WindowClassName(p.MainWindowHandle);
+                        if (IsConsoleWindowClass(cls) ||
+                            TitleMatchesFleet(title))
+                            HideOneStray(p, title, cls, cmd);
                     }
                     catch { }
                 }
             }
+            // The terminal host, guarded: never hide the
+            // owner's own interactive terminal. A Terminal
+            // window is hidden only when its title carries a
+            // fleet substring, exactly the pre-existing test.
+            try
+            {
+                foreach (var p in
+                    Process.GetProcessesByName("WindowsTerminal"))
+                {
+                    try
+                    {
+                        if (p.MainWindowHandle == IntPtr.Zero) continue;
+                        string title = p.MainWindowTitle ?? "";
+                        if (TitleMatchesFleet(title))
+                            HideOneStray(p, title,
+                                WindowClassName(p.MainWindowHandle),
+                                cmd);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
         }
 
         private void HideStrayConsoles() { SetStrayConsoles(SW_HIDE); }
@@ -2482,6 +3098,16 @@ namespace SyncyardTray
             var connLine = new ToolStripMenuItem(ConnectionText());
             connLine.Enabled = false;
             menu.Items.Add(connLine);
+            // A tray supervising nothing says so in the header
+            // (spec 028 FR-003), ahead of every lane row: no
+            // normal presentation may stand in for it.
+            string supNote = SupervisionNote();
+            if (supNote != null)
+            {
+                var supLine = new ToolStripMenuItem(supNote);
+                supLine.Enabled = false;
+                menu.Items.Add(supLine);
+            }
             // The queue line (0.4.3.0): the fleet's queue
             // depth at a glance. Clickable - it opens the
             // status window - and in the waiting state it
@@ -2514,14 +3140,22 @@ namespace SyncyardTray
                 if (r.Running) running++;
                 string state = r.Faulted ? "FAULTED - owner needed"
                              : r.Running ? "running" : "stopped";
+                // One row per instance (spec 028 FR-005): a
+                // multi-instance lane's rows name the instance
+                // beside the lane, so normal, normal2, and
+                // normal3 read as three rows, not one.
                 var item = new ToolStripMenuItem(
-                    "lane-" + r.Lane + ": " + state);
+                    "lane-" + r.Lane +
+                    (r.Instance != null && r.Instance != r.Lane
+                        ? " [" + r.Instance + "]" : "") +
+                    ": " + state);
                 var start = new ToolStripMenuItem("Start hidden");
                 var captured = r;
                 start.Click += delegate
                 {
                     captured.Faulted = false;
                     captured.RestartTimes.Clear();
+                    SaveRestartState();
                     StartRunner(captured);
                     RefreshStates(); RebuildMenu();
                 };
@@ -2588,7 +3222,8 @@ namespace SyncyardTray
             // and held by no strip: safe to dispose now.
             foreach (var item in stale) item.Dispose();
 
-            int iconState = AnyFaulted() || running == 0 ? 2
+            int iconState = AnyFaulted() || running == 0 ||
+                          SupervisionNote() != null ? 2
                           : running == _runners.Count ? 0 : 1;
             SetIcon(iconState, _conn.State);
             _icon.Text = TooltipText(running);
@@ -3105,13 +3740,15 @@ namespace SyncyardTray
                         : "no timestamp"
                     : "unavailable"));
             var enabled = new List<string>();
-            foreach (var lane in TraySettings.Lanes)
+            foreach (var lane in settings.Lanes)
                 if (settings.LaneEnabled(lane)) enabled.Add(lane);
             lines.Add("Lanes enabled: " +
                 (enabled.Count > 0
                     ? string.Join(", ", enabled.ToArray())
                     : "(none)"));
             lines.Add("Runner root: " + settings.RunnerRoot);
+            string supNote = _app.SupervisionNote();
+            if (supNote != null) lines.Add(supNote);
             _machineLabel.Text = string.Join("\r\n",
                 lines.ToArray());
 
@@ -3485,6 +4122,11 @@ namespace SyncyardTray
     internal sealed class SettingsForm : Form
     {
         private readonly TrayApp _app;
+        // The machine's lane set (spec 028 FR-004): the dialog
+        // draws exactly the lanes this machine carries, taken
+        // from the live settings at open - never the compiled
+        // four-lane floor.
+        private readonly string[] _lanes;
         private readonly CheckBox _chkSupervision;
         private readonly CheckBox _chkAutostart;
         private readonly CheckBox _chkHide;
@@ -3508,6 +4150,7 @@ namespace SyncyardTray
         public SettingsForm(TrayApp app)
         {
             _app = app;
+            _lanes = app.Settings.Lanes;
             Text = "Syncyard Tray Settings";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterScreen;
@@ -3627,11 +4270,11 @@ namespace SyncyardTray
             hint.Size = new Size(544, 20);
             grpLanes.Controls.Add(hint);
 
-            _laneChk = new CheckBox[TraySettings.Lanes.Length];
-            _laneState = new Label[TraySettings.Lanes.Length];
-            for (int i = 0; i < TraySettings.Lanes.Length; i++)
+            _laneChk = new CheckBox[_lanes.Length];
+            _laneState = new Label[_lanes.Length];
+            for (int i = 0; i < _lanes.Length; i++)
             {
-                string lane = TraySettings.Lanes[i];
+                string lane = _lanes[i];
                 int y = 48 + i * 34;
                 var chk = new CheckBox();
                 chk.Text = "lane-" + lane;
@@ -3653,8 +4296,11 @@ namespace SyncyardTray
                 btnStart.Size = new Size(78, 24);
                 btnStart.Click += delegate
                 {
-                    var r = FindRunner(captured);
-                    if (r != null) { _app.LaneStart(r); RefreshDynamic(); }
+                    // A lane's buttons act on every instance
+                    // of the lane (spec 028 FR-005).
+                    foreach (var r in RunnersOf(captured))
+                        _app.LaneStart(r);
+                    RefreshDynamic();
                 };
                 grpLanes.Controls.Add(btnStart);
 
@@ -3664,8 +4310,7 @@ namespace SyncyardTray
                 btnStop.Size = new Size(78, 24);
                 btnStop.Click += delegate
                 {
-                    var r = FindRunner(captured);
-                    if (r == null) return;
+                    if (RunnersOf(captured).Count == 0) return;
                     var ok = MessageBox.Show(
                         "Stop the lane-" + captured + " runner? " +
                         "A job running on it will be killed.",
@@ -3673,7 +4318,8 @@ namespace SyncyardTray
                         MessageBoxIcon.Warning);
                     if (ok == DialogResult.OK)
                     {
-                        _app.LaneStop(r);
+                        foreach (var r in RunnersOf(captured))
+                            _app.LaneStop(r);
                         RefreshDynamic();
                     }
                 };
@@ -3685,8 +4331,9 @@ namespace SyncyardTray
                 btnRestart.Size = new Size(78, 24);
                 btnRestart.Click += delegate
                 {
-                    var r = FindRunner(captured);
-                    if (r != null) { _app.LaneRestart(r); RefreshDynamic(); }
+                    foreach (var r in RunnersOf(captured))
+                        _app.LaneRestart(r);
+                    RefreshDynamic();
                 };
                 grpLanes.Controls.Add(btnRestart);
             }
@@ -3785,9 +4432,9 @@ namespace SyncyardTray
             _numConnDown.Value = s.ConnectionDownSeconds;
             _txtFleetPath.Text = s.FleetStatusPath;
             _numStale.Value = s.FleetStaleSeconds;
-            for (int i = 0; i < TraySettings.Lanes.Length; i++)
+            for (int i = 0; i < _lanes.Length; i++)
                 _laneChk[i].Checked =
-                    s.LaneEnabled(TraySettings.Lanes[i]);
+                    s.LaneEnabled(_lanes[i]);
             RefreshDynamic();
         }
 
@@ -3798,6 +4445,18 @@ namespace SyncyardTray
                         StringComparison.OrdinalIgnoreCase))
                     return r;
             return null;
+        }
+
+        // Every instance of a lane (spec 028 FR-005): the
+        // dialog's per-lane buttons act on all of them.
+        private List<RunnerDef> RunnersOf(string lane)
+        {
+            var list = new List<RunnerDef>();
+            foreach (var r in _app.Runners)
+                if (string.Equals(r.Lane, lane,
+                        StringComparison.OrdinalIgnoreCase))
+                    list.Add(r);
+            return list;
         }
 
         private void OnSave()
@@ -3834,8 +4493,8 @@ namespace SyncyardTray
             next.FleetStatusPath =
                 fp.Length > 0 ? fp : cur.FleetStatusPath;
             next.FleetStaleSeconds = (int)_numStale.Value;
-            for (int i = 0; i < TraySettings.Lanes.Length; i++)
-                next.SetLaneEnabled(TraySettings.Lanes[i],
+            for (int i = 0; i < _lanes.Length; i++)
+                next.SetLaneEnabled(_lanes[i],
                     _laneChk[i].Checked);
             _app.ApplySettings(next);
             Close();
@@ -3847,13 +4506,8 @@ namespace SyncyardTray
         // changed (spec 014 FR-010).
         public void RefreshDynamic()
         {
-            for (int i = 0; i < TraySettings.Lanes.Length; i++)
-            {
-                var r = FindRunner(TraySettings.Lanes[i]);
-                _laneState[i].Text = r == null ? "not registered"
-                    : r.Faulted ? "FAULTED - owner needed"
-                    : r.Running ? "running" : "stopped";
-            }
+            for (int i = 0; i < _lanes.Length; i++)
+                _laneState[i].Text = _app.LaneStateText(_lanes[i]);
             // The connection section (spec 018): the state in
             // words plus the signal set it rests on, refreshed
             // from the tray tick like the lane states.

@@ -39,7 +39,7 @@ scheduled task can. This body registers, runs, and removes it
 (paths are the packaged install's; adjust the user if needed):
 
 ```bash
-powershell.exe -NoProfile -Command "
+'/mnt/c/Program Files/PowerShell/7/pwsh.exe' -NoProfile -Command "
   \$exe = \"\$env:LOCALAPPDATA\Programs\SyncyardTray\SyncyardTray.exe\";
   \$a = New-ScheduledTaskAction -Execute \$exe;
   \$t = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1);
@@ -66,7 +66,7 @@ caps restarts at 3 per runner per hour, then raises OWNER
 NEEDED). Stopping the lane's runner process is enough:
 
 ```bash
-powershell.exe -NoProfile -Command "
+'/mnt/c/Program Files/PowerShell/7/pwsh.exe' -NoProfile -Command "
   Get-CimInstance Win32_Process -Filter \"Name='actions.runner.exe'\" |
     Where-Object { \$_.CommandLine -like '*Syncyard\runners\lane-normal*' } |
     ForEach-Object { Stop-Process -Id \$_.ProcessId -Force }
@@ -81,7 +81,7 @@ that is an owner decision, not a retry loop.
 ### 4. Read-only network diagnostics
 
 ```bash
-powershell.exe -NoProfile -Command "
+'/mnt/c/Program Files/PowerShell/7/pwsh.exe' -NoProfile -Command "
   Get-NetAdapter | Format-Table Name, Status, LinkSpeed;
   Get-NetIPAddress -AddressFamily IPv4 | Format-Table InterfaceAlias, IPAddress, PrefixOrigin;
   Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' | Format-Table InterfaceAlias, NextHop, RouteMetric

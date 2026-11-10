@@ -1,3 +1,4 @@
+#Requires -Version 7.0
 # tray-watchdog.ps1 - the packaged Syncyard tray watchdog (spec 025).
 #
 # One-shot: a scheduled task runs this every minute

@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Tray settings resilience, per-machine lane sets, and
+  multi-instance runner supervision (spec 028, H4): the
+  settings save is atomic (temp file + replace, the previous
+  file kept as tray-settings.json.bak) and the load falls
+  back live file -> .bak -> the machine profile
+  (tray-profile.json beside the exe, installed data carrying
+  this machine's runner root, fleet path, heartbeat path,
+  host name, stale bounds, and lane set; shipped profiles
+  under runner/tray/profiles/ for the desktop and the
+  laptop) -> compiled defaults, logging which source won. The
+  runner table is built from the machine's lane set (the
+  profile's, else the directories under the runner root), so
+  the laptop's tray draws only its long and quick lanes; a
+  lane may name several instance directories (the desktop's
+  normal lane: normal, normal2, normal3), each supervised,
+  restarted, and reported per instance, with the settings
+  dialog and heartbeat aggregating per lane. Restart history
+  and Faulted state persist beside the log
+  (tray-restart-state.json), so a tray restart no longer
+  zeroes a crash-looping instance's cap. A tray whose runner
+  root is missing, or under which no enabled lane directory
+  exists, says "supervising nothing" in its menu header and
+  heartbeat. Listener identity is the exact runner directory
+  in the tray and in runner/runner-watchdog.ps1 (no more
+  path-prefix matching). Source coverage:
+  runner/tray/test_tray_source.py (spec 028 section); the
+  falsifier legs are recorded in
+  specs/028-settings-resilience/falsifier-record.md.
 - Tray version drift detection (spec 027, H3): each sweep,
   the gatekeeper reads the release manifest the tray updater
   itself consumes (tray-update.json on the latest release,
