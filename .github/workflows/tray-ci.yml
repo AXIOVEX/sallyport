@@ -98,7 +98,7 @@ jobs:
           Write-Host "TRAY_CI_COMPILE_OK exe=$exe bytes=$size"
 
       - name: Upload the built exe as a job artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: SyncyardTray-exe
           path: ${{ runner.temp }}/tray-build/SyncyardTray.exe
