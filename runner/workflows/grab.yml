@@ -1,4 +1,9 @@
-# Syncyard grab workflow - version 0.2.0
+# Syncyard grab workflow - version 0.2.1
+# 0.2.1 (2026-11-09, owner order): the upload carries retention-days: 1.
+# A grabbed file is transport only (the gatekeeper harvests it and then
+# deletes the artifact); a missed cleanup must self-expire in a day
+# instead of sitting for the 90-day default that built the 2026-11-09
+# artifact backlog (190 artifacts, ~952 MB, quota exhausted).
 # Part of AXIOVEX/syncyard. Dispatch-only by design: this workflow binds
 # self-hosted runners and must NEVER be triggered by pull_request,
 # pull_request_target, issues, or any other unprivileged event.
@@ -32,3 +37,4 @@ jobs:
           name: grabbed-file
           path: ${{ inputs.path }}
           if-no-files-found: error
+          retention-days: 1
