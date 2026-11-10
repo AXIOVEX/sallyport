@@ -1,0 +1,60 @@
+name: Publish
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: Successful Benchmark candidate build run ID on trusted main
+        type: string
+        required: true
+      release_tag:
+        description: New immutable version tag matching the tested source version
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  candidate:
+    uses: electrohire/spec-kit-aee-benchmark/.github/workflows/benchmark-release-input.yml@ec47ab236702d549155cb7f34293a7c29aacc8ab
+    with:
+      build_run_id: ${{ inputs.build_run_id }}
+      component: extension
+      release_tag: ${{ inputs.release_tag }}
+  benchmark-release-gate:
+    needs: candidate
+    uses: electrohire/spec-kit-aee-benchmark/.github/workflows/benchmark-release-gate.yml@ec47ab236702d549155cb7f34293a7c29aacc8ab
+    with:
+      candidate_sha: ${{ needs.candidate.outputs.candidate_sha }}
+      artifact_sha256: ${{ needs.candidate.outputs.artifact_sha256 }}
+  github-release:
+    needs: [candidate, benchmark-release-gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: verified-release-distributions
+          path: dist/
+      - name: Publish only the exact benchmark-approved distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPONENT_REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.candidate_sha }}
+        run: |
+          # Refuse tag movement or release overwrite. No policy bypass.
+          if gh api "repos/$COMPONENT_REPOSITORY/git/ref/tags/$RELEASE_TAG" > tag.json 2> tag-error.txt; then
+            kind="$(python -c 'import json; print(json.load(open("tag.json"))["object"]["type"])')"
+            target="$(python -c 'import json; print(json.load(open("tag.json"))["object"]["sha"])')"
+            if [ "$kind" = tag ]; then
+              gh api "repos/$COMPONENT_REPOSITORY/git/tags/$target" > annotated-tag.json
+              kind="$(python -c 'import json; print(json.load(open("annotated-tag.json"))["object"]["type"])')"
+              target="$(python -c 'import json; print(json.load(open("annotated-tag.json"))["object"]["sha"])')"
+            fi
+            [ "$kind" = commit ] && [ "$target" = "$CANDIDATE_SHA" ] || { echo 'Tag points to another commit'; exit 1; }
+          elif ! grep -q 'HTTP 404' tag-error.txt; then
+            cat tag-error.txt; exit 1
+          fi
+          gh release create "$RELEASE_TAG" dist/* --repo "$COMPONENT_REPOSITORY" --target "$CANDIDATE_SHA" --title "$RELEASE_TAG" --generate-notes

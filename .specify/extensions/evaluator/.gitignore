@@ -1,0 +1,18 @@
+# Spec Kit Evaluator Contract Extension
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+# Machine-local AEE audit/runtime state
+.aee/
+.specify/extensions/aee/.runtime/
+.specify/extensions/aee/assessments/
+.specify/extensions/aee/ledger/
+.specify/extensions/evaluator/results/
+.specify/extensions/evaluator/composed/
+
+# Installed copies of these extensions must not nest inside their release archives.
+.specify/extensions/aee/
+.specify/extensions/evaluator/
+.specify/extensions/.registry

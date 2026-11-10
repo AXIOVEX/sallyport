@@ -1,0 +1,21 @@
+name: Benchmark candidate
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'skills/**'
+      - 'references/**'
+      - 'pyproject.toml'
+      - 'extension.yml'
+      - 'requirements/**'
+      - '.github/workflows/benchmark-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  request:
+    uses: electrohire/spec-kit-aee-benchmark/.github/workflows/benchmark-build-request.yml@ec47ab236702d549155cb7f34293a7c29aacc8ab
+    with:
+      component: extension

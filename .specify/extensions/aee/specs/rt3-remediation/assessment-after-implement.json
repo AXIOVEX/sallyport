@@ -1,0 +1,1534 @@
+{
+  "schema_version": "1.0",
+  "methodology_version": "1.0",
+  "project": "project",
+  "phase": "after_implement",
+  "outcome": "iterate",
+  "summary": "Assessed 12 claim(s); found 33 failure mode(s); 0 claim(s) below the 0.70 confidence threshold.",
+  "created_at": "2026-10-12T16:38:24.603728Z",
+  "claims": [
+    {
+      "id": "RT3R-05",
+      "text": "The gaps flow now refuses, in a runner-side pre-flight, any symlink or out-of-root entry inside the evidence tree (exit 2, offenders named) before the engine runs, so out-of-root data cannot close a gap; all-real in-project evidence still works.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/run_aee.py _gaps evidence pre-flight",
+        "engine gaps evidence discovery (companion issue only)"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_gaps_refuses_symlinked_evidence_file",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Probe inversion: symlinked evidence file -> exit 2, offender named, no GAPS.md written.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_gaps_refuses_symlinked_evidence_subdir",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Symlinked evidence subdirectory refused the same way.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_gaps_accepts_real_evidence",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Positive control: nested real evidence files pass the pre-flight (exit 0).",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "/tmp/probe_rt3/probe1_gaps.py re-run 2026-10-12",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "The original pre-fix probe against the fixed tree: exit 2, GAPS.md MISSING (was exit 0, gap closed, pre-fix).",
+          "source_id": "rt3-probe-rerun-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run gaps with a symlinked evidence file pointing outside the project root and show a gap closing anyway, or show an all-real evidence tree being refused."
+      ],
+      "uncertainty": "low",
+      "severity": "high",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-1",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-05-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-05",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-05-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-05",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-05 may contradict RT3R-08",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-05-NEGATION-CONFLICT-CHALLE-2",
+          "claim_id": "RT3R-05",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-05 may contradict RT3R-10",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-05-NEGATION-CONFLICT-CHALLE-3",
+          "claim_id": "RT3R-05",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-05 may contradict RT3R-13",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-08",
+      "text": "Generated assessment/challenge/graph filenames carry microsecond + random suffixes (run_aee._unique_stamp), so two same-phase runs in the same second produce distinct files with distinct contents, each ledgered under its own stamp.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/run_aee.py filename stamping in _assess, _challenge, _graph"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_same_second_assessments_never_share_a_filename",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Two consecutive stub assesses write two distinct files whose contents carry their own markers; the ledger holds two entries.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_unique_stamp_never_collides_and_sorts",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "200 consecutive _unique_stamp() calls are all distinct and fixed-width sortable.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "/tmp/probe_rt3/probe4b_collide.py re-run 2026-10-12",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Live same-second assess pairs now produce distinct filenames on every attempt (was: identical names + confirmed overwrite pre-fix).",
+          "source_id": "rt3-probe-rerun-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Produce two same-second same-phase assessments that resolve to one filename, or a ledger entry whose SHA-256 matches a different run's file."
+      ],
+      "uncertainty": "low",
+      "severity": "medium",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-2",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-08-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-08",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-08-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-08",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-08 may contradict RT3R-09",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-08-NEGATION-CONFLICT-CHALLE-2",
+          "claim_id": "RT3R-08",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-08 may contradict RT3R-11",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-08-NEGATION-CONFLICT-CHALLE-3",
+          "claim_id": "RT3R-08",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-08 may contradict RT3R-16",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-08-NEGATION-CONFLICT-CHALLE-4",
+          "claim_id": "RT3R-08",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-08 may contradict RT3R-19",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-09",
+      "text": "The token-economy shell wrapper runs the command with cwd pinned to the project root, under --timeout (default 600 s, timeout = exit 2 recorded with timed_out: true), and redacts secret-looking argv values from the telemetry record; the trust model (telemetry wrapper, not a sandbox) is stated in docs/token-economy.md.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/aee_token_economy.py _shell",
+        "docs/token-economy.md trust model"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_shell_runs_in_project_root",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Wrapped command's os.getcwd() equals the project root even when the caller cwd differs.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_shell_telemetry_redacts_secrets",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Telemetry for argv token=SUPERSECRETARG123 contains token=<redacted> and never the value.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_shell_timeout_returns_2_and_records_it",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "A 10 s sleeper under --timeout 1 is killed; wrapper returns 2; record has timed_out true and exit_code null.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "/tmp/probe_rt3/probe2_te.py re-run 2026-10-12",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Original probe: cwd is now the project root and telemetry shows token=<redacted>; the outside cat still prints because shell is a telemetry wrapper, not a sandbox - now stated in docs.",
+          "source_id": "rt3-probe-rerun-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run shell from another cwd and show the command executing there, find a verbatim secret in shell-calls.jsonl, or show a runaway command surviving --timeout."
+      ],
+      "uncertainty": "low",
+      "severity": "medium",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-5",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-09-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-09",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-09-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-09",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-09 may contradict RT3R-10",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-09-NEGATION-CONFLICT-CHALLE-2",
+          "claim_id": "RT3R-09",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-09 may contradict RT3R-13",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-09-NEGATION-CONFLICT-CHALLE-3",
+          "claim_id": "RT3R-09",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-09 may contradict RT3R-17",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-10",
+      "text": "Token-router discovery is confined to the project root and its parent (an out-of-domain TOKEN_ROUTER_HOME is ignored and routing falls back deterministically); router ranges are strictly typed (JSON booleans rejected); the route record names the router path and SHA-256 whenever the token-router backend runs.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/aee_token_economy.py _find_token_router and _router_backend"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_router_home_outside_trust_domain_is_ignored",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "_find_token_router returns None for a TOKEN_ROUTER_HOME in an unrelated tree; live probe5_after.py confirms the fake router never executes and backend is deterministic.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_router_backend_rejects_bool_ranges",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Router output [[true,3],[2,4],['5',9]] parses to exactly [(2,4)].",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_route_record_names_router_path_and_hash",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Route record's router.path and router.sha256 match the executed router file.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "/tmp/probe_rt3/probe5_after.py live run 2026-10-12",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Out-of-domain TOKEN_ROUTER_HOME: backend deterministic, router executed-marker absent, no router key in the record (in-domain parent-tree router in probe2 still runs but its [[true,3]] is now rejected).",
+          "source_id": "rt3-probe-rerun-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Execute a router from an out-of-domain TOKEN_ROUTER_HOME, get [[true,3]] accepted as a range, or produce a token-router record without router identity."
+      ],
+      "uncertainty": "low",
+      "severity": "medium",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-4",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-10-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-10",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-10-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-10",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-10 may contradict RT3R-18",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-10-NEGATION-CONFLICT-CHALLE-2",
+          "claim_id": "RT3R-10",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-10 may contradict RT3R-19",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-11",
+      "text": "Every engine subprocess the runner spawns runs under --timeout (default 600 s; capability probes bounded by min(30, --timeout)); on expiry the runner kills the engine and returns exit 2 with timed_out: true, aee_exit_code: null, and no output stamp or ledger append - a verdict distinct from every scored engine outcome.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/run_aee.py subprocess invocations for assess, challenge, graph, gaps, gate, review, verify"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_assess_timeout_is_a_distinct_refusal",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Against a sleeping stub engine with --timeout 1 the runner returns in seconds with exit 2 and the timed_out JSON shape.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_gate_timeout_is_a_clean_refusal",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Passthrough gate against the sleeping stub exits 2 with a refused: timeout message and no traceback.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "/tmp/probe_rt3/probe5_after.py live run 2026-10-12",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Real runner + sleeping stub, --timeout 2: returned in 4.6 s, exit 2, timed_out true.",
+          "source_id": "rt3-probe-rerun-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Hang the engine and show the runner waiting past --timeout, or show a timeout surfacing as exit 1 / a scored outcome / a ledger append."
+      ],
+      "uncertainty": "low",
+      "severity": "medium",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-3",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-11-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-11",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-11-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-11",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-11 may contradict RT3R-13",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-11-NEGATION-CONFLICT-CHALLE-2",
+          "claim_id": "RT3R-11",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-11 may contradict RT3R-17",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-12",
+      "text": "Every invocation template in commands/*.md quotes its path placeholders, and the assess template states the rule explicitly (quote verbatim; never eval or split user-supplied arguments).",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "commands/speckit.aee.*.md bash templates"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_command_templates_quote_placeholders",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Scan: no invocation line in commands/*.md carries a <placeholder> outside double quotes; assess.md contains the never-eval guardrail.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "commands/*.md invocation templates (fixed tree)",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "All ten command files inspected: placeholders quoted verbatim; gate.md documents --latest.",
+          "source_id": "rt3-remediation-docs-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Find an invocation line in commands/*.md with a placeholder outside double quotes."
+      ],
+      "uncertainty": "low",
+      "severity": "medium",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-8",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-12-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-12",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-12-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-12",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-12 may contradict RT3R-13",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-13",
+      "text": "assess maintains .specify/extensions/aee/assessments/latest-<phase>.json on every successful run and gate --latest <phase> gates exactly that assessment (age printed to stderr; missing pointer refuses exit 2; --input/--latest mutually exclusive); hooks remain argument-free but docs/usage.md now specifies each hook's command, expected artifact, phase/inputs, and stop conditions, referenced from extension.yml.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "extension.yml hooks",
+        "scripts/python/run_aee.py gate and assess",
+        "docs/usage.md hook expectations"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_assess_writes_latest_pointer_and_gate_latest_uses_it",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Stub assess writes the pointer naming its assessment; gate --latest after_plan resolves it and gates exit 0 with the age note on stderr.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_gate_latest_without_pointer_refuses",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "gate --latest for a never-assessed phase refuses exit 2 without a traceback.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_gate_input_and_latest_are_mutually_exclusive",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "gate --input X --latest P is an argparse error (exit 2).",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "docs/usage.md#hook-expectations + commands/speckit.aee.gate.md",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "The hook table (command, artifact, phase/inputs, stop conditions) and --latest freshness guidance as shipped.",
+          "source_id": "rt3-remediation-docs-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Show gate unable to select the freshest assessment for a phase, a missing pointer not refusing, or a hook whose artifact/phase expectations remain unspecified."
+      ],
+      "uncertainty": "low",
+      "severity": "medium",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-7",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-13-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-13",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-13-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-13",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-13 may contradict RT3R-14",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-13-NEGATION-CONFLICT-CHALLE-2",
+          "claim_id": "RT3R-13",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-13 may contradict RT3R-16",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-13-NEGATION-CONFLICT-CHALLE-3",
+          "claim_id": "RT3R-13",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-13 may contradict RT3R-18",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-13-NEGATION-CONFLICT-CHALLE-4",
+          "claim_id": "RT3R-13",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-13 may contradict RT3R-19",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-14",
+      "text": "README installs the extension from the v1.2.0 tag archive matching extension.yml, carries no 'prepares 1.1.0 (unreleased)' or stale 'published v1.0.1' text, docs/usage.md no longer describes an unreleased patch or a v1.0.0 workaround, and CHANGELOG dates 1.2.0 at 2026-10-06 with 1.1.0 labelled released as part of 1.2.0; tests pin the README tag to the manifest version.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "README.md install section",
+        "CHANGELOG.md section heads",
+        "extension.yml version"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_readme_install_tag_matches_manifest_version",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "README's archive tag regex-extracts to exactly extension.yml's version; the 1.1.0-unreleased passage is absent.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_changelog_does_not_call_shipped_versions_unreleased",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "No '## 1.2.0 - Unreleased' / '## 1.1.0 - Unreleased' headings; '## 1.2.0 - 2026-10-06' present.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "git tag dates (verified 2026-10-12)",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "v1.2.0 tag dated 2026-10-06; no v1.1.0 tag exists - the changelog's dating matches the repository's own refs.",
+          "source_id": "rt3-remediation-docs-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Show README's install tag differing from extension.yml's version, or a shipped version labelled unreleased anywhere in README/CHANGELOG."
+      ],
+      "uncertainty": "low",
+      "severity": "medium",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-9",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-14-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-14",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-16",
+      "text": "check_install.py expresses every verification as an explicit check()/CheckFailed with a message (no bare asserts; it verifies fully under python -O) and supports --from-archive, installing the aee extension from a release zip served over loopback HTTP (specify --from accepts URLs only) while the evaluator still comes from --evaluator-dir.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "scripts/check_install.py"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_check_install_has_no_bare_asserts_and_supports_archive",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Source scan: no bare assert statements; --from-archive and CheckFailed present.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "run: scripts/check_install.py (local dir) on the fixed tree",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "PASS in ~9 s: both extensions, ten commands, five hooks, all six installed operations.",
+          "source_id": "rt3-check-install-runs-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "run: scripts/check_install.py --from-archive aee-rt3.zip (git archive of the fix commit)",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "PASS in ~18 s via loopback HTTP; under python -O also PASS; a bogus archive FAILs with exit 1 and a named message.",
+          "source_id": "rt3-check-install-runs-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run python -O scripts/check_install.py against a broken tree and show it passing, find a bare assert in the file, or show the archive mode missing."
+      ],
+      "uncertainty": "low",
+      "severity": "low",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-9",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-16-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-16",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-16-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-16",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-16 may contradict RT3R-17",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-17",
+      "text": "_safe_output returns the resolved path (candidate.resolve(strict=False)) in both run_aee.py and aee_token_economy.py, closing the check-then-use window the unresolved return left.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/run_aee.py _safe_output",
+        "scripts/python/aee_token_economy.py _safe_output"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_safe_output_returns_resolved_path",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "run_aee._safe_output('sub/../out/result.json') returns the resolved absolute path.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_te_safe_output_returns_resolved_path",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Same for aee_token_economy._safe_output.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/python/run_aee.py + scripts/python/aee_token_economy.py _safe_output bodies",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Both return candidate.resolve(strict=False) with the RT3-17 rationale in comments.",
+          "source_id": "rt3-remediation-code-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Show either adapter's _safe_output returning a path containing .. or . segments, or a relative path."
+      ],
+      "uncertainty": "low",
+      "severity": "low",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-6",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-17-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-17",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        },
+        {
+          "id": "AEE-RT3R-17-NEGATION-CONFLICT-CHALLE",
+          "claim_id": "RT3R-17",
+          "challenge": "Negation conflict challenge",
+          "breakpoint": "RT3R-17 may contradict RT3R-19",
+          "severity": "medium",
+          "category": "contradiction",
+          "recovery_hint": "Confirm whether the claims share a boundary and preserve both pending review.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-18",
+      "text": "Route documentation now matches the helper: the fallback is pure-Python literal match windows (no rg/grep claim), report-savings.md documents the helper's actual JSON (used boolean, saved_tokens number-or-'n/a'), and route enforces a byte cap (default 256 MB, --max-file-bytes) refusing oversized files before any read, streaming lines under the cap.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/aee_token_economy.py _route",
+        "commands/speckit.aee.route-evidence.md",
+        "commands/speckit.aee.report-savings.md"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_route_refuses_file_over_byte_cap",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "A 500-byte file under --max-file-bytes 100 exits 2 naming the byte cap, before routing.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_rt3_remediation.py::test_route_and_savings_docs_match_implementation",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "route-evidence.md has no `rg`/`grep` fallback claim; report-savings.md has no used=<yes|no|n/a> and shows the boolean JSON shape.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "live report output (existing suite test_report_real_rtk_output)",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "_report builds the exact JSON shape the doc now shows, from stubbed rtk/headroom output.",
+          "source_id": "rt3-remediation-docs-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Route a file over the cap without refusal, or find route/report documentation describing behavior the code does not have."
+      ],
+      "uncertainty": "low",
+      "severity": "low",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-9",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-18-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-18",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    },
+    {
+      "id": "RT3R-19",
+      "text": "templates/aee-config.template.yml's header states that NO script loads the file and names both adapters (run_aee.py, aee_token_economy.py) as operator-reference-only consumers of its values via explicit CLI flags.",
+      "kind": "observation",
+      "status": "supported",
+      "boundary": [
+        "templates/aee-config.template.yml header",
+        "scripts/python/run_aee.py and aee_token_economy.py config loading (absent)"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "tests/test_rt3_remediation.py::test_config_template_disclaims_both_scripts",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Template header contains 'NO script loads this file' and names both scripts.",
+          "source_id": "rt3-remediation-tests-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "templates/aee-config.template.yml header (fixed tree)",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "The header text itself, shipped in the template every install copies.",
+          "source_id": "rt3-remediation-docs-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Show the header naming only one script, or any adapter gaining a config-file load."
+      ],
+      "uncertainty": "low",
+      "severity": "low",
+      "source_ref": "specs/rt3-remediation/spec.md#fr-9",
+      "domain": "",
+      "confidence": 1.0,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-RT3R-19-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "RT3R-19",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "scores": {
+    "RT3R-05": {
+      "claim_id": "RT3R-05",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-08": {
+      "claim_id": "RT3R-08",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-09": {
+      "claim_id": "RT3R-09",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-10": {
+      "claim_id": "RT3R-10",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-11": {
+      "claim_id": "RT3R-11",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-12": {
+      "claim_id": "RT3R-12",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-13": {
+      "claim_id": "RT3R-13",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-14": {
+      "claim_id": "RT3R-14",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-16": {
+      "claim_id": "RT3R-16",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-17": {
+      "claim_id": "RT3R-17",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-18": {
+      "claim_id": "RT3R-18",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    },
+    "RT3R-19": {
+      "claim_id": "RT3R-19",
+      "direct_score": 1.0,
+      "propagated_score": 1.0,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "notes": []
+    }
+  },
+  "verdicts": {},
+  "recoveries": [
+    {
+      "failure_id": "AEE-RT3R-05-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-05",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-05-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-05",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-05-NEGATION-CONFLICT-CHALLE-2",
+      "claim_id": "RT3R-05",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-05-NEGATION-CONFLICT-CHALLE-3",
+      "claim_id": "RT3R-05",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-08-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-08",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-08-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-08",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-08-NEGATION-CONFLICT-CHALLE-2",
+      "claim_id": "RT3R-08",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-08-NEGATION-CONFLICT-CHALLE-3",
+      "claim_id": "RT3R-08",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-08-NEGATION-CONFLICT-CHALLE-4",
+      "claim_id": "RT3R-08",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-09-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-09",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-09-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-09",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-09-NEGATION-CONFLICT-CHALLE-2",
+      "claim_id": "RT3R-09",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-09-NEGATION-CONFLICT-CHALLE-3",
+      "claim_id": "RT3R-09",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-10-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-10",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-10-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-10",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-10-NEGATION-CONFLICT-CHALLE-2",
+      "claim_id": "RT3R-10",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-11-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-11",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-11-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-11",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-11-NEGATION-CONFLICT-CHALLE-2",
+      "claim_id": "RT3R-11",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-12-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-12",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-12-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-12",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-13-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-13",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-13-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-13",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-13-NEGATION-CONFLICT-CHALLE-2",
+      "claim_id": "RT3R-13",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-13-NEGATION-CONFLICT-CHALLE-3",
+      "claim_id": "RT3R-13",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-13-NEGATION-CONFLICT-CHALLE-4",
+      "claim_id": "RT3R-13",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-14-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-14",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-16-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-16",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-16-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-16",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-17-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-17",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-17-NEGATION-CONFLICT-CHALLE",
+      "claim_id": "RT3R-17",
+      "strategy": "resolve_contradiction",
+      "action": "Confirm whether the claims share a boundary and preserve both pending review.",
+      "priority": 3,
+      "verification": "Both positions remain recorded; discriminating evidence resolves or scopes them."
+    },
+    {
+      "failure_id": "AEE-RT3R-18-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-18",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-RT3R-19-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "RT3R-19",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    }
+  ],
+  "metadata": {
+    "threshold": 0.7,
+    "input": "specs/rt3-remediation/claims-after-implement.json"
+  }
+}

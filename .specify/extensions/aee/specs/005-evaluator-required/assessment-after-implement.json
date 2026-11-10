@@ -1,0 +1,972 @@
+{
+  "schema_version": "1.0",
+  "methodology_version": "2.0",
+  "project": "spec-kit-aee",
+  "phase": "after_implement",
+  "outcome": "iterate",
+  "summary": "Assessed 4 claim(s); found 20 failure mode(s); 0 claim(s) below the 0.70 confidence threshold. Shared evidence: 3 supporting source(s) shared across 4 of 4 claim(s); the same evidence set supports multiple claims (FR-2.8, reporting only, no outcome effect in this phase). Stage cap: 4 claim(s) below stage 'explained'; the outcome cannot be 'pass' (Spec 004 R1.4). Stage caps applied: 4 claim(s) reported below their author-declared status or in qualified form (Spec 004 R1.3). Not understood: 8 residual unknown(s) are recorded on this assessment (Spec 004 R5.2). Lane 1 (machine verification): outcome iterate; 4 claim(s) at or above the 0.70 threshold, 0 below. Lane 2 (human acceptance): stages by effective stage: created 4. Lane-2 lag: 4 claim(s) below explained; 4 stage-capped.",
+  "created_at": "2026-10-12T21:03:50.043675Z",
+  "claims": [
+    {
+      "id": "ER-005-01",
+      "text": "assess refuses when the spec-kit-evaluator extension is not installed in the project: with .specify/extensions/evaluator/ absent, the runner exits 2 before running the engine or writing any output, and the refusal message names the missing extension and how to install it (specify extension add spec-kit-evaluator), stating that composition through the evaluator extension is part of the standard flow.",
+      "kind": "requirement",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/run_aee.py assess pre-flight (evaluator_extension_present sampling, RT3-04)"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/005-evaluator-required/spec.md#er-01--assess-refuses-without-the-evaluator-extension",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 005 ER-01, which this claim commits to test.",
+          "source_id": "spec-005-evaluator-required",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/python/run_aee.py _assess; main() refusal path",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before: _assess samples evaluator_extension_present before creating outputs and only reports it in the JSON summary; assess runs to a scored verdict in a project with no evaluator extension (tests/test_runner.py::test_assess_success_names_only_written_files asserts success with evaluator_extension_present false). The clean-refusal channel already exists: pre-flight failures raise ValueError, main() prints 'refused: ...' to stderr and returns 2, with no traceback and no outputs.",
+          "source_id": "er-before-inspection-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_evaluator_required.py::test_assess_refuses_without_evaluator_extension",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Shipped refusal test: in a project with no .specify/extensions/evaluator, the stubbed assess exits 2 with a clean 'refused:' message naming spec-kit-evaluator and 'specify extension add spec-kit-evaluator', prints no JSON, and writes nothing (no .specify/extensions/aee tree, no evaluator dir created); independently probed against the real engine 1.5.0 with the same result (exit 2, only the input file present afterwards).",
+          "source_id": "spec-005-suite-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run assess in a project without .specify/extensions/evaluator and observe it score a verdict, write an assessment/evaluator-result/ledger/latest-pointer file, or refuse without naming spec-kit-evaluator and the install command."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.9,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-ER-005-01-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "ER-005-01",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-01-INDEPENDENCE-UNMODELED",
+          "claim_id": "ER-005-01",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'er-before-inspection-2026-10-12' (ref(s): extension.yml; README.md; commands/speckit.aee.assess.md; docs/usage.md; scripts/check_install.py, scripts/check_install.py _run_checks, scripts/python/run_aee.py _assess; main() refusal path, tests/test_runner.py; tests/test_p5_vocabulary.py; commands/speckit.aee.assess.md) is shared with claim(s) ER-005-02, ER-005-03, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-01-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "ER-005-01",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-005-evaluator-required' (ref(s): specs/005-evaluator-required/spec.md#er-01--assess-refuses-without-the-evaluator-extension, specs/005-evaluator-required/spec.md#er-02--with-the-evaluator-extension-installed-assess-is-unchanged, specs/005-evaluator-required/spec.md#er-03--the-pair-is-declared-and-taught-as-one-system, specs/005-evaluator-required/spec.md#er-04--check_install-fails-without-the-evaluator-extension) is shared with claim(s) ER-005-02, ER-005-03, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-01-INDEPENDENCE-UNMODELED-3",
+          "claim_id": "ER-005-01",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-005-suite-2026-10-12' (ref(s): scripts/check_install.py _run_checks (Spec 005 block); tests/test_evaluator_required.py::test_check_install_exercises_the_refusal, tests/test_evaluator_required.py::test_assess_refuses_without_evaluator_extension, tests/test_evaluator_required.py::test_manifest_declares_evaluator_required; tests/test_evaluator_required.py::test_docs_teach_the_pair_as_one_system; tests/test_integration.py::test_manifest_uses_supported_dependency_metadata, tests/test_runner.py; tests/test_p5_vocabulary.py; tests/test_integration.py; scripts/check_install.py) is shared with claim(s) ER-005-02, ER-005-03, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-01-STAGE-CAP",
+          "claim_id": "ER-005-01",
+          "challenge": "Stage cap",
+          "breakpoint": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged); the cap lifts with a recorded checking event (an assessment run recorded as a stage event) (Spec 004 R1.3)",
+          "severity": "low",
+          "category": "stage_cap",
+          "recovery_hint": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "ER-005-02",
+      "text": "With the spec-kit-evaluator extension installed, assess behaves exactly as in 1.3.0 - same outputs, same exit-code passthrough, evaluator_extension_present: true in the JSON summary - and the assess command document presents composition through the evaluator extension as the standard next step when other evaluators ran at the same phase.",
+      "kind": "requirement",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/run_aee.py _assess happy path; commands/speckit.aee.assess.md reporting guidance"
+      ],
+      "depends_on": [
+        "ER-005-01"
+      ],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/005-evaluator-required/spec.md#er-02--with-the-evaluator-extension-installed-assess-is-unchanged",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 005 ER-02, which this claim commits to test.",
+          "source_id": "spec-005-evaluator-required",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_runner.py; tests/test_p5_vocabulary.py; commands/speckit.aee.assess.md",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Baseline: the 1.3.0 suite (127 passed) pins the happy path end to end - outputs named only when written, verdict passthrough, evaluator_extension_present reporting, verdict display - across tests/test_runner.py, tests/test_p5_vocabulary.py, and tests/test_integration.py; the assess command document already recommends composition when the runner reports the extension present.",
+          "source_id": "er-before-inspection-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_runner.py; tests/test_p5_vocabulary.py; tests/test_integration.py; scripts/check_install.py",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Full suite in the repo-pinned layout (pip install --require-hashes -r requirements/dev.txt; engine 1.5.0 from PyPI): 133 passed, including every pre-existing happy-path assess test (stubbed and real-engine) with unchanged outputs and evaluator_extension_present: true; scripts/check_install.py against the real spec-kit-evaluator v1.1.0 checkout prints PASS with the installed runner's assess exercised.",
+          "source_id": "spec-005-suite-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "With the evaluator extension installed, run the 1.3.0-era assess scenarios and observe any output field, exit code, or written file differ from the pre-change behavior other than the extension_version stamp."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8500000000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-ER-005-02-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "ER-005-02",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-02-INDEPENDENCE-UNMODELED",
+          "claim_id": "ER-005-02",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'er-before-inspection-2026-10-12' (ref(s): extension.yml; README.md; commands/speckit.aee.assess.md; docs/usage.md; scripts/check_install.py, scripts/check_install.py _run_checks, scripts/python/run_aee.py _assess; main() refusal path, tests/test_runner.py; tests/test_p5_vocabulary.py; commands/speckit.aee.assess.md) is shared with claim(s) ER-005-01, ER-005-03, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-02-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "ER-005-02",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-005-evaluator-required' (ref(s): specs/005-evaluator-required/spec.md#er-01--assess-refuses-without-the-evaluator-extension, specs/005-evaluator-required/spec.md#er-02--with-the-evaluator-extension-installed-assess-is-unchanged, specs/005-evaluator-required/spec.md#er-03--the-pair-is-declared-and-taught-as-one-system, specs/005-evaluator-required/spec.md#er-04--check_install-fails-without-the-evaluator-extension) is shared with claim(s) ER-005-01, ER-005-03, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-02-INDEPENDENCE-UNMODELED-3",
+          "claim_id": "ER-005-02",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-005-suite-2026-10-12' (ref(s): scripts/check_install.py _run_checks (Spec 005 block); tests/test_evaluator_required.py::test_check_install_exercises_the_refusal, tests/test_evaluator_required.py::test_assess_refuses_without_evaluator_extension, tests/test_evaluator_required.py::test_manifest_declares_evaluator_required; tests/test_evaluator_required.py::test_docs_teach_the_pair_as_one_system; tests/test_integration.py::test_manifest_uses_supported_dependency_metadata, tests/test_runner.py; tests/test_p5_vocabulary.py; tests/test_integration.py; scripts/check_install.py) is shared with claim(s) ER-005-01, ER-005-03, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-02-STAGE-CAP",
+          "claim_id": "ER-005-02",
+          "challenge": "Stage cap",
+          "breakpoint": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged); the cap lifts with a recorded checking event (an assessment run recorded as a stage event) (Spec 004 R1.3)",
+          "severity": "low",
+          "category": "stage_cap",
+          "recovery_hint": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "ER-005-03",
+      "text": "The pair is declared and taught as one system: extension.yml declares spec-kit-evaluator required: true (version >=1.0.0,<2), and the README requirements/install sections, the assess command document, and the usage docs present the evaluator extension as a required companion installed together with this adapter - no user-facing surface calls it optional or not-required.",
+      "kind": "requirement",
+      "status": "supported",
+      "boundary": [
+        "extension.yml requires.tools; README.md requirements and install sections; commands/speckit.aee.assess.md prerequisites; docs/usage.md"
+      ],
+      "depends_on": [],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/005-evaluator-required/spec.md#er-03--the-pair-is-declared-and-taught-as-one-system",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 005 ER-03, which this claim commits to test.",
+          "source_id": "spec-005-evaluator-required",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "extension.yml; README.md; commands/speckit.aee.assess.md; docs/usage.md; scripts/check_install.py",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before: extension.yml declares spec-kit-evaluator required: false under an 'OPTIONAL for this adapter' comment; the README requirements table labels it 'Evaluator Contract (optional)', its paragraph says the extension 'is not a runtime dependency of this adapter', and its install block marks it '# Optional'; commands/speckit.aee.assess.md says it is 'not required to run assess'; docs/usage.md calls it optional - while scripts/check_install.py installs both extensions and asserts both enabled, so declaration and practice disagree.",
+          "source_id": "er-before-inspection-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_evaluator_required.py::test_manifest_declares_evaluator_required; tests/test_evaluator_required.py::test_docs_teach_the_pair_as_one_system; tests/test_integration.py::test_manifest_uses_supported_dependency_metadata",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "Manifest and docs tests pass: extension.yml declares spec-kit-evaluator required: true at version >=1.0.0,<2 with the one-system comment; README requirements table/install, the assess command document, and docs/usage.md carry required-companion framing and the pinned negative strings ('Evaluator Contract (optional)', '**not** required to run assess', 'needed only for compose/report') are asserted absent.",
+          "source_id": "spec-005-suite-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Parse extension.yml after the change and find spec-kit-evaluator required: false, or find optional/not-required framing for the evaluator extension in README.md, commands/speckit.aee.assess.md, or docs/usage.md."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.775,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-ER-005-03-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "ER-005-03",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-03-INDEPENDENCE-UNMODELED",
+          "claim_id": "ER-005-03",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'er-before-inspection-2026-10-12' (ref(s): extension.yml; README.md; commands/speckit.aee.assess.md; docs/usage.md; scripts/check_install.py, scripts/check_install.py _run_checks, scripts/python/run_aee.py _assess; main() refusal path, tests/test_runner.py; tests/test_p5_vocabulary.py; commands/speckit.aee.assess.md) is shared with claim(s) ER-005-01, ER-005-02, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-03-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "ER-005-03",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-005-evaluator-required' (ref(s): specs/005-evaluator-required/spec.md#er-01--assess-refuses-without-the-evaluator-extension, specs/005-evaluator-required/spec.md#er-02--with-the-evaluator-extension-installed-assess-is-unchanged, specs/005-evaluator-required/spec.md#er-03--the-pair-is-declared-and-taught-as-one-system, specs/005-evaluator-required/spec.md#er-04--check_install-fails-without-the-evaluator-extension) is shared with claim(s) ER-005-01, ER-005-02, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-03-INDEPENDENCE-UNMODELED-3",
+          "claim_id": "ER-005-03",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-005-suite-2026-10-12' (ref(s): scripts/check_install.py _run_checks (Spec 005 block); tests/test_evaluator_required.py::test_check_install_exercises_the_refusal, tests/test_evaluator_required.py::test_assess_refuses_without_evaluator_extension, tests/test_evaluator_required.py::test_manifest_declares_evaluator_required; tests/test_evaluator_required.py::test_docs_teach_the_pair_as_one_system; tests/test_integration.py::test_manifest_uses_supported_dependency_metadata, tests/test_runner.py; tests/test_p5_vocabulary.py; tests/test_integration.py; scripts/check_install.py) is shared with claim(s) ER-005-01, ER-005-02, ER-005-04 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-03-STAGE-CAP",
+          "claim_id": "ER-005-03",
+          "challenge": "Stage cap",
+          "breakpoint": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged); the cap lifts with a recorded checking event (an assessment run recorded as a stage event) (Spec 004 R1.3)",
+          "severity": "low",
+          "category": "stage_cap",
+          "recovery_hint": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    },
+    {
+      "id": "ER-005-04",
+      "text": "check_install.py fails when the evaluator extension is absent or disabled: its install flow asserts both extensions are enabled, and it exercises the enforcement end to end - with the evaluator extension removed from the installed scratch project, the installed runner's assess exits 2 naming the missing extension, and any other outcome fails the script.",
+      "kind": "requirement",
+      "status": "supported",
+      "boundary": [
+        "scripts/check_install.py install flow and refusal exercise"
+      ],
+      "depends_on": [
+        "ER-005-01"
+      ],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/005-evaluator-required/spec.md#er-04--check_install-fails-without-the-evaluator-extension",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 005 ER-04, which this claim commits to test.",
+          "source_id": "spec-005-evaluator-required",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/check_install.py _run_checks",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before: check_install.py installs the evaluator extension first (specify extension add --dev) and asserts installed['evaluator']['enabled'] and installed['aee']['enabled'] before exercising operations, but never runs an operation with the evaluator extension absent, so runner-level absence was tolerated by the install check.",
+          "source_id": "er-before-inspection-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/check_install.py _run_checks (Spec 005 block); tests/test_evaluator_required.py::test_check_install_exercises_the_refusal",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "test",
+          "description": "check_install.py run end to end against the real spec-kit-evaluator v1.1.0 tag checkout: PASS (exit 0) with the new absence exercise inside the flow - the evaluator directory is removed from the installed scratch project and the installed runner's assess must exit 2 naming spec-kit-evaluator and write no new assessment, alongside the pre-existing both-enabled assertion; the exercise is also pinned by a source test.",
+          "source_id": "spec-005-suite-2026-10-12",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run check_install.py in a flow where the evaluator extension is missing or disabled and observe it print PASS, or remove the evaluator directory in its scratch project and observe the installed runner's assess succeed."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8500000000000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-ER-005-04-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "ER-005-04",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-04-INDEPENDENCE-UNMODELED",
+          "claim_id": "ER-005-04",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'er-before-inspection-2026-10-12' (ref(s): extension.yml; README.md; commands/speckit.aee.assess.md; docs/usage.md; scripts/check_install.py, scripts/check_install.py _run_checks, scripts/python/run_aee.py _assess; main() refusal path, tests/test_runner.py; tests/test_p5_vocabulary.py; commands/speckit.aee.assess.md) is shared with claim(s) ER-005-01, ER-005-02, ER-005-03 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-04-INDEPENDENCE-UNMODELED-2",
+          "claim_id": "ER-005-04",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-005-evaluator-required' (ref(s): specs/005-evaluator-required/spec.md#er-01--assess-refuses-without-the-evaluator-extension, specs/005-evaluator-required/spec.md#er-02--with-the-evaluator-extension-installed-assess-is-unchanged, specs/005-evaluator-required/spec.md#er-03--the-pair-is-declared-and-taught-as-one-system, specs/005-evaluator-required/spec.md#er-04--check_install-fails-without-the-evaluator-extension) is shared with claim(s) ER-005-01, ER-005-02, ER-005-03 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-04-INDEPENDENCE-UNMODELED-3",
+          "claim_id": "ER-005-04",
+          "challenge": "Shared-evidence independence challenge",
+          "breakpoint": "Supporting evidence 'spec-005-suite-2026-10-12' (ref(s): scripts/check_install.py _run_checks (Spec 005 block); tests/test_evaluator_required.py::test_check_install_exercises_the_refusal, tests/test_evaluator_required.py::test_assess_refuses_without_evaluator_extension, tests/test_evaluator_required.py::test_manifest_declares_evaluator_required; tests/test_evaluator_required.py::test_docs_teach_the_pair_as_one_system; tests/test_integration.py::test_manifest_uses_supported_dependency_metadata, tests/test_runner.py; tests/test_p5_vocabulary.py; tests/test_integration.py; scripts/check_install.py) is shared with claim(s) ER-005-01, ER-005-02, ER-005-03 and no independence is declared for it; the same evidence may be counted as independent corroboration in each claim",
+          "severity": "medium",
+          "category": "independence_unmodeled",
+          "recovery_hint": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-ER-005-04-STAGE-CAP",
+          "claim_id": "ER-005-04",
+          "challenge": "Stage cap",
+          "breakpoint": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged); the cap lifts with a recorded checking event (an assessment run recorded as a stage event) (Spec 004 R1.3)",
+          "severity": "low",
+          "category": "stage_cap",
+          "recovery_hint": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    }
+  ],
+  "scores": {
+    "ER-005-01": {
+      "claim_id": "ER-005-01",
+      "direct_score": 0.9,
+      "propagated_score": 0.9,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 1.0,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "supported",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 3 unknown of 3 item(s); unknown freshness counts as stale (FR-8.6)",
+        "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+      ]
+    },
+    "ER-005-02": {
+      "claim_id": "ER-005-02",
+      "direct_score": 0.8500000000000001,
+      "propagated_score": 0.8500000000000001,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "supported",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'scripts/python/run_aee.py _assess happy path; commands/speckit.aee.assess.md reporting guidance' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 3 unknown of 3 item(s); unknown freshness counts as stale (FR-8.6)",
+        "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+      ]
+    },
+    "ER-005-03": {
+      "claim_id": "ER-005-03",
+      "direct_score": 0.775,
+      "propagated_score": 0.775,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 0.5,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "supported",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Falsification test 'Parse extension.yml after the change and find spec-kit-evaluator required: false, or find optional/not-required framing for the evaluator extension in README.md, commands/speckit.aee.assess.md, or docs/usage.md.' earns partial credit (FR-8.7): failed criteria: no checkable condition (no numeric bound, comparator, or observation/action term)",
+        "Boundary entry 'extension.yml requires.tools; README.md requirements and install sections; commands/speckit.aee.assess.md prerequisites; docs/usage.md' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 3 unknown of 3 item(s); unknown freshness counts as stale (FR-8.6)",
+        "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+      ]
+    },
+    "ER-005-04": {
+      "claim_id": "ER-005-04",
+      "direct_score": 0.8500000000000001,
+      "propagated_score": 0.8500000000000001,
+      "band": "high",
+      "components": {
+        "evidence": 1.0,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "supported",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'scripts/check_install.py install flow and refusal exercise' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 3 unknown of 3 item(s); unknown freshness counts as stale (FR-8.6)",
+        "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+      ]
+    }
+  },
+  "verdicts": {},
+  "recoveries": [
+    {
+      "failure_id": "AEE-ER-005-01-INDEPENDENCE-UNMODELED",
+      "claim_id": "ER-005-01",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-01-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "ER-005-01",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-01-INDEPENDENCE-UNMODELED-3",
+      "claim_id": "ER-005-01",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-01-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "ER-005-01",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-ER-005-02-INDEPENDENCE-UNMODELED",
+      "claim_id": "ER-005-02",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-02-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "ER-005-02",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-02-INDEPENDENCE-UNMODELED-3",
+      "claim_id": "ER-005-02",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-02-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "ER-005-02",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-ER-005-03-INDEPENDENCE-UNMODELED",
+      "claim_id": "ER-005-03",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-03-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "ER-005-03",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-03-INDEPENDENCE-UNMODELED-3",
+      "claim_id": "ER-005-03",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-03-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "ER-005-03",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-ER-005-04-INDEPENDENCE-UNMODELED",
+      "claim_id": "ER-005-04",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-04-INDEPENDENCE-UNMODELED-2",
+      "claim_id": "ER-005-04",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-04-INDEPENDENCE-UNMODELED-3",
+      "claim_id": "ER-005-04",
+      "strategy": "clarify",
+      "action": "Declare independent_of between the evidence items, or record that the corroboration is shared.",
+      "priority": 3,
+      "verification": "Independence between the shared evidence items is declared, or the shared corroboration is recorded as shared."
+    },
+    {
+      "failure_id": "AEE-ER-005-04-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "ER-005-04",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-ER-005-01-STAGE-CAP",
+      "claim_id": "ER-005-01",
+      "strategy": "define_falsifier",
+      "action": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-ER-005-02-STAGE-CAP",
+      "claim_id": "ER-005-02",
+      "strategy": "define_falsifier",
+      "action": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-ER-005-03-STAGE-CAP",
+      "claim_id": "ER-005-03",
+      "strategy": "define_falsifier",
+      "action": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    },
+    {
+      "failure_id": "AEE-ER-005-04-STAGE-CAP",
+      "claim_id": "ER-005-04",
+      "strategy": "define_falsifier",
+      "action": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    }
+  ],
+  "metadata": {
+    "threshold": 0.7,
+    "input": "specs/005-evaluator-required/claims-after-implement.json",
+    "ledger": {
+      "mode": "disabled",
+      "path": null
+    },
+    "engine_version": "1.5.0"
+  },
+  "reported_statuses": {
+    "ER-005-01": "draft",
+    "ER-005-02": "draft",
+    "ER-005-03": "draft",
+    "ER-005-04": "draft"
+  },
+  "stage_caps": [
+    {
+      "claim_id": "ER-005-01",
+      "stage": "created",
+      "author_status": "supported",
+      "reported_status": "draft",
+      "verdict_ceiling": "unjudged",
+      "qualified_supported": false,
+      "note": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+      "lifting_event": "a recorded checking event (an assessment run recorded as a stage event)"
+    },
+    {
+      "claim_id": "ER-005-02",
+      "stage": "created",
+      "author_status": "supported",
+      "reported_status": "draft",
+      "verdict_ceiling": "unjudged",
+      "qualified_supported": false,
+      "note": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+      "lifting_event": "a recorded checking event (an assessment run recorded as a stage event)"
+    },
+    {
+      "claim_id": "ER-005-03",
+      "stage": "created",
+      "author_status": "supported",
+      "reported_status": "draft",
+      "verdict_ceiling": "unjudged",
+      "qualified_supported": false,
+      "note": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+      "lifting_event": "a recorded checking event (an assessment run recorded as a stage event)"
+    },
+    {
+      "claim_id": "ER-005-04",
+      "stage": "created",
+      "author_status": "supported",
+      "reported_status": "draft",
+      "verdict_ceiling": "unjudged",
+      "qualified_supported": false,
+      "note": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+      "lifting_event": "a recorded checking event (an assessment run recorded as a stage event)"
+    }
+  ],
+  "not_understood": [
+    "ER-005-01: Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+    "ER-005-02: Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+    "ER-005-03: Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+    "ER-005-04: Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+    "ER-005-01: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "ER-005-02: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "ER-005-03: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled.",
+    "ER-005-04: open challenges this assessment does not resolve: coverage_gap, independence_unmodeled."
+  ],
+  "lanes": {
+    "lane_1": {
+      "label": "machine verification",
+      "outcome": "iterate",
+      "threshold": 0.7,
+      "claims_at_or_above_threshold": 4,
+      "claims_below_threshold": 0
+    },
+    "lane_2": {
+      "label": "human acceptance",
+      "stage_counts": {
+        "created": 4,
+        "checked": 0,
+        "explained": 0,
+        "accepted": 0,
+        "digested": 0
+      },
+      "claims_below_explained": 4,
+      "exposition_covered_claims": 0,
+      "exposition_missing_claims": 4,
+      "verified_unexplained_claims": 0,
+      "stage_capped_claims": 4,
+      "attribution_contested_claims": 0
+    },
+    "per_claim": {
+      "ER-005-01": {
+        "lane_1": {
+          "score": 0.9,
+          "direct_score": 0.9,
+          "author_status": "supported",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": true,
+          "cap_reasons": [
+            "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+          ],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "ER-005-02": {
+        "lane_1": {
+          "score": 0.8500000000000001,
+          "direct_score": 0.8500000000000001,
+          "author_status": "supported",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": true,
+          "cap_reasons": [
+            "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+          ],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "ER-005-03": {
+        "lane_1": {
+          "score": 0.775,
+          "direct_score": 0.775,
+          "author_status": "supported",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": true,
+          "cap_reasons": [
+            "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+          ],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      },
+      "ER-005-04": {
+        "lane_1": {
+          "score": 0.8500000000000001,
+          "direct_score": 0.8500000000000001,
+          "author_status": "supported",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": true,
+          "cap_reasons": [
+            "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+          ],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      }
+    }
+  },
+  "digestion": {
+    "ER-005-01": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "ER-005-02": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "ER-005-03": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    },
+    "ER-005-04": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    }
+  }
+}

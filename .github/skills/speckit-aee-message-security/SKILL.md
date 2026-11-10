@@ -1,0 +1,1 @@
+../../../.specify/extensions/aee/.specify-dev/extension-skills/speckit-aee-message-security/SKILL.md

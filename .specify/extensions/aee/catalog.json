@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-10-19T00:00:00Z",
+  "catalog_url": "https://raw.githubusercontent.com/electrohire/spec-kit-aee/main/catalog.json",
+  "extensions": {
+    "aee": {
+      "name": "Applied Epistemic Engineering",
+      "id": "aee",
+      "description": "Checks the claims in a spec-driven project against their evidence at every stage, and shows plainly what is verified, what is not, and what remains not understood.",
+      "author": "ElectroHire",
+      "version": "1.5.2",
+      "download_url": "https://github.com/electrohire/spec-kit-aee/archive/refs/tags/v1.5.2.zip",
+      "sha256": "d64db9145754cf7ebb623e4630e5e09f37f59da755456160c38379927e6e9515",
+      "repository": "https://github.com/electrohire/spec-kit-aee",
+      "homepage": "https://github.com/electrohire/spec-kit-aee",
+      "documentation": "https://github.com/electrohire/spec-kit-aee/blob/main/README.md",
+      "changelog": "https://github.com/electrohire/spec-kit-aee/blob/main/CHANGELOG.md",
+      "license": "MIT",
+      "category": "process",
+      "effect": "read-write",
+      "requires": {
+        "speckit_version": ">=1.0.0,<2",
+        "tools": [
+          {
+            "name": "python",
+            "version": ">=3.11",
+            "required": true
+          },
+          {
+            "name": "aee",
+            "version": ">=1.5.0,<2",
+            "required": true
+          },
+          {
+            "name": "spec-kit-evaluator",
+            "version": ">=1.0.0,<2",
+            "required": true
+          },
+          {
+            "name": "rtk",
+            "required": false
+          },
+          {
+            "name": "headroom",
+            "required": false
+          },
+          {
+            "name": "token-router",
+            "required": false
+          },
+          {
+            "name": "ollama",
+            "required": false
+          }
+        ]
+      },
+      "provides": {
+        "commands": 10,
+        "hooks": 5
+      },
+      "tags": [
+        "epistemics",
+        "evidence",
+        "provenance",
+        "uncertainty",
+        "governance"
+      ],
+      "verified": false,
+      "downloads": 0,
+      "stars": 0,
+      "created_at": "2026-09-15T00:00:00Z",
+      "updated_at": "2026-10-16T00:00:00Z"
+    },
+    "evaluator": {
+      "name": "Evaluator Contract",
+      "id": "evaluator",
+      "description": "Provider-neutral evaluator contract for evidence, provenance, uncertainty, and recovery across Spec-Driven Development phases.",
+      "author": "ElectroHire",
+      "version": "1.1.2",
+      "download_url": "https://github.com/electrohire/spec-kit-evaluator/archive/refs/tags/v1.1.2.zip",
+      "sha256": "f2803c5da687bb4f269b31023983dbe827a7dd36d1cff626afec96b7aed9ff95",
+      "repository": "https://github.com/electrohire/spec-kit-evaluator",
+      "homepage": "https://github.com/electrohire/spec-kit-evaluator",
+      "documentation": "https://github.com/electrohire/spec-kit-evaluator/blob/main/README.md",
+      "changelog": "https://github.com/electrohire/spec-kit-evaluator/blob/main/CHANGELOG.md",
+      "license": "MIT",
+      "category": "process",
+      "effect": "read-write",
+      "requires": {
+        "speckit_version": ">=1.0.0"
+      },
+      "provides": {
+        "commands": 4,
+        "hooks": 4
+      },
+      "tags": [
+        "evaluator",
+        "evidence",
+        "provenance",
+        "quality",
+        "governance"
+      ],
+      "verified": false,
+      "downloads": 0,
+      "stars": 0,
+      "created_at": "2026-09-03T00:00:00Z",
+      "updated_at": "2026-10-16T00:00:00Z"
+    }
+  }
+}

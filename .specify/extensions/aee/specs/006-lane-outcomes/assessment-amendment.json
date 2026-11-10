@@ -1,0 +1,251 @@
+{
+  "schema_version": "1.0",
+  "methodology_version": "2.1",
+  "project": "spec-kit-aee",
+  "phase": "after_specify",
+  "outcome": "iterate",
+  "summary": "Assessed 1 claim(s); found 3 failure mode(s); 0 claim(s) below the 0.70 confidence threshold. Stage cap: 1 claim(s) below stage 'explained'; the outcome cannot be 'pass' (Spec 004 R1.4). Stage caps applied: 1 claim(s) reported below their author-declared status or in qualified form (Spec 004 R1.3). Not understood: 2 residual unknown(s) are recorded on this assessment (Spec 004 R5.2). Lane 1 (machine verification): outcome iterate; 1 claim(s) at or above the 0.70 threshold, 0 below. Lane 2 (human acceptance): stages by effective stage: created 1. Lane-2 lag: 1 claim(s) below explained; 1 stage-capped.",
+  "created_at": "2026-10-20T21:03:43.659463Z",
+  "claims": [
+    {
+      "id": "LO-006-06",
+      "text": "the lane pair displays the basis of acceptance: whenever the assessment records stage events, lane_pair.acceptance_basis lists each recorded act (claim, stage advanced to, recorder, stated basis) with its basis type - test verdict for a checking event recorded by the tool, human act for an advance to explained, accepted, or digested or any act recorded by a named person - plus a one-line count display; with no recorded acts acceptance_basis is null, and the user-facing docs present acceptance as a test verdict by default with human acts as the reserved cases.",
+      "kind": "requirement",
+      "status": "supported",
+      "boundary": [
+        "scripts/python/run_aee.py _lane_pair and _acceptance_basis; commands/speckit.aee.assess.md; commands/speckit.aee.gate.md; README.md lane section; docs/usage.md"
+      ],
+      "depends_on": [
+        "LO-006-01"
+      ],
+      "conflicts_with": [],
+      "evidence": [
+        {
+          "ref": "specs/006-lane-outcomes/spec.md#amendment-2026-10-20--acceptance-basis-doctrine-v2",
+          "kind": "asserted",
+          "direction": "supports",
+          "source_quality": "primary",
+          "description": "Requirement stated in Spec 006 Amendment (2026-10-20), which adopts the autonomous-execution doctrine for this surface: acceptance is the frozen tests passing; human acts are reserved cases; the pair displays a recorded act's basis type when the engine exposes it.",
+          "source_id": "spec-006-lane-outcomes-amendment",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "scripts/python/run_aee.py _lane_pair at d06ecc1; aee 1.6.0 aee/model.py StageEvent; aee/cli.py _stage",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "Before (head d06ecc1): lane_pair carried headline_outcome, lane_1_outcome, lane_2_state, lane_2_reasons, and display only - no basis for any recorded act, and the docs described lane 2 as 'where human review and acceptance stand', presenting human acceptance as the standing path. The engine (1.6.0) already exposes the recorded acts: assessed claims carry stage_events with kind, author, date, and basis, and the engine reserves explained/accepted/digested advances to named people while a checked event defaults its recorder to aee.",
+          "source_id": "lo-amendment-before-inspection-2026-10-20",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        },
+        {
+          "ref": "tests/test_lane_outcomes.py::test_assess_shows_pair_when_lane1_passes_and_headline_iterates; tests/test_lane_outcomes.py::test_acceptance_basis_classification_follows_the_engine_rule; scripts/python/run_aee.py _acceptance_basis",
+          "kind": "observed",
+          "direction": "supports",
+          "source_quality": "artifact",
+          "description": "After: _acceptance_basis copies each assessed claim's stage_events into lane_pair.acceptance_basis as recorded_acts (claim_id, to_stage, basis_type, recorded_by, basis) with test_verdict_count, human_act_count, and a display count line; basis_type is 'human act' for explained/accepted/digested or any person-recorded act, else 'test verdict'; no recorded acts yields null. Verified by tests/test_lane_outcomes.py (stub pair with one act of each type, classification unit test) and against the real engine 1.6.0 through the runner: a bundle staged to checked by aee with basis 'Frozen requirement tests passed: widget round-trip test suite run and assessed' displays 'acceptance basis: 1 test verdict(s), 0 human act(s)' with that act and basis text. README, the assess and gate command documents, and docs/usage.md present acceptance as test-verdict-first with human acts as the reserved cases.",
+          "source_id": "lo-amendment-after-inspection-2026-10-20",
+          "independent_of": [],
+          "observed_at": null,
+          "content_hash": null
+        }
+      ],
+      "assumptions": [],
+      "alternatives": [],
+      "falsification_tests": [
+        "Run the runner's assess on an engine assessment whose claims carry stage_events and observe lane_pair without acceptance_basis, an act whose basis_type disagrees with the engine's rule (explained/accepted/digested or person-recorded = human act; tool-recorded checked = test verdict), or a basis text other than the recorded one; or read the README, assess/gate documents, or usage docs and find acceptance presented as a human act by default."
+      ],
+      "uncertainty": "insufficient_evidence",
+      "severity": "medium",
+      "source_ref": "",
+      "domain": "",
+      "confidence": 0.8458062500000001,
+      "confidence_band": "high",
+      "failures": [
+        {
+          "id": "AEE-LO-006-06-IRREDUCIBILITY-CHALLENGE",
+          "claim_id": "LO-006-06",
+          "challenge": "Irreducibility challenge",
+          "breakpoint": "Claim may contain multiple independently falsifiable propositions",
+          "severity": "medium",
+          "category": "coverage_gap",
+          "recovery_hint": "Split the claim into atomic propositions and link them explicitly.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-06-DEPENDENCY-EXISTENCE-CHA",
+          "claim_id": "LO-006-06",
+          "challenge": "Dependency existence challenge",
+          "breakpoint": "Referenced dependencies do not exist: LO-006-01",
+          "severity": "high",
+          "category": "provenance_gap",
+          "recovery_hint": "Add the missing claims or remove the invalid dependency links.",
+          "resolved": false,
+          "disposition": null
+        },
+        {
+          "id": "AEE-LO-006-06-STAGE-CAP",
+          "claim_id": "LO-006-06",
+          "challenge": "Stage cap",
+          "breakpoint": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged); the cap lifts with a recorded checking event (an assessment run recorded as a stage event) (Spec 004 R1.3)",
+          "severity": "low",
+          "category": "stage_cap",
+          "recovery_hint": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+          "resolved": false,
+          "disposition": null
+        }
+      ],
+      "metadata": {},
+      "dispositions": [],
+      "stage": "created",
+      "stage_events": [],
+      "headline": false,
+      "role": null
+    }
+  ],
+  "scores": {
+    "LO-006-06": {
+      "claim_id": "LO-006-06",
+      "direct_score": 0.8458062500000001,
+      "propagated_score": 0.8458062500000001,
+      "band": "high",
+      "components": {
+        "evidence": 0.992375,
+        "independence": 1.0,
+        "falsifiability": 1.0,
+        "boundary": 0.5,
+        "contradiction_penalty": 0
+      },
+      "declared_state": {
+        "status": "supported",
+        "uncertainty": "insufficient_evidence",
+        "severity": "medium",
+        "conflicts_with": []
+      },
+      "propagation": {
+        "status": "propagated",
+        "cycle_component": []
+      },
+      "notes": [
+        "Independence basis: inferred-from-references (distinct references counted as independent; may overstate independence when references share an origin)",
+        "Boundary entry 'scripts/python/run_aee.py _lane_pair and _acceptance_basis; commands/speckit.aee.assess.md; commands/speckit.aee.gate.md; README.md lane section; docs/usage.md' earns partial credit (FR-8.7): failed criteria: names no scope or limit (no scope term or numeric bound)",
+        "Freshness penalty 0.100 on the supporting set: 0 fresh, 0 recent, 0 stale, 3 unknown of 3 item(s); unknown freshness counts as stale (FR-8.6)",
+        "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+      ]
+    }
+  },
+  "verdicts": {},
+  "recoveries": [
+    {
+      "failure_id": "AEE-LO-006-06-DEPENDENCY-EXISTENCE-CHA",
+      "claim_id": "LO-006-06",
+      "strategy": "repair_provenance",
+      "action": "Add the missing claims or remove the invalid dependency links.",
+      "priority": 2,
+      "verification": "Every dependency and evidence reference resolves to a stable source."
+    },
+    {
+      "failure_id": "AEE-LO-006-06-IRREDUCIBILITY-CHALLENGE",
+      "claim_id": "LO-006-06",
+      "strategy": "decompose",
+      "action": "Split the claim into atomic propositions and link them explicitly.",
+      "priority": 3,
+      "verification": "Every resulting claim contains one independently falsifiable proposition."
+    },
+    {
+      "failure_id": "AEE-LO-006-06-STAGE-CAP",
+      "claim_id": "LO-006-06",
+      "strategy": "define_falsifier",
+      "action": "Record the stage event that lifts the cap: a recorded checking event (an assessment run recorded as a stage event).",
+      "priority": 4,
+      "verification": "A concrete observation that would refute the claim is documented."
+    }
+  ],
+  "metadata": {
+    "threshold": 0.7,
+    "input": "specs/006-lane-outcomes/claims-amendment.json",
+    "ledger": {
+      "mode": "disabled",
+      "path": null
+    },
+    "engine_version": "1.6.0"
+  },
+  "reported_statuses": {
+    "LO-006-06": "draft"
+  },
+  "stage_caps": [
+    {
+      "claim_id": "LO-006-06",
+      "stage": "created",
+      "author_status": "supported",
+      "reported_status": "draft",
+      "verdict_ceiling": "unjudged",
+      "qualified_supported": false,
+      "note": "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+      "lifting_event": "a recorded checking event (an assessment run recorded as a stage event)"
+    }
+  ],
+  "not_understood": [
+    "LO-006-06: Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)",
+    "LO-006-06: open challenges this assessment does not resolve: coverage_gap, provenance_gap."
+  ],
+  "lanes": {
+    "lane_1": {
+      "label": "machine verification",
+      "outcome": "iterate",
+      "threshold": 0.7,
+      "claims_at_or_above_threshold": 1,
+      "claims_below_threshold": 0
+    },
+    "lane_2": {
+      "label": "human acceptance",
+      "stage_counts": {
+        "created": 1,
+        "checked": 0,
+        "explained": 0,
+        "accepted": 0,
+        "digested": 0
+      },
+      "claims_below_explained": 1,
+      "exposition_covered_claims": 0,
+      "exposition_missing_claims": 1,
+      "verified_unexplained_claims": 0,
+      "stage_capped_claims": 1,
+      "attribution_contested_claims": 0
+    },
+    "per_claim": {
+      "LO-006-06": {
+        "lane_1": {
+          "score": 0.8458062500000001,
+          "direct_score": 0.8458062500000001,
+          "author_status": "supported",
+          "at_or_above_threshold": true
+        },
+        "lane_2": {
+          "stage": "created",
+          "stored_stage": "created",
+          "stage_capped": true,
+          "cap_reasons": [
+            "Stage cap (Spec 004 R1.3): claim at stage 'created' may not report status 'supported'; reported as 'draft' (policy verdict ceiling: unjudged)"
+          ],
+          "exposition": false,
+          "explainers": [],
+          "verified_unexplained": false,
+          "attribution_contested": false
+        }
+      }
+    }
+  },
+  "digestion": {
+    "LO-006-06": {
+      "stage": "created",
+      "exposition_present": false,
+      "explainers": []
+    }
+  }
+}
