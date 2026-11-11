@@ -87,9 +87,6 @@ ALLOWED_EXEMPTIONS = [
     ("gatekeeper/gk.py", "subprocess.run(args, capture_output=True",
      "gatekeeper run_cmd helper: POSIX VM tool; children are "
      "gh/git with captured output in a non-interactive session"),
-    ("gatekeeper/gk.py", '"gh", "api", "repos/%s/actions/runs/%s/logs"',
-     "log-archive fetch: POSIX VM tool calling gh with "
-     "captured output in a non-interactive session"),
 ]
 
 
