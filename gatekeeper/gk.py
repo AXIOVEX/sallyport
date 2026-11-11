@@ -44,6 +44,12 @@ PAUSE_FILE = os.path.join(BASE, "PAUSED.json")
 HOLDS_DIR = os.path.join(BASE, "holds")
 STOP_FILE = os.path.join(BASE, "STOPPED.json")
 OUTBOX_CURSOR = os.path.join(BASE, "outbox-cursor.json")
+# The ledger line a plain `outbox` read last observed (see cmd_outbox).
+# --ack advances the cursor only to this line, never to the ledger end
+# at ack time: on 2026-11-09 an ack written at the ledger's current
+# end swallowed W37b's completion event (line 15248), which had landed
+# between the read and the ack, and the iSMART chat never got the push.
+OUTBOX_READ = os.path.join(BASE, "outbox-read.json")
 HOSTS_FILE = os.path.join(BASE, "hosts.json")   # host liveness (spec 011)
 # Tray release cache (spec 027): the sweep's last read of the
 # release manifest the tray updater itself consumes, cached at
@@ -65,6 +71,13 @@ HLOG_MAX_BYTES = 1000000
 MAX_ACTIVE_DISPATCHED = 2        # total gatekeeper-active runs cap, pre-lanes
 STANDDOWN_REMAINING = 1000       # below this: no dispatch (standard Part 2.3)
 CRITICAL_REMAINING = 500         # below this: no list call either
+# Submit size guard: workflow_dispatch refuses oversize inputs with
+# HTTP 422. The measured bracket is 47,500 B passing / 50,342 B
+# refused for the dispatch payload; submissions are refused when the
+# estimated payload (base64 script + field overhead) exceeds this
+# conservative limit, well under the passing point.
+WORKFLOW_DISPATCH_SIZE_LIMIT_BYTES = 45000
+WORKFLOW_DISPATCH_OVERHEAD_BYTES = 1024
 STALE_DISPATCHING_MIN = 10       # dispatching state older than this = human flag
 LOCK_STALE_MIN = 10
 WORKFLOWS = ("run.yml", "wsl.yml", "grab.yml")
@@ -346,6 +359,22 @@ def ledger(event, **kw):
         raise IOError("ledger append could not be verified after "
                       "retries: %s" % event)
     return rec
+
+
+def ledger_soft(event, **kw):
+    """Non-raising ledger for ADVISORY events (audit F4): watermark
+    records, watch-state notices, log-harvest notes — observations
+    whose loss must never abort a sweep pass mid-flight during a
+    write-denial wave. The failure is logged loudly to the human
+    log and False is returned. Safety-critical events (dispatch,
+    deletion, control records) keep the raising ledger() form: a
+    state change that cannot be recorded must stop its caller."""
+    try:
+        ledger(event, **kw)
+        return True
+    except (IOError, OSError) as exc:
+        hlog("LEDGER_SOFT_FAILED event=%s error=%s" % (event, exc))
+        return False
 
 
 def job_path(job_id):
@@ -999,8 +1028,14 @@ def cmd_resume(args):
     try:
         os.unlink(PAUSE_FILE)
     except OSError:
-        subprocess.run(["/bin/sh", "-c", 'rm -f "$1"', "sh", PAUSE_FILE],
-                       check=True)
+        try:
+            subprocess.run(["/bin/sh", "-c", 'rm -f "$1"', "sh",
+                            PAUSE_FILE], check=True)
+        except (OSError, subprocess.SubprocessError) as exc:
+            # The fallback's failure is logged, never raised out of
+            # the verb (audit F7): the caller still gets its say.
+            hlog("RESUME marker unlink fallback failed for %s: %s"
+                 % (PAUSE_FILE, exc))
     ledger("resumed")
     hlog("RESUMED at %s" % now_iso())
     print("RESUMED — dispatch is flowing again.")
@@ -1024,8 +1059,15 @@ def _clear_marker(path):
     try:
         os.unlink(path)
     except OSError:
-        subprocess.run(["/bin/sh", "-c", 'rm -f "$1"', "sh", path],
-                       check=True)
+        try:
+            subprocess.run(["/bin/sh", "-c", 'rm -f "$1"', "sh", path],
+                           check=True)
+        except (OSError, subprocess.SubprocessError) as exc:
+            # Logged, never raised (audit F7): a marker that could
+            # not be cleared is an operator-visible log line, not a
+            # crash in every caller of this helper.
+            hlog("MARKER unlink fallback failed for %s: %s"
+                 % (path, exc))
 
 
 def cmd_start(_args):
@@ -1152,9 +1194,48 @@ def cmd_outbox(args):
               % len(lines))
         return 0
     if args.ack:
-        _write_text_file(OUTBOX_CURSOR, json.dumps({"line": len(lines)}))
-        print("OUTBOX ACK line=%d" % len(lines))
+        if getattr(args, "force_ack", False):
+            ack_line = len(lines)
+        else:
+            # Ack only what the last plain read observed (OUTBOX_READ),
+            # not the ledger end at ack time: events landing between a
+            # read and its ack must stay owed, not be consumed
+            # silently. A missing or corrupt read marker REFUSES the
+            # ack (audit F3): silently falling back to the ledger end
+            # would reintroduce the swallow this fix removed. The
+            # operator override is the explicit --force-ack flag.
+            ack_line = None
+            try:
+                with open(OUTBOX_READ, encoding="utf-8") as f:
+                    ack_line = int(json.load(f)["line"])
+                if ack_line < 0:
+                    ack_line = None
+            except (OSError, ValueError, KeyError, TypeError):
+                ack_line = None
+            if ack_line is None:
+                print("REFUSED OUTBOX ACK: no valid read marker at %s "
+                      "— run a plain `outbox` read first so the ack "
+                      "covers only what was observed, or pass "
+                      "--force-ack to ack to the ledger end (%d) "
+                      "explicitly." % (OUTBOX_READ, len(lines)))
+                return 2
+            ack_line = min(ack_line, len(lines))
+        _write_text_file(OUTBOX_CURSOR, json.dumps({"line": ack_line}))
+        print("OUTBOX ACK line=%d" % ack_line)
         return 0
+    # Record the line this read observed, so a later --ack advances
+    # the cursor only to here (see the note at OUTBOX_CURSOR). The
+    # marker is advisory for ack; the listing is the product, so a
+    # failed marker write warns and never fails the read (audit F2 —
+    # during a write-denial wave the read itself used to fail and no
+    # notifications could be listed at all).
+    try:
+        _write_text_file(OUTBOX_READ, json.dumps({"line": len(lines)}))
+    except (IOError, OSError) as exc:
+        print("WARNING: could not record the outbox read marker "
+              "(%s); the listing stands, but a later --ack will "
+              "refuse until a read marker lands." % exc,
+              file=sys.stderr)
     jobs = {j["id"]: j for j in load_jobs()}
     groups = {}
     for raw in lines[cursor:]:
@@ -1397,14 +1478,23 @@ def new_job_id(key):
                          uuid.uuid4().hex[:6])
 
 
-def run_cmd(args, timeout=120, input_text=None):
+def run_cmd(args, timeout=120, input_text=None, binary=False):
+    """The gatekeeper's one disciplined launch helper. Text mode by
+    default; binary=True returns stdout/stderr as bytes untouched
+    (audit F7 — the log-archive fetch carries zip bytes that no
+    text decode may touch). Exit-shape discipline is identical in
+    both modes: 124 on timeout, 127 on spawn failure."""
     try:
-        p = subprocess.run(args, capture_output=True, text=True,
+        p = subprocess.run(args, capture_output=True, text=not binary,
                            timeout=timeout, input=input_text)
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
+        if binary:
+            return 124, b"", b"timeout"
         return 124, "", "timeout"
     except OSError as e:
+        if binary:
+            return 127, b"", str(e).encode("utf-8", "replace")
         return 127, "", str(e)
 
 
@@ -1437,6 +1527,21 @@ def list_runs(limit=50):
                     "workflowName,url"])
 
 
+def fetch_run_by_id(run_id):
+    """One per-id run read (audit F5): the watch pass's bounded
+    fallback for a watched run that has fallen out of the batched
+    list window. Returns the run dict, or None when the read fails
+    or the run is gone. Callers bound its use to watched ids that
+    are actually missing from the window — never a poll loop."""
+    data, err = gh_json(["run", "view", str(run_id), "-R", REPO,
+                         "--json",
+                         "databaseId,status,conclusion,createdAt,"
+                         "updatedAt,workflowName,url"])
+    if err or not isinstance(data, dict):
+        return None
+    return data
+
+
 def workflow_name(workflow_file):
     return workflow_file[:-4] if workflow_file.endswith(".yml") else workflow_file
 
@@ -1466,6 +1571,127 @@ def route_refusal(lane, workflow):
                 "serve workflow '%s' as %s"
                 % (lane, host, HOST_TYPE.get(host, "?"), workflow, want))
     return None
+
+
+def cmd_artifact_delete(args):
+    """Harvest-then-delete for grab.yml artifacts (owner order
+    2026-11-09, the artifact-backlog guardrails). The harvesting chat
+    downloads the grabbed file, verifies it on this VM, and then calls
+    this verb with the landed file's sha256 (comma-separated for a
+    multi-file grab). The gatekeeper re-downloads the artifact itself,
+    hashes every file inside it, and deletes the artifact through the
+    API ONLY when the inside set equals the landed set exactly. The
+    landed file is the keeper; the artifact is transport only. The
+    deletion is ledgered and stamped on the job record. A missing
+    artifact (already deleted, expired, or never created) is a
+    distinct, non-error outcome: exit 3, ARTIFACT_ABSENT.
+
+    Ported from the live gatekeeper (audit F1): the verb shipped to
+    production and to the gh-syncyard 0.4.1 parity table but never
+    landed on main. The scratch parent is created up front, or the
+    verb refuses cleanly with a printed reason (audit F8) instead of
+    crashing inside tempfile.mkdtemp."""
+    import shutil
+    jobs = load_jobs()
+    job = next((j for j in jobs if j.get("id") == args.job), None)
+    if job is None:
+        print("REFUSED unknown job '%s'" % args.job)
+        return 2
+    if job.get("workflow") != "grab.yml" or not job.get("run_id"):
+        print("REFUSED job '%s' is not a dispatched grab (workflow=%s, "
+              "run_id=%s)" % (args.job, job.get("workflow"),
+                              job.get("run_id")))
+        return 2
+    run_id = job["run_id"]
+    data, err = gh_json(["api", "repos/%s/actions/runs/%s/artifacts"
+                         % (REPO, run_id)])
+    if err:
+        print("REFUSED artifact list failed: %s" % err)
+        return 2
+    arts = [a for a in (data or {}).get("artifacts", [])
+            if a.get("name") == "grabbed-file" and not a.get("expired")]
+    if not arts:
+        print("ARTIFACT_ABSENT job=%s run_id=%s (already deleted, "
+              "expired, or never created)" % (args.job, run_id))
+        return 3
+    if len(arts) > 1:
+        print("REFUSED job '%s' run %s has %d grabbed-file artifacts; "
+              "ambiguous" % (args.job, run_id, len(arts)))
+        return 2
+    art = arts[0]
+    want = sorted(x.strip().lower() for x in args.landed_sha256.split(",")
+                  if x.strip())
+    if not want:
+        print("REFUSED empty --landed-sha256")
+        return 2
+    scratch_parent = os.path.join(BASE, "grab-staging")
+    try:
+        os.makedirs(scratch_parent, exist_ok=True)
+        scratch = tempfile.mkdtemp(prefix="gk-artifact-delete-",
+                                   dir=scratch_parent)
+    except OSError as exc:
+        print("REFUSED artifact-delete scratch dir %s unavailable: %s"
+              % (scratch_parent, exc))
+        return 2
+    try:
+        rc, _out, derr = run_cmd(["gh", "run", "download", str(run_id),
+                                  "-R", REPO, "-n", "grabbed-file",
+                                  "-D", scratch], timeout=300)
+        if rc != 0:
+            print("REFUSED artifact download failed rc=%d: %s"
+                  % (rc, (derr or "").strip()[:300]))
+            return 2
+        got = []
+        for root, _dirs, files in os.walk(scratch):
+            for fn in files:
+                h = hashlib.sha256()
+                with open(os.path.join(root, fn), "rb") as f:
+                    for chunk in iter(lambda: f.read(1 << 20), b""):
+                        h.update(chunk)
+                got.append(h.hexdigest())
+        got.sort()
+        if got != want:
+            ledger("artifact_delete_refused", job_id=job["id"],
+                   key=job.get("key"), program=job.get("program"),
+                   run_id=run_id, artifact_id=art["id"],
+                   reason="landed sha set does not match artifact "
+                          "contents", landed=want, artifact_files=got)
+            print("REFUSED hash mismatch job=%s: landed=%s artifact=%s "
+                  "(nothing deleted)" % (args.job, want, got))
+            return 4
+        rc, _out, derr = run_cmd(["gh", "api", "-X", "DELETE",
+                                  "repos/%s/actions/artifacts/%s"
+                                  % (REPO, art["id"])], timeout=120)
+        if rc != 0:
+            print("REFUSED artifact delete failed rc=%d: %s"
+                  % (rc, (derr or "").strip()[:300]))
+            return 2
+        data2, err2 = gh_json(["api", "repos/%s/actions/runs/%s/artifacts"
+                               % (REPO, run_id)])
+        still = [] if err2 else [a for a in (data2 or {}).get("artifacts", [])
+                                 if a.get("id") == art["id"]]
+        if still:
+            ledger("artifact_delete_unverified", job_id=job["id"],
+                   key=job.get("key"), program=job.get("program"),
+                   run_id=run_id, artifact_id=art["id"],
+                   reason="artifact still listed after DELETE")
+            print("UNVERIFIED job=%s artifact %s still listed after "
+                  "DELETE" % (args.job, art["id"]))
+            return 5
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    job["artifact_deleted_at"] = now_iso()
+    job["artifact_id"] = art["id"]
+    job["landed_sha256"] = want
+    save_job(job)
+    ledger("artifact_deleted", job_id=job["id"], key=job.get("key"),
+           program=job.get("program"), run_id=run_id,
+           artifact_id=art["id"], artifact_size=art.get("size_in_bytes"),
+           landed_sha256=want)
+    print("ARTIFACT_DELETED job=%s run_id=%s artifact_id=%s size=%s "
+          "landed_sha256=%s" % (args.job, run_id, art["id"],
+                                art.get("size_in_bytes"), ",".join(want)))
+    return 0
 
 
 def cmd_submit(args):
@@ -1517,6 +1743,35 @@ def cmd_submit(args):
         if refusal:
             print(refusal)
             return 3
+    # Submit size guard: workflow_dispatch refuses oversize inputs
+    # with HTTP 422 (measured bracket: a 47,500 B payload passed, a
+    # 50,342 B payload was refused). Refuse here, before any record
+    # exists, when the estimated dispatch payload — the base64
+    # script plus field overhead — exceeds the conservative limit,
+    # and name the sanctioned pattern instead of letting the job
+    # die at dispatch time.
+    if args.workflow != "grab.yml" and args.script \
+            and os.path.isfile(args.script):
+        try:
+            raw_size = os.path.getsize(args.script)
+        except OSError as exc:
+            print("ERROR: could not size --script %s: %s"
+                  % (args.script, exc))
+            return 2
+        dispatch_size = (((raw_size + 2) // 3) * 4
+                         + WORKFLOW_DISPATCH_OVERHEAD_BYTES)
+        if dispatch_size > WORKFLOW_DISPATCH_SIZE_LIMIT_BYTES:
+            print("ERROR: script %s is %d bytes; its "
+                  "workflow_dispatch payload would be about %d "
+                  "bytes, over the conservative limit of %d bytes "
+                  "(measured pass point 47,500 bytes). Refusing "
+                  "before submission: shrink the script, or use "
+                  "the gzip bootstrap pattern — gzip level 9 plus "
+                  "base64 inside a slim bootstrap script, with a "
+                  "SHA-256 gate on the decompressed bytes."
+                  % (args.script, raw_size, dispatch_size,
+                     WORKFLOW_DISPATCH_SIZE_LIMIT_BYTES))
+            return 2
     job = {
         "id": new_job_id(args.key),
         "key": args.key,
@@ -2494,16 +2749,16 @@ def fetch_log_archive(run_id):
     while the archive read fine). Returns combined text or None."""
     import io
     import zipfile
-    try:
-        p = subprocess.run(
-            ["gh", "api", "repos/%s/actions/runs/%s/logs" % (REPO, run_id)],
-            capture_output=True, timeout=180)
-    except (OSError, subprocess.SubprocessError):
+    # Through run_cmd in binary mode (audit F7): the archive is zip
+    # bytes, and the fetch keeps the helper's 124/127 exit-shape
+    # normalization instead of bypassing it with a direct launch.
+    rc, out, _err = run_cmd(
+        ["gh", "api", "repos/%s/actions/runs/%s/logs" % (REPO, run_id)],
+        timeout=180, binary=True)
+    if rc != 0 or not out:
         return None
-    if p.returncode != 0 or not p.stdout:
-        return None
     try:
-        zf = zipfile.ZipFile(io.BytesIO(p.stdout))
+        zf = zipfile.ZipFile(io.BytesIO(out))
     except zipfile.BadZipFile:
         return None
     chunks = []
@@ -2522,8 +2777,8 @@ def fetch_log_once(job):
         via = "api-archive"
     if not out:
         job["log_pending"] = True
-        ledger("log_fetch_failed", job_id=job["id"], key=job["key"],
-               run_id=job["run_id"], rc=rc)
+        ledger_soft("log_fetch_failed", job_id=job["id"], key=job["key"],
+                    run_id=job["run_id"], rc=rc)
         return False
     lines = extract_log_lines(out)
     job["log_tail"] = lines[-200:]
@@ -2532,9 +2787,9 @@ def fetch_log_once(job):
     job["log_pending"] = False
     job["log_source"] = via
     job["verdict_source"] = "markers"
-    ledger("log_harvested", job_id=job["id"], key=job["key"],
-           run_id=job["run_id"], markers=len(job["markers"]),
-           log_lines=len(lines), via=via)
+    ledger_soft("log_harvested", job_id=job["id"], key=job["key"],
+                run_id=job["run_id"], markers=len(job["markers"]),
+                log_lines=len(lines), via=via)
     return True
 
 
@@ -2601,6 +2856,10 @@ STAGING_META_MAX_BYTES = 65536
 STAGING_FILE_CAP_BYTES = 4000000000
 STAGING_SKEW_S = 600
 STAGING_MIN_FREE_BYTES = 536870912
+# Audit F9: a permanently failing transport must not defer once
+# per sweep forever. After this many attempts the entry leaves
+# the pending set with a named escalation event for a human.
+STAGING_DEFER_ESCALATION_ATTEMPTS = 5
 
 _STAGED_FILE_RE = re.compile(
     r"^STAGED_FILE job=(\S+) name=(\S+) bytes=(\S+) sha256=(\S+)\s*$")
@@ -2787,13 +3046,25 @@ def staging_init(job, force=False):
 
 def _staging_defer(job, entry, reason):
     """Transport-class failure: the entry stays pending and a later
-    pass retries (FBB-1/FBB-8). Never a verdict about the bytes."""
+    pass retries (FBB-1/FBB-8). Never a verdict about the bytes.
+    Bounded (audit F9): at STAGING_DEFER_ESCALATION_ATTEMPTS the
+    entry leaves the pending set as deferred_escalated, with the
+    named event ledgered — a permanently failing transport gets a
+    human, not an infinite one-line-per-sweep ledger drip."""
     entry["attempts"] = int(entry.get("attempts") or 0) + 1
     entry["detail"] = "deferred:" + reason
     entry["updated_at"] = now_iso()
     ledger("staging_deferred", job_id=job["id"], key=job["key"],
            run_id=job.get("run_id"), filename=entry["name"],
            reason=reason, attempts=entry["attempts"])
+    if entry["attempts"] >= STAGING_DEFER_ESCALATION_ATTEMPTS:
+        entry["status"] = "deferred_escalated"
+        entry["detail"] = "deferred_escalated:" + reason
+        entry["updated_at"] = now_iso()
+        ledger("staging_deferred_escalated", job_id=job["id"],
+               key=job["key"], run_id=job.get("run_id"),
+               filename=entry["name"], reason=reason,
+               attempts=entry["attempts"])
 
 
 def _staging_save_or_stop(job):
@@ -3278,12 +3549,23 @@ def staging_pass(jobs, only_job_id=None, limit=1):
 def cmd_staging_run(args):
     """Operator-paced staging harvest: the same staging_pass the
     sweep runs (one job per pass there), driven by hand for the
-    acceptance proof and for incident recovery."""
-    jobs = load_jobs()
-    limit = 1000000 if args.all else 1
-    n = staging_pass(jobs, only_job_id=args.job, limit=limit)
-    print("STAGING_RUN processed=%d" % n)
-    return 0
+    acceptance proof and for incident recovery. Takes the sweep
+    lock (audit F6): a manual run racing a sweep could otherwise
+    double-process an entry."""
+    if not acquire_lock():
+        print("STAGING_RUN skipped: another sweep holds the lock")
+        return 0
+    try:
+        jobs = load_jobs()
+        limit = 1000000 if args.all else 1
+        n = staging_pass(jobs, only_job_id=args.job, limit=limit)
+        print("STAGING_RUN processed=%d" % n)
+        return 0
+    finally:
+        try:
+            os.rmdir(LOCK_DIR)
+        except OSError:
+            pass
 
 
 def exec_thresholds(job):
@@ -3312,7 +3594,7 @@ def eval_watermarks(job, run):
         w1, w2 = QUEUED_WM[job["lane"]]
         if age >= w1 and "queued_w1" not in wm:
             wm["queued_w1"] = now_iso()
-            ledger("watermark_breach", job_id=job["id"], key=job["key"],
+            ledger_soft("watermark_breach", job_id=job["id"], key=job["key"],
                    run_id=job["run_id"], lane=job["lane"], level="W1",
                    state="queued", age_min=round(age, 1), threshold_min=w1,
                    classification="starvation")
@@ -3321,7 +3603,7 @@ def eval_watermarks(job, run):
             wm["queued_w2"] = now_iso()
             if "watermark_queued_w2" not in job["flags"]:
                 job["flags"].append("watermark_queued_w2")
-            ledger("watermark_escalation", job_id=job["id"], key=job["key"],
+            ledger_soft("watermark_escalation", job_id=job["id"], key=job["key"],
                    run_id=job["run_id"], lane=job["lane"], level="W2",
                    state="queued", age_min=round(age, 1), threshold_min=w2,
                    classification="starvation")
@@ -3336,7 +3618,7 @@ def eval_watermarks(job, run):
             wm["exec_w1"] = now_iso()
             step = current_step(job["run_id"])
             job["last_step_at_w1"] = step
-            ledger("watermark_breach", job_id=job["id"], key=job["key"],
+            ledger_soft("watermark_breach", job_id=job["id"], key=job["key"],
                    run_id=job["run_id"], lane=job["lane"], level="W1",
                    state="executing", age_min=round(age, 1),
                    threshold_min=w1, current_step=step)
@@ -3350,7 +3632,7 @@ def eval_watermarks(job, run):
             progression = ("step_advanced" if step != prev
                            else "step_frozen_or_unknown")
             job["last_step_at_w2"] = step
-            ledger("watermark_escalation", job_id=job["id"], key=job["key"],
+            ledger_soft("watermark_escalation", job_id=job["id"], key=job["key"],
                    run_id=job["run_id"], lane=job["lane"], level="W2",
                    state="executing", age_min=round(age, 1),
                    threshold_min=w2, current_step=step,
@@ -3369,10 +3651,20 @@ def watch_pass(jobs, runs_by_id):
             continue
         run = runs_by_id.get(str(job["run_id"]))
         if run is None:
+            # Audit F5: the batched list is a 50-run window; a long
+            # job falls out of it by construction and would ghost
+            # here forever. Resolve a missing watched id with ONE
+            # bounded per-id lookup (the missing watched set is
+            # small); only a run the lookup also cannot find earns
+            # the not-in-list note.
+            run = fetch_run_by_id(job["run_id"])
+            if run is not None:
+                runs_by_id[str(job["run_id"])] = run
+        if run is None:
             if not job.get("not_in_list_noted"):
                 job["not_in_list_noted"] = True
                 save_job_safe(job, "run_not_in_list")
-                ledger("run_not_in_list", job_id=job["id"], key=job["key"],
+                ledger_soft("run_not_in_list", job_id=job["id"], key=job["key"],
                        run_id=job["run_id"])
             continue
         job["not_in_list_noted"] = False
@@ -3387,7 +3679,7 @@ def watch_pass(jobs, runs_by_id):
             job["run_status"] = new_status
             job["run_conclusion"] = run.get("conclusion")
             changes += 1
-            ledger("state_change", job_id=job["id"], key=job["key"],
+            ledger_soft("state_change", job_id=job["id"], key=job["key"],
                    run_id=job["run_id"], from_status=old_status,
                    to_status=new_status,
                    conclusion=run.get("conclusion"))
@@ -3404,7 +3696,7 @@ def watch_pass(jobs, runs_by_id):
                 job["state"] = "held_at_checkpoint"
                 job["held_at_checkpoint_at"] = now_iso()
                 save_job_safe(job, "held_at_checkpoint")
-                ledger("held_at_checkpoint", job_id=job["id"],
+                ledger_soft("held_at_checkpoint", job_id=job["id"],
                        key=job["key"], run_id=job["run_id"],
                        run_conclusion=job["run_conclusion"])
             else:
@@ -3447,7 +3739,7 @@ def acquire_lock():
         return False
 
 
-def maybe_settle_drain():
+def maybe_settle_drain(jobs=None):
     """The drain settle (spec 013 FR-005): when a draining
     pause/focus record has nothing left executing outside its
     admitted set, the drain completes — the record stays (the
@@ -3461,7 +3753,9 @@ def maybe_settle_drain():
     prec = pause_record()
     if prec is None or not prec.get("drain"):
         return False
-    for j in load_jobs():
+    if jobs is None:
+        jobs = load_jobs()
+    for j in jobs:
         if j.get("maintenance"):
             continue
         if j["state"] not in RUN_HOLDING_STATES:
@@ -3529,17 +3823,23 @@ def cmd_sweep(_args):
         sweep_tray_drift()
         dispatched = 0
         if not standdown and not lerr:
+            # Audit E1: the queue is loaded ONCE per sweep (above)
+            # and threaded through every pass. dispatch_one mutates
+            # and saves the very job objects in this list, so the
+            # watch pass sees the post-dispatch records without a
+            # reload; the staging pass and the summary counts read
+            # the same list. (Pre-fix, one sweep parsed the whole
+            # queue five times.)
             dispatched = dispatch_pass(jobs, runs_by_id)
-            jobs = load_jobs()  # dispatch_one saved as it went; reload fresh
         changes = breaches = 0
         if not lerr:
             changes, breaches = watch_pass(jobs, runs_by_id)
-            maybe_settle_drain()
+            maybe_settle_drain(jobs)
             # Staging store (FBB-1): one pending-staging job per
             # sweep pass. A staging failure must never break the
             # fleet's only watcher, so the pass is fully contained.
             try:
-                _staged = staging_pass(load_jobs())
+                _staged = staging_pass(jobs)
                 if _staged:
                     hlog("STAGING pass: processed %d job(s)"
                          % _staged)
@@ -3547,10 +3847,10 @@ def cmd_sweep(_args):
                 ledger("staging_pass_error",
                        error=str(_exc)[:200])
                 hlog("STAGING pass error: %s" % _exc)
-        active = len([j for j in load_jobs()
+        active = len([j for j in jobs
                       if j["state"] in RUN_HOLDING_STATES
                       and j.get("run_status") != "completed"])
-        waiting = len([j for j in load_jobs() if j["state"] == "submitted"])
+        waiting = len([j for j in jobs if j["state"] == "submitted"])
         prec_now = pause_record()
         mode_tok = ""
         if prec_now is not None:
@@ -6008,9 +6308,25 @@ def main(argv=None):
 
     p = sub.add_parser("outbox")
     p.add_argument("--ack", action="store_true",
-                   help="advance the outbox cursor to the current "
-                        "ledger end (after the pushes are delivered)")
+                   help="advance the outbox cursor to the line "
+                        "the last plain read observed (after the "
+                        "pushes are delivered)")
+    p.add_argument("--force-ack", action="store_true",
+                   help="with --ack: advance the cursor to the "
+                        "current ledger end even when no valid "
+                        "read marker exists (explicit operator "
+                        "override; a plain --ack refuses then)")
     p.set_defaults(fn=cmd_outbox)
+
+    p = sub.add_parser("artifact-delete")
+    p.add_argument("--job", required=True,
+                   help="grab job id whose artifact should be deleted")
+    p.add_argument("--landed-sha256", required=True,
+                   help="sha256 of the landed file as verified by the "
+                        "harvesting chat (comma-separated for a "
+                        "multi-file grab); the artifact is deleted only "
+                        "when its contents hash to exactly this set")
+    p.set_defaults(fn=cmd_artifact_delete)
 
     p = sub.add_parser("staging-run")
     p.add_argument("--job", default=None,
