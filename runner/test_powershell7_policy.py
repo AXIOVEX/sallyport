@@ -9,9 +9,9 @@ PowerShell 5.1 is not supported anywhere. Text-level checks
     (the 5.1 shell) — `shell: pwsh` alone is NOT enforcement,
     because the Actions runner falls back to 5.1 when pwsh is
     missing;
-  - every Windows transport workflow (run.yml, wsl.yml, in
-    runner/workflows/, in .github/workflows/, and in the door
-    repo copies when that checkout is a sibling) carries the
+  - every live Windows transport workflow (run.yml, wsl.yml, in
+    runner/workflows/ and in the door repo copies when that
+    checkout is a sibling) carries the
     cmd-shell preflight (SYNCYARD_PS7_PREFLIGHT_OK), the in-step
     assertion (SYNCYARD_PS7_REQUIRED), and, for run.yml, invokes
     the payload through the canonical $pwsh7 path rather than a
@@ -50,11 +50,9 @@ def read(path):
 def transport_paths():
     paths = []
     for wf in ("run.yml", "wsl.yml"):
-        for base in (os.path.join(HERE, "workflows"),
-                     os.path.join(REPO, ".github", "workflows")):
-            p = os.path.join(base, wf)
-            if os.path.exists(p):
-                paths.append(p)
+        p = os.path.join(HERE, "workflows", wf)
+        if os.path.exists(p):
+            paths.append(p)
     # The dispatch door repo (tbitcs/desktop-runner) is not part of
     # this repository; when a checkout sits beside this one in the
     # fleet's working trees, hold it to the same contract.
@@ -67,9 +65,12 @@ def transport_paths():
     return paths
 
 
-# 1. No `shell: powershell` anywhere in any workflow in the repo.
+# 1. No `shell: powershell` anywhere in any workflow in the repo
+#    (the retired copies under runner/legacy/ are scanned too:
+#    retirement is not an exemption from the shell rule).
 wf_roots = [os.path.join(REPO, ".github", "workflows"),
-            os.path.join(HERE, "workflows")]
+            os.path.join(HERE, "workflows"),
+            os.path.join(HERE, "legacy")]
 for root in wf_roots:
     if not os.path.isdir(root):
         continue
@@ -81,7 +82,7 @@ for root in wf_roots:
 
 # 2. Windows transports carry the enforcement layers.
 paths = transport_paths()
-check("transports found", len(paths) >= 4, f"found {len(paths)}")
+check("transports found", len(paths) >= 2, f"found {len(paths)}")
 for p in paths:
     text = read(p)
     rel = os.path.relpath(p, os.path.dirname(REPO))

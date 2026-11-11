@@ -1,7 +1,7 @@
 # Tasks: Tray Connection Indicator (spec 018)
 
 - [ ] T001 Ratify or amend the spec's three flagged
-      decisions (icon form, 180/900 defaults, no-probe rule)
+      decisions (icon form, 600/900 defaults, no-probe rule)
       — owner, or defaults stand as recommended.
 - [x] T002 Signal reader (heartbeat file + optional fleet
       snapshot), read-only, vanishing-file tolerant.

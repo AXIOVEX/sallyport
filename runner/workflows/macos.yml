@@ -8,8 +8,14 @@
 # `lane` input addresses the runner; any macOS host whose runner
 # carries that lane label can serve it. The gatekeeper passes cwd
 # explicitly (the host's config cwd map); empty means the runner
-# user's home. The script body below is identical to linux.yml —
-# the contract battery fails CI if the two drift.
+# user's home. This workflow shares only the dispatch, lane,
+# cmd_b64, and cwd input contract with linux.yml; its script body
+# is intentionally not identical. linux.yml is the production
+# door's Linux contract (1440-minute timeout, hold file, and
+# running-job registry), while no macOS door workflow exists and
+# the macOS userland is not the GNU userland that contract uses.
+# The contract battery pins the shared input contract and the
+# Linux door-parity properties separately.
 name: macos
 
 on:

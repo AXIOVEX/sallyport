@@ -299,11 +299,11 @@ def main():
         check("per-lane keys written and read with the same prefix",
               '"laneEnabled_" + Lanes[i]' in settings
               and '"laneEnabled_" + lane' in settings),
-        check("settings defaults are the pre-014 behavior",
+        check("settings defaults are the aligned behavior",
               "public bool SupervisionEnabled = true;" in settings
               and "public int MaxRestartsPerHour = 3;" in settings
               and "public int TickSeconds = 5;" in settings
-              and "public int FleetStaleSeconds = 300;" in settings),
+              and "public int FleetStaleSeconds = 900;" in settings),
         check("settings values are clamped on load",
               ", 1, 20)" in settings and ", 2, 60)" in settings
               and ", 30, 3600)" in settings),
@@ -478,8 +478,16 @@ def main():
 
         # ---- spec 018 FR-005: thresholds are settings -------------
         check("connection defaults are the FR-001 numbers",
-              "public int ConnectionStaleSeconds = 180;" in settings
+              "public int ConnectionStaleSeconds = 600;" in settings
               and "public int ConnectionDownSeconds = 900;" in settings),
+        check("connection stale fallbacks use the aligned default",
+              SRC.count("ConnectionStaleSeconds = 600;") == 3
+              and "ConnectionStaleSeconds = 180;" not in SRC),
+        check("staleness defaults match the shipped profiles",
+              PROFILE_DESKTOP["fleetStaleSeconds"] == 900
+              and PROFILE_LAPTOP["fleetStaleSeconds"] == 900
+              and PROFILE_DESKTOP["connectionStaleSeconds"] == 600
+              and PROFILE_LAPTOP["connectionStaleSeconds"] == 600),
         check("connection settings keys round-trip",
               {"connectionStaleSeconds", "connectionDownSeconds",
                "connectionHeartbeatPath"} <= read

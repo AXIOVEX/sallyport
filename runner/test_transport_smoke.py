@@ -7,7 +7,7 @@ workflow files and runs it the way a runner would (same env
 names, bash shell), against probe scripts that print markers:
 
   - marker output + cwd honored + exit code propagated, for
-    linux.yml and macos.yml (identical bodies; both run here);
+    linux.yml and macos.yml (different OS bodies; both run here);
   - for docker.yml, when a Docker CLI is available: the job
     runs inside the image, sees the declared mount, and a
     file it writes into the mount is present on the host
@@ -54,7 +54,7 @@ def run_block(path):
     raise ValueError(f"no run block in {path}")
 
 
-def run_body(body, env):
+def run_body(body, env, cwd=None):
     with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as f:
         f.write(body)
         path = f.name
@@ -64,7 +64,7 @@ def run_body(body, env):
         return subprocess.run(["bash", "--noprofile", "--norc", "-eo",
                                "pipefail", path],
                               capture_output=True, text=True, env=full,
-                              timeout=600)
+                              cwd=cwd, timeout=600)
     finally:
         os.unlink(path)
 
@@ -75,10 +75,23 @@ PROBE_EXIT = "echo SMOKE_EXITING\nexit 7\n"
 
 def posix_smoke(fname):
     body = run_block(os.path.join(WF_DIR, fname))
-    tmp = tempfile.mkdtemp(prefix="smoke-")
+    # The Linux door body contains GitHub expressions that the
+    # runner substitutes before bash sees the script. Substitute
+    # the two the body uses so the extracted body can run here.
+    body = body.replace("${{ github.run_id }}", "12345")
+    body = body.replace("${{ inputs.lane }}", "lane-long")
+    # Canonicalize: on macOS the temp dir is a symlink into
+    # /private, and the probe's `pwd` prints the physical path.
+    tmp = os.path.realpath(tempfile.mkdtemp(prefix="smoke-"))
     env = {"CMD_B64": base64.b64encode(PROBE.encode()).decode(),
-           "JOB_CWD": tmp, "RUNNER_TEMP": tmp}
-    r = run_body(body, env)
+           "JOB_CWD": tmp, "RUNNER_TEMP": tmp,
+           "SYNCYARD_HOLD_FILE": ""}
+    # linux.yml applies inputs.cwd through the step's
+    # working-directory, which extraction cannot carry; run its
+    # body in the probe directory instead. macos.yml's body
+    # changes directory itself from JOB_CWD.
+    body_cwd = tmp if fname == "linux.yml" else None
+    r = run_body(body, env, cwd=body_cwd)
     check(f"{fname}: probe runs (rc 0)", r.returncode == 0,
           f"rc={r.returncode} err={r.stderr[-200:]}")
     check(f"{fname}: markers in output",
@@ -86,7 +99,7 @@ def posix_smoke(fname):
     check(f"{fname}: cwd honored", f"SMOKE_CWD={tmp}" in r.stdout,
           r.stdout.replace("\n", " | ")[:200])
     env["CMD_B64"] = base64.b64encode(PROBE_EXIT.encode()).decode()
-    r = run_body(body, env)
+    r = run_body(body, env, cwd=body_cwd)
     check(f"{fname}: exit code propagates (7)", r.returncode == 7,
           f"rc={r.returncode}")
 

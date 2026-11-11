@@ -1,15 +1,23 @@
-# Syncyard linux workflow - version 0.2.0
+# Syncyard linux workflow - version 0.1.0
 # Part of AXIOVEX/syncyard. Dispatch-only by design: this workflow binds
 # self-hosted runners and must NEVER be triggered by pull_request,
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.
 #
-# Host contract (spec 010 FR-003): the native Linux transport. The
-# `lane` input addresses the runner; any Linux host whose runner
-# carries that lane label can serve it. The gatekeeper passes cwd
-# explicitly (the host's config cwd map); empty means the runner
-# user's home. The script body below is identical to macos.yml —
-# the contract battery fails CI if the two drift.
+# Host contract (spec 010 FR-003): the `lane` input addresses the
+# runner; any native Linux host whose runner carries that lane label
+# can serve this transport. This is the bash counterpart of wsl.yml
+# for hosts with no Windows parent (tower-offsite is the first).
+# The gatekeeper always passes cwd explicitly (from the host's
+# config cwd map); the default below is only a fallback for manual
+# dispatch. Job scripts prove the venue with the host's identity
+# markers (config: hosts.<name>.identity).
+#
+# timeout-minutes is 1440, deliberately above the Windows
+# transports' 360: long Linux lanes carry expectation-mode jobs
+# whose declared expectation exceeds six hours (first case: the
+# RCPH spec 049 config 034 diagnostic, expected 780 minutes,
+# submitted 2026-11-07 against wsl.yml's 360 cap on the old venue).
 name: linux
 
 on:
@@ -18,27 +26,66 @@ on:
       lane:
         description: "Runner lane label (from the gatekeeper's config)"
         required: false
-        default: 'lane-long'
+        default: 'lane-tower-long'
       cmd_b64:
         description: "Base64-encoded bash script to execute on the addressed Linux host"
         required: true
       cwd:
-        description: "Working directory (empty = runner user's home)"
+        description: "Working directory"
         required: false
-        default: ''
+        default: '/var/lib/runner'
+      hold_file:
+        description: "Checkpoint hold-signal path on this host (spec 013 FR-007); the job reads it via $SYNCYARD_HOLD_FILE"
+        required: false
 
 jobs:
   linux:
     runs-on: [self-hosted, "${{ inputs.lane }}"]
-    timeout-minutes: 360
+    timeout-minutes: 1440
     steps:
+      # The checkout step runs with an isolated global git config: a job
+      # payload may legitimately write the runner user's real global git
+      # config (e.g. a repo-scoped insteadOf for a deploy key), and that
+      # config must never be able to break the transport's own checkout
+      # of this repo (which authenticates over HTTPS with the workflow
+      # token). The Execute step below uses the real global config.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        env:
+          GIT_CONFIG_GLOBAL: ${{ runner.temp }}/syncyard-checkout-gitconfig
       - name: Execute
         shell: bash
+        working-directory: ${{ inputs.cwd }}
         env:
           CMD_B64: ${{ inputs.cmd_b64 }}
-          JOB_CWD: ${{ inputs.cwd }}
+          SYNCYARD_HOLD_FILE: ${{ inputs.hold_file }}
         run: |
+          script="$(printf '%s' "$CMD_B64" | base64 -d)"
+          # Running-job registry (spec 011 Phase 3): same contract
+          # as run.yml / wsl.yml - while this job runs, an entry
+          # file in the `running` dir beside the holds dir names
+          # it, so the host guard learns locally which
+          # checkpoint-capable jobs are live. Best-effort: a
+          # registration failure degrades guard coverage, never
+          # the job. The entry is removed when the job ends.
+          reg_file=""
+          if [ -n "$SYNCYARD_HOLD_FILE" ]; then
+            mkdir -p "$(dirname "$SYNCYARD_HOLD_FILE")"
+            jid="$(basename "$SYNCYARD_HOLD_FILE" .hold)"
+            reg_dir="$(dirname "$(dirname "$SYNCYARD_HOLD_FILE")")/running"
+            if mkdir -p "$reg_dir" 2>/dev/null; then
+              reg_file="$reg_dir/$jid.entry"
+              { printf 'job_id=%s\n' "$jid"
+                printf 'run_id=%s\n' "${{ github.run_id }}"
+                printf 'workflow=linux.yml\n'
+                printf 'lane=%s\n' "${{ inputs.lane }}"
+                printf 'hold_file=%s\n' "$SYNCYARD_HOLD_FILE"
+                printf 'started=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              } > "$reg_file.tmp" && mv "$reg_file.tmp" "$reg_file" || reg_file=""
+            fi
+          fi
           f="$RUNNER_TEMP/job.sh"
-          printf '%s' "$CMD_B64" | openssl base64 -d -A > "$f"
-          cd "${JOB_CWD:-$HOME}"
+          printf '%s' "$script" > "$f"
           bash "$f"
+          rc=$?
+          if [ -n "$reg_file" ]; then rm -f "$reg_file"; fi
+          exit $rc

@@ -103,7 +103,7 @@ proves.
   key, or an unparseable file yields documented defaults
   (supervision on, restart cap 3, tick 5 s, stray-console
   hiding on, all lanes supervised, fleet staleness bound
-  300 s) plus a line in `tray.log` — settings can never
+  900 s) plus a line in `tray.log` — settings can never
   prevent the tray from starting. Values are clamped to
   their documented ranges on load and on save. The format
   is hand-rolled JSON in the tray's single source file,
