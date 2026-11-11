@@ -98,7 +98,7 @@ namespace SyncyardTray
                     "{\"name\":\"unterminated", "name"));
             Equal("MiniJson unbalanced object is null",
                 null, MiniJson.GetObject(
-                    "{\"outer\":{\"inner\":{}}", "outer"));
+                    "{\"outer\":{\"inner\":{}", "outer"));
             Equal("MiniJson null text string is null",
                 null, MiniJson.GetString(null, "name"));
             Equal("MiniJson null text integer uses the default",

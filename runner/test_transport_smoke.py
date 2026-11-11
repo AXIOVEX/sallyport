@@ -80,7 +80,9 @@ def posix_smoke(fname):
     # the two the body uses so the extracted body can run here.
     body = body.replace("${{ github.run_id }}", "12345")
     body = body.replace("${{ inputs.lane }}", "lane-long")
-    tmp = tempfile.mkdtemp(prefix="smoke-")
+    # Canonicalize: on macOS the temp dir is a symlink into
+    # /private, and the probe's `pwd` prints the physical path.
+    tmp = os.path.realpath(tempfile.mkdtemp(prefix="smoke-"))
     env = {"CMD_B64": base64.b64encode(PROBE.encode()).decode(),
            "JOB_CWD": tmp, "RUNNER_TEMP": tmp,
            "SYNCYARD_HOLD_FILE": ""}
