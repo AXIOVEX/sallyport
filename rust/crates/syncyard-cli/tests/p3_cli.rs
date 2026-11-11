@@ -1,6 +1,12 @@
 //! P3 CLI tests: the spec 034 progress verb surface and the
 //! CLI/daemon/contract version agreement (T034-13).
 
+// Unix-only as a whole: both tests drive the daemon's live
+// socket transport, which refuses by name on non-Unix
+// platforms in this build (serve.rs — the Windows
+// named-pipe transport is not yet wired).
+#![cfg(unix)]
+
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

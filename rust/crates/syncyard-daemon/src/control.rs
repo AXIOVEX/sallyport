@@ -103,6 +103,11 @@ impl DaemonState {
     /// switch is set no decision is consumed, so clearing the
     /// switch resumes the normal rule.
     pub fn repair_restart_decision(&mut self, still_failing: bool) -> bool {
+        if self.control_load_failed() {
+            // The kill switch state is unknown; fail closed and
+            // do not spend the cure's one restart.
+            return false;
+        }
         if self.control.kill_switch {
             return false;
         }
@@ -148,6 +153,25 @@ impl Engine {
     /// Verify and (when legal) execute one signed command file.
     /// Always produces and records a [`CommandOutcome`].
     pub fn execute_control_command(&mut self, cmd: &ControlCommand) -> CommandOutcome {
+        if self.state.control_load_failed() {
+            // Fail closed without recording or touching control
+            // state: the corrupt file's kill switch, nonces, and
+            // outcomes are unknown and must not be reset.
+            return CommandOutcome {
+                command_id: cmd.command_id.clone(),
+                action: cmd.action.as_str().to_string(),
+                issuer_host: cmd.issuer_host.clone(),
+                job_id: cmd.job_id.clone(),
+                status: OutcomeStatus::Refused,
+                reason: Some(
+                    "control.json is corrupt or unreadable; control commands are refused \
+                     until the file is repaired"
+                        .to_string(),
+                ),
+                ledger_event: None,
+                decided_at: iso_from_unix(now_unix().max(0) as u64),
+            };
+        }
         let now = now_unix();
         // 1. Enrolled issuer host with a parseable key.
         let public = match self.state.control.host_keys.get(&cmd.issuer_host) {
@@ -372,6 +396,9 @@ impl Engine {
     /// ledgered on every change (FR-037-10). `source` names the
     /// surface that asked ("tray-app", "cli", ...).
     pub fn set_kill_switch(&mut self, on: bool, source: &str) -> bool {
+        if self.state.control_load_failed() {
+            return false;
+        }
         let changed = self.state.control.kill_switch != on;
         self.state.control.kill_switch = on;
         let mut fields = BTreeMap::new();

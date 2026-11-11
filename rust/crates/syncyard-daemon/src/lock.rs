@@ -214,6 +214,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // Unix-only: the dead-owner branch requires a liveness
+    // probe, and off-Unix pid_alive conservatively reports
+    // every owner alive (by design), so the takeover branch
+    // is unreachable there.
+    #[cfg(unix)]
     #[test]
     fn dead_owner_lock_is_taken_regardless_of_age() {
         let dir = scratch("dead");

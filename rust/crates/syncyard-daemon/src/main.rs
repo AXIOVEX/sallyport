@@ -97,6 +97,15 @@ fn main() {
             std::process::exit(1);
         }
     };
+    let (mut state, gaps) = DaemonState::load(home.clone());
+    if state.control_load_failed() {
+        eprintln!(
+            "refusing to serve: control.json is corrupt or unreadable; \
+             the kill switch, burned nonces, and recorded outcomes must not be reset. \
+             Load gaps: {gaps:?}"
+        );
+        std::process::exit(1);
+    }
     let store = Arc::new(DirOffVmStore::new(
         offvm_dir.unwrap_or_else(|| home.root().join("offvm")),
     ));
@@ -108,7 +117,6 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let (mut state, gaps) = DaemonState::load(home.clone());
     let transport = NoTransport;
     let report = boot_reconcile(&mut state, store.as_ref(), &transport, &[], gaps);
     println!(

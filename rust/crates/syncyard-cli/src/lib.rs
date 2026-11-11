@@ -144,6 +144,7 @@ impl syncyard_daemon::dispatch::Dispatcher for RefuseDispatch {
 /// the same engine the daemon uses.
 pub struct FileClient {
     engine: Engine,
+    load_gaps: Vec<String>,
     _lock: syncyard_daemon::lock::StateLock,
 }
 
@@ -155,7 +156,7 @@ impl FileClient {
             .ok_or_else(|| {
                 "state lock is held (the daemon is running); use the socket".to_string()
             })?;
-        let (state, _gaps) = DaemonState::load(home.clone());
+        let (state, load_gaps) = DaemonState::load(home.clone());
         let engine = Engine {
             state,
             store: std::sync::Arc::new(DirOffVmStore::new(offvm_root.to_path_buf())),
@@ -172,8 +173,17 @@ impl FileClient {
         };
         Ok(FileClient {
             engine,
+            load_gaps,
             _lock: lock,
         })
+    }
+
+    /// State-load gaps found when the fallback opened the state
+    /// home (corrupt or unreadable records that were skipped and
+    /// named, never silently discarded). They also ride every
+    /// fallback response as `load_gaps`.
+    pub fn load_gaps(&self) -> &[String] {
+        &self.load_gaps
     }
 }
 
@@ -190,7 +200,22 @@ impl Client for FileClient {
                           start syncyard-daemon serve, or use another verb in fallback mode",
             }));
         }
-        Ok(self.engine.handle(req))
+        let mut resp = self.engine.handle(req);
+        if !self.load_gaps.is_empty() {
+            if let Some(obj) = resp.as_object_mut() {
+                obj.insert(
+                    "load_gaps".to_string(),
+                    serde_json::Value::Array(
+                        self.load_gaps
+                            .iter()
+                            .cloned()
+                            .map(serde_json::Value::String)
+                            .collect(),
+                    ),
+                );
+            }
+        }
+        Ok(resp)
     }
 }
 
@@ -201,7 +226,30 @@ pub fn auto_client(home: &StateHome, offvm_root: &Path) -> Result<Box<dyn Client
     let ping = serde_json::json!({"verb": "ping"});
     if let Ok(resp) = socket.call(&ping) {
         if resp.get("ok").and_then(|v| v.as_bool()) == Some(true) {
-            return Ok(Box::new(socket));
+            // Version negotiation: a daemon that answers ping is
+            // only usable if it speaks this CLI's contract. A
+            // mismatch is refused by name — never silently used,
+            // and never masked by falling back to the files the
+            // live daemon owns.
+            match resp.get("contract_version").and_then(|v| v.as_u64()) {
+                Some(v) if v == syncyard_contract::CONTRACT_VERSION as u64 => {
+                    return Ok(Box::new(socket));
+                }
+                Some(v) => {
+                    return Err(format!(
+                        "contract version mismatch: daemon reports contract {v}, \
+                         this CLI requires contract {}; refusing the socket client",
+                        syncyard_contract::CONTRACT_VERSION
+                    ));
+                }
+                None => {
+                    return Err(format!(
+                        "contract version mismatch: daemon ping carries no contract_version, \
+                         this CLI requires contract {}; refusing the socket client",
+                        syncyard_contract::CONTRACT_VERSION
+                    ));
+                }
+            }
         }
     }
     Ok(Box::new(FileClient::open(home, offvm_root)?))

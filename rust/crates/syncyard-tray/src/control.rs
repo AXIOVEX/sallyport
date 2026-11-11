@@ -8,9 +8,11 @@
 //! module contains no process spawning at all (FR-037-12's
 //! surface here).
 
-use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -179,6 +181,13 @@ pub fn display_state(
     CommandDisplay::Pending
 }
 
+/// Maximum bytes in one daemon response line (the same bound
+/// the daemon applies to requests).
+pub const MAX_SOCKET_LINE_BYTES: usize = 1_048_576;
+
+/// Read/write timeout for one daemon socket exchange.
+pub const SOCKET_IO_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// The gatekeeper channel the app reads switch state and
 /// outcomes through (the daemon socket on this host; the
 /// backchannel relays where the daemon is remote).
@@ -197,6 +206,10 @@ impl GatekeeperChannel for SocketGatekeeper {
         use std::os::unix::net::UnixStream;
         let mut stream = UnixStream::connect(&self.socket_path)
             .map_err(|e| format!("connect {}: {e}", self.socket_path.display()))?;
+        stream
+            .set_read_timeout(Some(SOCKET_IO_TIMEOUT))
+            .and_then(|_| stream.set_write_timeout(Some(SOCKET_IO_TIMEOUT)))
+            .map_err(|e| e.to_string())?;
         let mut line = serde_json::to_string(req).map_err(|e| e.to_string())?;
         line.push('\n');
         stream
@@ -204,7 +217,16 @@ impl GatekeeperChannel for SocketGatekeeper {
             .map_err(|e| e.to_string())?;
         let mut reader = BufReader::new(stream);
         let mut resp = String::new();
-        reader.read_line(&mut resp).map_err(|e| e.to_string())?;
+        reader
+            .by_ref()
+            .take((MAX_SOCKET_LINE_BYTES + 1) as u64)
+            .read_line(&mut resp)
+            .map_err(|e| e.to_string())?;
+        if resp.len() > MAX_SOCKET_LINE_BYTES {
+            return Err(format!(
+                "response line exceeds the {MAX_SOCKET_LINE_BYTES}-byte limit"
+            ));
+        }
         serde_json::from_str(&resp).map_err(|e| format!("bad reply: {e}"))
     }
 }

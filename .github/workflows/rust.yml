@@ -47,7 +47,76 @@ jobs:
         working-directory: rust
         run: cargo test --workspace
       - name: Traceability matrix
-        run: cargo run -p syncyard-tracegen --manifest-path rust/Cargo.toml
+        shell: bash
+        run: |
+          # Exception-aware, with exactly the semantics of
+          # rust/release-gate.sh step 4: tracegen exits 1
+          # whenever gaps > 0, and the recorded field-gated
+          # named tests (rust/traceability/field-gated-
+          # exceptions.txt) are legitimately missing from the
+          # suite, so the bare exit code can never pass. The
+          # matrix passes only when every other gap class is
+          # zero and the missing set is EXACTLY the recorded
+          # exception list: a new missing test, an FR without
+          # a test or a mode, or an orphan suite id fails.
+          set -u
+          EXCEPTIONS_FILE="rust/traceability/field-gated-exceptions.txt"
+          TRACEGEN_TMP="$(mktemp -d)"
+          TRACEGEN_LOG="$TRACEGEN_TMP/tracegen.log"
+          set +e
+          cargo run -p syncyard-tracegen --manifest-path rust/Cargo.toml -- --out-dir "$TRACEGEN_TMP/out" >"$TRACEGEN_LOG" 2>&1
+          TRACEGEN_STATUS=$?
+          set -e
+          cat "$TRACEGEN_LOG"
+          if [ "$TRACEGEN_STATUS" -ne 0 ] && [ "$TRACEGEN_STATUS" -ne 1 ]; then
+            echo "tracegen exited $TRACEGEN_STATUS"
+            rm -rf "$TRACEGEN_TMP"
+            exit 1
+          fi
+          if ! grep -q "fr_without_test=0 fr_without_mode=0" "$TRACEGEN_LOG" \
+             || ! grep -q "orphan_suite_ids=0" "$TRACEGEN_LOG"; then
+            echo "tracegen: a non-exception gap class is present"
+            rm -rf "$TRACEGEN_TMP"
+            exit 1
+          fi
+          PYTHON_BIN="$(command -v python3 || command -v python)"
+          ACTUAL_MISSING="$("$PYTHON_BIN" - "$TRACEGEN_TMP/out/matrix.json" <<'PY'
+          import json, sys
+          with open(sys.argv[1]) as fh:
+              matrix = json.load(fh)
+          missing = sorted(
+              t["id"] for fr in matrix["frs"] for t in fr["tests"] if not t["in_suite"]
+          )
+          print("\n".join(missing))
+          PY
+          )"
+          EXPECTED_MISSING="$(tr -d '\r' < "$EXCEPTIONS_FILE" | grep -E '^T[0-9]{3}-[0-9]{2}$' | sort)"
+          # Line-ending normalization (windows-latest): the
+          # Python above writes its stdout in text mode,
+          # which on Windows translates \n to \r\n, so the
+          # ACTUAL capture holds CR-terminated lines while
+          # the EXPECTED capture is LF-only; bash keeps the
+          # interior \r in command substitution, so the
+          # exact comparison below would fail on identical
+          # sets (run 42965861874: both lists print as the
+          # same 11 ids, yet the step failed). The EXPECTED
+          # side is stripped at the source above (which also
+          # keeps the $-anchored grep working under a CRLF
+          # checkout); strip the ACTUAL capture here too.
+          # Semantics unchanged: exact set equality, still
+          # fail-closed on any real difference.
+          ACTUAL_MISSING="$(printf '%s' "$ACTUAL_MISSING" | tr -d '\r')"
+          if [ "$ACTUAL_MISSING" != "$EXPECTED_MISSING" ]; then
+            echo "tracegen: missing set is not exactly the recorded field-gated list"
+            echo "expected (from $EXCEPTIONS_FILE):"
+            echo "$EXPECTED_MISSING"
+            echo "actual (from the regenerated matrix):"
+            echo "$ACTUAL_MISSING"
+            rm -rf "$TRACEGEN_TMP"
+            exit 1
+          fi
+          rm -rf "$TRACEGEN_TMP"
+          echo "tracegen gaps are exactly the recorded field-gated exceptions"
       - name: Platform-assumption lint (spec 039 FR-MAC-01)
         run: cargo run -p syncyard-tracegen --manifest-path rust/Cargo.toml -- lint-platform --suite rust
 

@@ -21,6 +21,24 @@ use fs2::FileExt;
 
 use crate::channel::AgentError;
 
+/// Whether a `try_lock_exclusive` error means another instance
+/// already holds the lock, rather than a real I/O failure.
+///
+/// Unix flock contention reports `WouldBlock`. Windows
+/// `LockFileEx` (via fs2) instead reports `ERROR_LOCK_VIOLATION`
+/// (raw OS error 33), whose `ErrorKind` is not `WouldBlock`:
+/// treating only `WouldBlock` as contention made a second
+/// instance on Windows surface as a generic local error instead
+/// of the named `AlreadyRunning` refusal (windows-latest CI
+/// failure in `two_instances_one_install_path_refused`,
+/// 2026-11-10).
+fn is_lock_contention(e: &std::io::Error) -> bool {
+    // ERROR_LOCK_VIOLATION (33) is the Windows contention code;
+    // the cfg gate keeps the literal from ever matching a Unix
+    // raw error (where 33 means something else entirely).
+    e.kind() == std::io::ErrorKind::WouldBlock || (cfg!(windows) && e.raw_os_error() == Some(33))
+}
+
 /// The held singleton guard. Drop releases the flock.
 #[derive(Debug)]
 pub struct InstanceGuard {
@@ -59,9 +77,7 @@ pub fn acquire(install_path: &Path) -> Result<InstanceGuard, AgentError> {
                 lock_path,
             })
         }
-        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-            Err(AgentError::AlreadyRunning(canon))
-        }
+        Err(e) if is_lock_contention(&e) => Err(AgentError::AlreadyRunning(canon)),
         Err(e) => Err(AgentError::Local(format!(
             "lock {}: {e}",
             lock_path.display()

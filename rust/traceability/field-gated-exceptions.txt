@@ -1,0 +1,21 @@
+# Recorded field-gated traceability exceptions (audit 2026-11-10).
+#
+# These named tests cannot run in the local suite: each needs a
+# field host, an owner act, or a live fleet leg. The release gate
+# (rust/release-gate.sh, step 4) passes only when the tracegen
+# matrix's missing-from-suite set is EXACTLY this list — any
+# other gap, and any other gap class (FR without a named test,
+# FR without a mode, orphan suite id), fails the gate.
+#
+# One test id per line. Lines starting with # are comments.
+T036-09
+T038-07
+T038-13
+T038-14
+T038-22
+T038-61
+T038-62
+T038-64
+T038-65
+T038-69
+T039-13

@@ -14,10 +14,14 @@
 
 use std::collections::BTreeMap;
 #[cfg(unix)]
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+#[cfg(unix)]
+use std::sync::atomic::Ordering;
+#[cfg(unix)]
+use std::sync::Condvar;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -88,6 +92,27 @@ impl Engine {
                 "contract_version": syncyard_contract::CONTRACT_VERSION,
                 "epoch": self.token.epoch,
             })),
+            "agent_hello" => {
+                // Agent version negotiation: the agent states its
+                // contract before its first real request; a
+                // mismatch is refused by name (compare the CLI
+                // ping check and the signed control surface).
+                let expected = syncyard_contract::CONTRACT_VERSION;
+                match req.get("contract_version").and_then(|v| v.as_u64()) {
+                    Some(v) if v == expected as u64 => ok(serde_json::json!({
+                        "hello": true,
+                        "contract_version": expected,
+                    })),
+                    Some(v) => err(&format!(
+                        "contract version mismatch: daemon requires contract {expected}, \
+                         agent reports contract {v}"
+                    )),
+                    None => err(&format!(
+                        "contract version mismatch: agent hello carries no contract_version, \
+                         daemon requires contract {expected}"
+                    )),
+                }
+            }
             "submit" => {
                 let Some(job_v) = req.get("job") else {
                     return err("submit requires a job object");
@@ -524,14 +549,65 @@ fn err(msg: &str) -> serde_json::Value {
     serde_json::json!({"ok": false, "error": msg})
 }
 
+/// The bounded tail window `ledger_tail` reads from the ledger
+/// file: 64 KiB, far more than any sane tail request, and O(1)
+/// in the ledger's total size instead of O(file).
+pub const LEDGER_TAIL_WINDOW_BYTES: usize = 65_536;
+
+/// Byte offset where the tail window starts for a file of
+/// `file_len` bytes (0 for any file that fits the window whole,
+/// which keeps small-file semantics byte-exact).
+fn ledger_tail_window_start(file_len: u64) -> u64 {
+    file_len.saturating_sub(LEDGER_TAIL_WINDOW_BYTES as u64)
+}
+
+/// Read only the tail window of the ledger file and return its
+/// nonempty lines. When the window starts mid-line, the partial
+/// first line is dropped (unless the window happens to start
+/// exactly on a line boundary).
+fn ledger_tail_lines(path: &std::path::Path) -> Vec<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return Vec::new();
+    };
+    let Ok(meta) = file.metadata() else {
+        return Vec::new();
+    };
+    let start = ledger_tail_window_start(meta.len());
+    let mut drop_first = false;
+    if start > 0 {
+        // The window starts mid-line unless the byte just before
+        // it is a newline.
+        let mut prev = [0u8; 1];
+        if file.seek(SeekFrom::Start(start - 1)).is_ok() && file.read_exact(&mut prev).is_ok() {
+            drop_first = prev[0] != b'\n';
+        }
+    }
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return Vec::new();
+    }
+    let mut bytes = Vec::new();
+    if file.read_to_end(&mut bytes).is_err() {
+        return Vec::new();
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let mut lines: Vec<String> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.to_string())
+        .collect();
+    if drop_first && !lines.is_empty() {
+        lines.remove(0);
+    }
+    lines
+}
+
 fn ledger_tail(state: &DaemonState, tail: usize) -> Vec<serde_json::Value> {
     let mut out: Vec<serde_json::Value> = Vec::new();
-    if let Ok(text) = std::fs::read_to_string(state.home.ledger_path()) {
-        let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-        for line in lines.iter().rev().take(tail) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                out.push(v);
-            }
+    let lines = ledger_tail_lines(&state.home.ledger_path());
+    for line in lines.iter().rev().take(tail) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+            out.push(v);
         }
     }
     for ev in state.ledger_buffer.iter().rev().take(tail) {
@@ -546,6 +622,35 @@ fn ledger_tail(state: &DaemonState, tail: usize) -> Vec<serde_json::Value> {
     // Keep chronological order within each half; exact interleaving
     // of disk vs buffer is not needed for a tail read.
     out
+}
+
+/// Maximum bytes in one newline-delimited socket request or
+/// response line, on every socket surface (daemon, CLI client,
+/// agent and tray clients carry the same bound in their crates).
+/// Generous by design: real requests are kilobytes.
+pub const MAX_SOCKET_LINE_BYTES: usize = 1_048_576;
+
+/// Read/write timeout for one daemon socket exchange.
+pub const SOCKET_IO_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Read one line through a hard byte bound. Reading through
+/// `take(bound + 1)` means an unterminated line can never grow
+/// memory past the bound; a line that crosses it is a named
+/// `InvalidData` error, distinct from a parse failure.
+#[cfg(unix)]
+fn read_line_bounded<R: BufRead>(reader: &mut R, bound: usize) -> std::io::Result<String> {
+    let mut line = String::new();
+    reader
+        .by_ref()
+        .take((bound + 1) as u64)
+        .read_line(&mut line)?;
+    if line.len() > bound {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("socket line exceeds the {bound}-byte limit"),
+        ));
+    }
+    Ok(line)
 }
 
 /// Server configuration.
@@ -595,18 +700,36 @@ pub fn serve(
     let listener = UnixListener::bind(&sock)?;
     listener.set_nonblocking(true)?;
 
-    // Write-behind flush thread.
+    // Write-behind flush thread. Its wait is interruptible: the
+    // accept loop signals the condvar the moment shutdown is
+    // observed, so serve exits promptly and runs its final flush
+    // instead of waiting out the 60 s interval. (Signal-driven
+    // shutdown — SIGTERM/SIGINT setting the same flag — remains
+    // open: signal-hook is not a dependency of this workspace,
+    // and no handler is installed rather than inventing one.)
+    let flush_wake = Arc::new((Mutex::new(()), Condvar::new()));
     let flush_engine = Arc::clone(&engine);
     let flush_shutdown = Arc::clone(&shutdown);
+    let flush_wake_thread = Arc::clone(&flush_wake);
     let flush_thread = std::thread::spawn(move || {
+        let (lock, cvar) = &*flush_wake_thread;
+        let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
         while !flush_shutdown.load(Ordering::SeqCst) {
-            std::thread::sleep(config.flush_interval);
+            let (g, waited) = match cvar.wait_timeout(guard, config.flush_interval) {
+                Ok(pair) => pair,
+                Err(e) => e.into_inner(),
+            };
+            guard = g;
             if flush_shutdown.load(Ordering::SeqCst) {
                 break;
             }
-            if let Ok(mut eng) = flush_engine.lock() {
-                let writer = Arc::clone(&eng.writer);
-                let _ = eng.state.flush(writer.as_ref());
+            if waited.timed_out() {
+                drop(guard);
+                if let Ok(mut eng) = flush_engine.lock() {
+                    let writer = Arc::clone(&eng.writer);
+                    let _ = eng.state.flush(writer.as_ref());
+                }
+                guard = lock.lock().unwrap_or_else(|e| e.into_inner());
             }
         }
     });
@@ -625,6 +748,11 @@ pub fn serve(
             }
             Err(e) => return Err(e),
         }
+    }
+    {
+        let (lock, cvar) = &*flush_wake;
+        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+        cvar.notify_all();
     }
     let _ = flush_thread.join();
     // Final flush on the way down (a failure is a non-event: the
@@ -645,22 +773,39 @@ fn handle_conn(
 ) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut writer = stream;
-    let mut line = String::new();
     loop {
-        line.clear();
-        let n = reader.read_line(&mut line)?;
-        if n == 0 {
+        let line = match read_line_bounded(&mut reader, MAX_SOCKET_LINE_BYTES) {
+            Ok(line) => line,
+            Err(e) => {
+                // An over-limit line is answered with the bound
+                // named, then the connection closes: the rest of
+                // the line is not drained.
+                let resp = err(&format!("request line {e}"));
+                let mut bytes = serde_json::to_vec(&resp).unwrap_or_default();
+                bytes.push(b'\n');
+                let _ = writer.write_all(&bytes);
+                let _ = writer.flush();
+                return Ok(());
+            }
+        };
+        if line.is_empty() {
             return Ok(());
         }
-        let req: serde_json::Value =
-            serde_json::from_str(line.trim()).unwrap_or(serde_json::Value::Null);
-        let resp = if req.get("verb").and_then(|v| v.as_str()) == Some("shutdown") {
-            shutdown.store(true, Ordering::SeqCst);
-            ok(serde_json::json!({"shutdown": true}))
-        } else {
-            match engine.lock() {
-                Ok(mut eng) => eng.handle(&req),
-                Err(_) => err("engine lock poisoned"),
+        let resp = match serde_json::from_str::<serde_json::Value>(line.trim()) {
+            Err(e) => err(&format!("malformed JSON request: {e}")),
+            Ok(req) if !req.is_object() => {
+                err("malformed request: expected a JSON object with a verb")
+            }
+            Ok(req) => {
+                if req.get("verb").and_then(|v| v.as_str()) == Some("shutdown") {
+                    shutdown.store(true, Ordering::SeqCst);
+                    ok(serde_json::json!({"shutdown": true}))
+                } else {
+                    match engine.lock() {
+                        Ok(mut eng) => eng.handle(&req),
+                        Err(_) => err("engine lock poisoned"),
+                    }
+                }
             }
         };
         let mut bytes = serde_json::to_vec(&resp).unwrap_or_default();
@@ -686,13 +831,183 @@ pub fn request(_home: &StateHome, _req: &serde_json::Value) -> std::io::Result<s
 #[cfg(unix)]
 pub fn request(home: &StateHome, req: &serde_json::Value) -> std::io::Result<serde_json::Value> {
     let mut stream = UnixStream::connect(home.socket_path())?;
+    stream.set_read_timeout(Some(SOCKET_IO_TIMEOUT))?;
+    stream.set_write_timeout(Some(SOCKET_IO_TIMEOUT))?;
     let mut bytes = serde_json::to_vec(req).unwrap_or_default();
     bytes.push(b'\n');
     stream.write_all(&bytes)?;
     stream.flush()?;
     let mut reader = BufReader::new(stream);
-    let mut line = String::new();
-    reader.read_line(&mut line)?;
+    let line = read_line_bounded(&mut reader, MAX_SOCKET_LINE_BYTES)?;
+    if line.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "daemon closed the connection without a response",
+        ));
+    }
     serde_json::from_str(line.trim())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::dispatch::fake::FakeDispatcher;
+    use crate::offvm::{acquire_epoch, DirOffVmStore};
+    use crate::vwrite::FsWriter;
+    use std::io::Read;
+    use std::path::PathBuf;
+    use std::sync::mpsc;
+
+    fn test_engine(tag: &str) -> (Arc<Mutex<Engine>>, StateHome, PathBuf) {
+        let root = std::env::temp_dir().join(format!("sy-serve-{}-{}", std::process::id(), tag));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let home = StateHome::new(root.join("home"));
+        std::fs::create_dir_all(home.queue_dir()).unwrap();
+        let store = Arc::new(DirOffVmStore::new(root.join("offvm")));
+        let (state, _gaps) = DaemonState::load(home.clone());
+        let token = acquire_epoch(store.as_ref(), "serve-test").unwrap();
+        (
+            Arc::new(Mutex::new(Engine {
+                state,
+                store,
+                dispatcher: Arc::new(FakeDispatcher::new()),
+                token,
+                writer: Arc::new(FsWriter::default()),
+                pins: crate::workflowpin::WorkflowPins::new(),
+            })),
+            home,
+            root,
+        )
+    }
+
+    fn one_exchange(engine: Arc<Mutex<Engine>>, bytes: &[u8]) -> serde_json::Value {
+        let (client, server) = UnixStream::pair().unwrap();
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let thread = std::thread::spawn(move || {
+            let _ = handle_conn(server, engine, shutdown);
+        });
+        let mut client = client;
+        client.write_all(bytes).unwrap();
+        // One response line, read byte-wise so a missing newline
+        // cannot hang the test the way the old unbounded path could.
+        let mut resp = Vec::new();
+        let mut byte = [0u8; 1];
+        for _ in 0..16_384 {
+            match client.read(&mut byte) {
+                Ok(0) => break,
+                Ok(_) => {
+                    resp.push(byte[0]);
+                    if byte[0] == b'\n' {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        drop(client);
+        let _ = thread.join();
+        serde_json::from_slice(&resp).unwrap_or_else(|_| {
+            panic!(
+                "response must be JSON, got: {}",
+                String::from_utf8_lossy(&resp)
+            )
+        })
+    }
+
+    #[test]
+    fn malformed_json_gets_a_distinct_error() {
+        let (engine, _home, root) = test_engine("malformed");
+        let resp = one_exchange(engine, b"{not json\n");
+        assert_eq!(resp["ok"], serde_json::Value::Bool(false));
+        let error = resp["error"].as_str().unwrap_or_default();
+        assert!(
+            error.contains("malformed JSON"),
+            "malformed JSON must be named, got: {resp}"
+        );
+        assert!(
+            !error.contains("unknown verb"),
+            "malformed JSON must not be reported as an unknown verb: {resp}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn oversized_request_line_gets_a_distinct_error() {
+        let (engine, _home, root) = test_engine("oversized");
+        let mut bytes = vec![b'x'; 1_048_577];
+        bytes.push(b'\n');
+        let resp = one_exchange(engine, &bytes);
+        assert_eq!(resp["ok"], serde_json::Value::Bool(false));
+        let error = resp["error"].as_str().unwrap_or_default();
+        assert!(
+            error.contains("exceeds") && error.contains("limit"),
+            "the size bound must be named, got: {resp}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ledger_tail_reads_only_a_bounded_window() {
+        assert_eq!(LEDGER_TAIL_WINDOW_BYTES, 65_536);
+        assert_eq!(ledger_tail_window_start(0), 0);
+        assert_eq!(ledger_tail_window_start(65_536), 0);
+        assert_eq!(ledger_tail_window_start(65_537), 1);
+        assert_eq!(ledger_tail_window_start(1_000_000), 1_000_000 - 65_536);
+
+        let (_engine, home, root) = test_engine("ledger-tail");
+        let mut state = DaemonState::empty(home.clone());
+        let mut text = String::new();
+        for i in 0..6_000 {
+            text.push_str(&format!("{{\"event\":\"event-{i:05}\"}}\n"));
+        }
+        assert!(text.len() > LEDGER_TAIL_WINDOW_BYTES);
+        std::fs::write(home.ledger_path(), text).unwrap();
+        let tail = ledger_tail(&state, 3);
+        let events: Vec<&str> = tail
+            .iter()
+            .filter_map(|v| v.get("event").and_then(|e| e.as_str()))
+            .collect();
+        assert_eq!(events, vec!["event-05997", "event-05998", "event-05999"]);
+        state.ledger_buffer.clear();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn shutdown_interrupts_the_flush_wait() {
+        let (engine, home, root) = test_engine("shutdown");
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let (tx, rx) = mpsc::channel();
+        let (eng2, home2, sd2) = (Arc::clone(&engine), home.clone(), Arc::clone(&shutdown));
+        std::thread::spawn(move || {
+            let result = serve(
+                eng2,
+                &home2,
+                ServeConfig {
+                    flush_interval: Duration::from_secs(60),
+                },
+                sd2,
+            );
+            let _ = tx.send(result);
+        });
+        let mut up = false;
+        for _ in 0..60 {
+            if request(&home, &serde_json::json!({"verb": "ping"})).is_ok() {
+                up = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(up, "daemon never came up");
+        let started = std::time::Instant::now();
+        let resp = request(&home, &serde_json::json!({"verb": "shutdown"})).unwrap();
+        assert_eq!(resp["ok"], serde_json::Value::Bool(true));
+        let result = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("serve must exit promptly after shutdown, not wait out the flush interval");
+        result.unwrap();
+        assert!(started.elapsed() < Duration::from_secs(5));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

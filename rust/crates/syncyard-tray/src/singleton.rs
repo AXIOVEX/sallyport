@@ -44,6 +44,20 @@ impl std::fmt::Display for SingletonError {
 
 impl std::error::Error for SingletonError {}
 
+/// Whether a `try_lock_exclusive` error means another instance
+/// already holds the lock, rather than a real I/O failure.
+/// Same Windows defect as the agent singleton: `LockFileEx`
+/// (via fs2) reports contention as `ERROR_LOCK_VIOLATION`
+/// (raw OS error 33), whose `ErrorKind` is not `WouldBlock`,
+/// so a WouldBlock-only check misreports a second instance
+/// on Windows as a generic I/O error instead of the named
+/// `AlreadyRunning` refusal.
+fn is_lock_contention(e: &std::io::Error) -> bool {
+    // The cfg gate keeps the Windows literal (33) from ever
+    // matching a Unix raw error, where 33 means something else.
+    e.kind() == std::io::ErrorKind::WouldBlock || (cfg!(windows) && e.raw_os_error() == Some(33))
+}
+
 /// The held per-install-path lock. Dropping it releases the
 /// path for a later launch.
 pub struct TrayInstance {
@@ -88,7 +102,7 @@ pub fn acquire(install_path: &Path) -> Result<TrayInstance, SingletonError> {
                 install_path,
             })
         }
-        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+        Err(e) if is_lock_contention(&e) => {
             log_refusal(&install_path);
             Err(SingletonError::AlreadyRunning(install_path))
         }

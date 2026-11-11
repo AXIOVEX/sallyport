@@ -6,8 +6,13 @@
 //! live gatekeeper is never touched.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+#[cfg(unix)]
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+#[cfg(unix)]
+use std::sync::Mutex;
+#[cfg(unix)]
 use std::time::Duration;
 
 use syncyard_contract::{JobRecord, JobState};
@@ -15,6 +20,7 @@ use syncyard_daemon::dispatch::{
     dispatch_one, fake::FakeDispatcher, idempotency_key, recover_dispatching, DispatchTxn,
 };
 use syncyard_daemon::lanes::{scan, Lane, SettledRuns, StarvationTracker};
+#[cfg(unix)]
 use syncyard_daemon::lock::{acquire_owner_lock, OwnerLock, Takeover};
 use syncyard_daemon::migrate::{export_history, migrate_history, verify_history, MigrateError};
 use syncyard_daemon::offvm::{
@@ -22,7 +28,9 @@ use syncyard_daemon::offvm::{
 };
 use syncyard_daemon::publish::publish_verified;
 use syncyard_daemon::reconcile::{boot_reconcile, fake::FakeRuns, reconcile_ghosts};
-use syncyard_daemon::serve::{request, serve, Engine, ServeConfig};
+use syncyard_daemon::serve::Engine;
+#[cfg(unix)]
+use syncyard_daemon::serve::{request, serve, ServeConfig};
 use syncyard_daemon::state::{new_queue_record, DaemonState, StateHome};
 use syncyard_daemon::time::unix_from_iso;
 use syncyard_daemon::vwrite::test_support::GateWriter;
@@ -79,6 +87,11 @@ fn engine_for(
 }
 
 // T038-03 daemon-single-writer-socket
+// Unix-only: the daemon's socket transport refuses by name
+// on non-Unix platforms in this build (serve.rs — the
+// Windows named-pipe transport is not yet wired), so there
+// is no serving daemon to drive there.
+#[cfg(unix)]
 #[test]
 fn t038_03_daemon_single_writer_socket() {
     let root = scratch("t03");
@@ -153,6 +166,9 @@ fn t038_03_daemon_single_writer_socket() {
 }
 
 // T038-04 write-behind-flush-60s
+// Unix-only: same live-daemon socket-transport reason as
+// t038_03 above.
+#[cfg(unix)]
 #[test]
 fn t038_04_write_behind_flush_60s() {
     assert_eq!(syncyard_daemon::state::DEFAULT_FLUSH_INTERVAL_S, 60);
@@ -603,6 +619,11 @@ fn t038_27_publish_verifies_every_destination() {
 
 // T038-28 dead-owner-lock-takeover
 // T038-53 stranded-lock-defect-2026-11-06
+// Unix-only: the stranded-owner branch requires a liveness
+// probe, and off-Unix pid_alive conservatively reports every
+// owner alive (lock.rs, by design), so the takeover branch
+// is unreachable there.
+#[cfg(unix)]
 #[test]
 fn t038_28_dead_owner_lock_takeover() {
     let root = scratch("t28");

@@ -609,12 +609,24 @@ fn t035_19_heartbeat_fields_atomic_and_failure_never_stalls() {
 // FR-035-17 (defect: laptop-two-tray-fight-2026-11-06).
 #[test]
 fn t035_20_singleton_by_install_path() {
-    laptop_two_tray_fight_2026_11_06();
+    run_two_tray_fight("t20");
 }
 
 #[test]
 fn laptop_two_tray_fight_2026_11_06() {
-    let dir = scratch("t20");
+    run_two_tray_fight("t20-fight");
+}
+
+/// The fight itself, executed under both test names above.
+/// Each execution gets its OWN scratch dir: the harness runs
+/// the two tests concurrently in one process, and sharing one
+/// fixture dir (same install paths, same heartbeat temp-file
+/// names) lets one execution delete the other's files
+/// mid-flight. The macOS CI failure of 2026-11-11 (the
+/// heartbeat write below failing NotFound) was exactly that
+/// race, not a platform difference.
+fn run_two_tray_fight(tag: &str) {
+    let dir = scratch(tag);
     let install_a = dir.join("Programs").join("SyncyardTray");
     let install_b = dir.join("build-tray-r13");
     // First instance of install A takes the path.
