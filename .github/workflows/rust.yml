@@ -90,7 +90,22 @@ jobs:
           print("\n".join(missing))
           PY
           )"
-          EXPECTED_MISSING="$(grep -E '^T[0-9]{3}-[0-9]{2}$' "$EXCEPTIONS_FILE" | sort)"
+          EXPECTED_MISSING="$(tr -d '\r' < "$EXCEPTIONS_FILE" | grep -E '^T[0-9]{3}-[0-9]{2}$' | sort)"
+          # Line-ending normalization (windows-latest): the
+          # Python above writes its stdout in text mode,
+          # which on Windows translates \n to \r\n, so the
+          # ACTUAL capture holds CR-terminated lines while
+          # the EXPECTED capture is LF-only; bash keeps the
+          # interior \r in command substitution, so the
+          # exact comparison below would fail on identical
+          # sets (run 42965861874: both lists print as the
+          # same 11 ids, yet the step failed). The EXPECTED
+          # side is stripped at the source above (which also
+          # keeps the $-anchored grep working under a CRLF
+          # checkout); strip the ACTUAL capture here too.
+          # Semantics unchanged: exact set equality, still
+          # fail-closed on any real difference.
+          ACTUAL_MISSING="$(printf '%s' "$ACTUAL_MISSING" | tr -d '\r')"
           if [ "$ACTUAL_MISSING" != "$EXPECTED_MISSING" ]; then
             echo "tracegen: missing set is not exactly the recorded field-gated list"
             echo "expected (from $EXCEPTIONS_FILE):"
