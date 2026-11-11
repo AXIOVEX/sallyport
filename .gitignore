@@ -19,3 +19,6 @@ site/
 
 # Rust coverage instrumented target (rust/coverage.sh)
 target-cov/
+
+# Rust coverage scratch (rust/coverage.sh default work dir)
+covwork/

@@ -422,3 +422,28 @@ fn control_reprioritize_and_lift_execute() {
     assert_eq!(outcome.status, OutcomeStatus::Refused);
     assert!(outcome.reason.unwrap().contains("held"));
 }
+
+// A corrupt control.json fails the whole control plane closed:
+// commands are refused without being recorded, the kill switch
+// cannot be flipped, and the repair cure does not spend its
+// restart — the file's switch state, nonces, and outcomes are
+// unknown and must not be reset by acting on defaults.
+#[test]
+fn corrupt_control_fails_the_control_plane_closed() {
+    let root = scratch("corruptctl");
+    let home = StateHome::new(root.join("home"));
+    std::fs::create_dir_all(home.root()).unwrap();
+    std::fs::write(home.control_path(), "{ not json").unwrap();
+    let mut engine = engine_for(&home, &root.join("offvm"));
+    assert!(engine.state.control_load_failed());
+    let outcome = engine.execute_control_command(&command(ControlAction::Hold, "job-1"));
+    assert_eq!(outcome.status, OutcomeStatus::Refused);
+    assert!(outcome
+        .reason
+        .unwrap()
+        .contains("control.json is corrupt or unreadable"));
+    assert!(engine.state.control.outcomes.is_empty());
+    assert!(!engine.set_kill_switch(true, "test"));
+    assert!(!engine.state.repair_restart_decision(true));
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -138,6 +138,51 @@ fn t034_04_completed_line_is_not_a_verdict() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+#[test]
+fn agent_hello_refuses_contract_mismatch_by_name() {
+    let root = scratch("agent-hello");
+    let home = StateHome::new(root.clone());
+    std::fs::create_dir_all(home.queue_dir()).unwrap();
+    let mut eng = engine_for(&home, &root);
+
+    let ok = eng.handle(&serde_json::json!({
+        "verb": "agent_hello",
+        "agent": "test-host",
+        "venue": "native",
+        "contract_version": syncyard_contract::CONTRACT_VERSION,
+    }));
+    assert_eq!(ok["ok"], serde_json::Value::Bool(true), "{ok}");
+    assert_eq!(
+        ok["contract_version"],
+        serde_json::json!(syncyard_contract::CONTRACT_VERSION)
+    );
+
+    let bad = eng.handle(&serde_json::json!({
+        "verb": "agent_hello",
+        "agent": "test-host",
+        "venue": "native",
+        "contract_version": 999,
+    }));
+    assert_eq!(bad["ok"], serde_json::Value::Bool(false), "{bad}");
+    let error = bad["error"].as_str().unwrap_or_default();
+    assert!(
+        error.contains("contract version mismatch") && error.contains("999"),
+        "mismatch must name both versions: {bad}"
+    );
+
+    let missing = eng.handle(&serde_json::json!({
+        "verb": "agent_hello",
+        "agent": "test-host",
+        "venue": "native",
+    }));
+    assert_eq!(missing["ok"], serde_json::Value::Bool(false), "{missing}");
+    assert!(missing["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("carries no contract_version"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 // T034-05 progress-never-ledgers-verdict (spec 034 FR-034-03):
 // ingesting progress writes no ledger events at all, and leaves
 // the job record byte-identical.

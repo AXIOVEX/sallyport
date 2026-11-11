@@ -39,6 +39,28 @@ fn flag(args: &[String], name: &str) -> Option<String> {
     None
 }
 
+/// Resolve this agent's identity, fail-closed: an explicit
+/// `--agent-id` wins; otherwise a non-empty `HOSTNAME` is used.
+/// With neither, startup is an error — never the placeholder
+/// string "host", which would let every supervisor-launched
+/// agent on an unnamed host present as the same identity.
+fn resolve_agent_id(explicit: Option<String>, hostname: Option<String>) -> Result<String, String> {
+    if let Some(id) = explicit {
+        if id.trim().is_empty() {
+            return Err("--agent-id must not be empty".to_string());
+        }
+        return Ok(id);
+    }
+    match hostname {
+        Some(name) if !name.trim().is_empty() => Ok(name),
+        _ => Err(
+            "agent identity unavailable: pass --agent-id ID or set a non-empty HOSTNAME; \
+             refusing to start under a placeholder identity"
+                .to_string(),
+        ),
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(daemon_home) = flag(&args, "--daemon-home") else {
@@ -57,8 +79,14 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| install_path.join("work"));
     let venue = flag(&args, "--venue").unwrap_or_else(|| "native".to_string());
-    let agent_id = flag(&args, "--agent-id")
-        .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "host".to_string()));
+    let agent_id = match resolve_agent_id(flag(&args, "--agent-id"), std::env::var("HOSTNAME").ok())
+    {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("syncyard-agent: {e}");
+            std::process::exit(2);
+        }
+    };
     let once = args.iter().any(|a| a == "--once");
 
     let channel = SocketChannel::new(PathBuf::from(daemon_home), &venue, &agent_id);
@@ -93,5 +121,26 @@ fn main() {
             return;
         }
         std::thread::sleep(Duration::from_secs(5));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agent_id_resolution_fails_closed() {
+        assert_eq!(
+            resolve_agent_id(Some("pinned-id".into()), None).unwrap(),
+            "pinned-id"
+        );
+        assert_eq!(
+            resolve_agent_id(None, Some("real-host".into())).unwrap(),
+            "real-host"
+        );
+        let err = resolve_agent_id(None, None).unwrap_err();
+        assert!(err.contains("--agent-id") && err.contains("HOSTNAME"));
+        assert!(resolve_agent_id(None, Some("  ".into())).is_err());
+        assert!(resolve_agent_id(Some(" ".into()), Some("real-host".into())).is_err());
     }
 }

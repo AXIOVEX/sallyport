@@ -12,10 +12,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use syncyard_agent::agent::Agent;
+use syncyard_agent::channel::ControlChannel;
 use syncyard_agent::fake::{AckMode, FakeChannel};
 use syncyard_agent::runner::{progress_path, run_assignment, AgentConfig};
 use syncyard_agent::socket::SocketChannel;
-use syncyard_contract::Assignment;
+use syncyard_contract::{Assignment, CompletionReport};
 
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("sy-p3-agent-{}-{tag}", std::process::id()));
@@ -351,6 +352,159 @@ fn agent_end_to_end_against_real_daemon() {
     );
     assert_eq!(status["progress"]["fraction"], serde_json::json!([2, 3]));
     assert_eq!(status["progress"]["started"], serde_json::json!(true));
+
+    let _ = request(&home, &serde_json::json!({"verb": "shutdown"}));
+    shutdown.store(true, Ordering::SeqCst);
+    let _ = thread.join();
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn socket_client_bounds_an_oversized_response() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+
+    let root = scratch("oversized-response");
+    let daemon_home = root.join("gk-home");
+    std::fs::create_dir_all(&daemon_home).unwrap();
+    let listener = UnixListener::bind(daemon_home.join("gk.sock")).unwrap();
+    let _server = std::thread::spawn(move || {
+        for stream in listener.incoming().take(2) {
+            let mut stream = match stream {
+                Ok(s) => s,
+                Err(_) => break,
+            };
+            let mut reader = BufReader::new(match stream.try_clone() {
+                Ok(s) => s,
+                Err(_) => break,
+            });
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_err() {
+                break;
+            }
+            if line.contains("agent_hello") {
+                let _ = stream.write_all(b"{\"ok\":true,\"hello\":true,\"contract_version\":1}\n");
+            } else {
+                let mut resp = vec![b'x'; 1_048_577];
+                resp.push(b'\n');
+                let _ = stream.write_all(&resp);
+            }
+        }
+    });
+
+    let mut channel = SocketChannel::new(daemon_home, "native", "bound-host");
+    let err = channel.poll_assignment().unwrap_err();
+    assert!(
+        err.to_string().contains("exceeds"),
+        "an oversized response must fail on the named bound, got: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+// Wire-level regression test: CompletionReport.interruption must
+// survive the REAL SocketChannel encoding. The fake channel carries
+// the struct intact and cannot catch a field dropped by the socket
+// request builder.
+#[test]
+fn socket_completion_carries_interruption_to_daemon() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use syncyard_daemon::dispatch::fake::FakeDispatcher;
+    use syncyard_daemon::offvm::{acquire_epoch, DirOffVmStore};
+    use syncyard_daemon::serve::{request, serve, Engine, ServeConfig};
+    use syncyard_daemon::state::{DaemonState, StateHome};
+    use syncyard_daemon::vwrite::FsWriter;
+
+    let root = scratch("wire-interruption");
+    let home = StateHome::new(root.join("gk-home"));
+    std::fs::create_dir_all(home.queue_dir()).unwrap();
+    let store = Arc::new(DirOffVmStore::new(root.join("offvm")));
+    let (state, _gaps) = DaemonState::load(home.clone());
+    let token = acquire_epoch(store.as_ref(), "wire-daemon").unwrap();
+    let engine = Arc::new(Mutex::new(Engine {
+        state,
+        store,
+        dispatcher: Arc::new(FakeDispatcher::new()),
+        token,
+        writer: Arc::new(FsWriter::default()),
+        pins: syncyard_daemon::workflowpin::WorkflowPins::new(),
+    }));
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let (home2, eng2, sd2) = (home.clone(), Arc::clone(&engine), Arc::clone(&shutdown));
+    let thread = std::thread::spawn(move || {
+        serve(
+            eng2,
+            &home2,
+            ServeConfig {
+                flush_interval: Duration::from_millis(50),
+            },
+            sd2,
+        )
+    });
+    let mut up = false;
+    for _ in 0..60 {
+        if request(&home, &serde_json::json!({"verb": "ping"})).is_ok() {
+            up = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(up, "daemon never came up");
+
+    let script = payload(&root, "job.sh", "exit 0");
+    let job = syncyard_contract::JobRecord {
+        id: "wire-job".to_string(),
+        key: "wire-key".to_string(),
+        program: "test".to_string(),
+        workflow: "run.yml".to_string(),
+        lane: Some("quick".to_string()),
+        cwd: Some(root.display().to_string()),
+        expected_min: 5.0,
+        priority: 0,
+        priority_source: "auto".to_string(),
+        flags: vec![],
+        maintenance: false,
+        adopted: false,
+        notify_chat: None,
+        venue: "native".to_string(),
+        script_path: Some(script),
+        script_sha256: Some("ab12".to_string()),
+        grab_path: None,
+        created_at: "2026-11-08T00:00:00Z".to_string(),
+    };
+    let resp = request(
+        &home,
+        &serde_json::json!({"verb": "submit", "job": serde_json::to_value(&job).unwrap()}),
+    )
+    .unwrap();
+    assert_eq!(resp["ok"], serde_json::Value::Bool(true));
+
+    let mut channel = SocketChannel::new(home.root().to_path_buf(), "native", "wire-host");
+    let assignment = channel
+        .poll_assignment()
+        .unwrap()
+        .expect("the submitted job must be assigned");
+    channel
+        .send_completion(&CompletionReport {
+            job_id: assignment.job_id.clone(),
+            run_id: assignment.run_id,
+            payload_exit_code: Some(0),
+            payload_started: true,
+            interruption: Some("sleep".to_string()),
+        })
+        .unwrap();
+
+    let status = request(
+        &home,
+        &serde_json::json!({"verb": "status", "job_id": "wire-job"}),
+    )
+    .unwrap();
+    assert_eq!(
+        status["run_conclusion"],
+        serde_json::json!("interrupted-by-sleep"),
+        "the interruption must outrank the payload's 0 exit on the wire path: {status}"
+    );
 
     let _ = request(&home, &serde_json::json!({"verb": "shutdown"}));
     shutdown.store(true, Ordering::SeqCst);

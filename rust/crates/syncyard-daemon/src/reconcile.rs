@@ -29,7 +29,7 @@ use std::collections::BTreeMap;
 
 use syncyard_contract::{JobState, QueueRecord};
 
-use crate::offvm::{load_records, OffVmStore, KIND_PREDISPATCH, KIND_SUBMITS};
+use crate::offvm::{load_records_with_gaps, OffVmStore, KIND_PREDISPATCH, KIND_SUBMITS};
 use crate::state::{DaemonState, PauseRecord};
 use crate::time::now_iso;
 
@@ -145,11 +145,18 @@ pub fn boot_reconcile(
     };
     // Off-VM recovery: submit acknowledgements first, then
     // pre-dispatch witnesses (the stronger record).
-    if let Ok(submits) = load_records(store, KIND_SUBMITS) {
-        merge_offvm(state, submits, &mut report, KIND_SUBMITS);
-    }
-    if let Ok(predispatch) = load_records(store, KIND_PREDISPATCH) {
-        merge_offvm(state, predispatch, &mut report, KIND_PREDISPATCH);
+    for kind in [KIND_SUBMITS, KIND_PREDISPATCH] {
+        match load_records_with_gaps(store, kind) {
+            Ok((records, gaps)) => {
+                report.gaps.extend(gaps);
+                merge_offvm(state, records, &mut report, kind);
+            }
+            Err(e) => {
+                report
+                    .gaps
+                    .push(format!("off-VM {kind} records unreadable: {e}"));
+            }
+        }
     }
     // ERR-02: acknowledged submits that exist nowhere are named.
     for id in acknowledged_submits {
@@ -371,6 +378,35 @@ mod tests {
         assert_eq!(after.markers, vec!["PAYLOAD_VERDICT PASS".to_string()]);
         assert_eq!(after.verdict_source.as_deref(), Some("markers"));
         assert!(report.ghosts.is_empty());
+        let _ = std::fs::remove_dir_all(h.root());
+    }
+
+    #[test]
+    fn one_corrupt_offvm_record_suppresses_only_itself() {
+        let h = home("offvm-corrupt-one");
+        let mut st = DaemonState::empty(h.clone());
+        let store = DirOffVmStore::new(h.root().join("offvm"));
+        let rec = new_queue_record(&sample_job("recovered-job"));
+        store
+            .put_record(
+                crate::offvm::KIND_SUBMITS,
+                "recovered-job",
+                &serde_json::to_vec_pretty(&rec).unwrap(),
+            )
+            .unwrap();
+        store
+            .put_record(crate::offvm::KIND_SUBMITS, "broken-job", b"{corrupt")
+            .unwrap();
+        let runs = fake::FakeRuns::new();
+
+        let report = boot_reconcile(&mut st, &store, &runs, &[], vec![]);
+        assert!(st.jobs.contains_key("recovered-job"));
+        assert_eq!(report.recovered_submits, vec!["recovered-job".to_string()]);
+        assert!(
+            report.gaps.iter().any(|g| g.contains("broken-job")),
+            "the corrupt record must be named without suppressing its kind: {:?}",
+            report.gaps
+        );
         let _ = std::fs::remove_dir_all(h.root());
     }
 

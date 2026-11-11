@@ -238,6 +238,11 @@ pub struct DaemonState {
     /// ERR-08: set when a wave is first detected (ledgered once per
     /// episode), cleared on the first successful flush.
     wave_ledgered: bool,
+    /// State files that existed at load time but could not be read
+    /// or parsed. A path in this set is never overwritten by a
+    /// flush: the corrupt or unreadable bytes are evidence, and a
+    /// default RAM value must not silently replace them.
+    load_failed_paths: BTreeSet<PathBuf>,
 }
 
 impl DaemonState {
@@ -272,7 +277,16 @@ impl DaemonState {
             },
             cure: CureTracker::default(),
             wave_ledgered: false,
+            load_failed_paths: BTreeSet::new(),
         }
+    }
+
+    /// Whether `control.json` existed at load time but could not
+    /// be trusted. While true, control-plane state is fail-closed:
+    /// the kill switch, burned nonces, and recorded outcomes from
+    /// the corrupt file are never silently reset or overwritten.
+    pub fn control_load_failed(&self) -> bool {
+        self.load_failed_paths.contains(&self.home.control_path())
     }
 
     /// Load disk state into RAM (boot step 1; reconciliation against
@@ -322,23 +336,73 @@ impl DaemonState {
             st.outbox_on_disk = lines.len();
             st.outbox_buffer = lines.iter().map(|s| s.to_string()).collect();
         }
-        if let Ok(text) = std::fs::read_to_string(st.home.outbox_cursor_path()) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                st.outbox_cursor = v.get("cursor").and_then(|c| c.as_u64()).unwrap_or(0);
-            }
+        // Non-queue state files: ABSENT is a legitimate default;
+        // CORRUPT or UNREADABLE is a named gap, and the path is
+        // marked so a later flush cannot silently overwrite the
+        // bad bytes with the default (see load_failed_paths).
+        match load_json::<serde_json::Value>(
+            &st.home.outbox_cursor_path(),
+            &mut gaps,
+            &mut st.load_failed_paths,
+        ) {
+            JsonLoad::Loaded(v) => match v.get("cursor").and_then(|c| c.as_u64()) {
+                Some(cursor) => st.outbox_cursor = cursor,
+                None => note_corrupt(
+                    &st.home.outbox_cursor_path(),
+                    "missing or non-integer cursor field",
+                    &mut gaps,
+                    &mut st.load_failed_paths,
+                ),
+            },
+            JsonLoad::Absent | JsonLoad::Failed => {}
         }
-        st.paused = read_json(&st.home.pause_path());
-        st.stopped = read_json(&st.home.stop_path());
-        st.hosts = read_json(&st.home.hosts_path()).unwrap_or(serde_json::Value::Null);
-        st.lane_locks = read_json(&st.home.locks_path()).unwrap_or(serde_json::Value::Null);
-        if let Some(saved) = read_json::<Vec<String>>(&st.home.holds_path()) {
+        if let JsonLoad::Loaded(paused) =
+            load_json(&st.home.pause_path(), &mut gaps, &mut st.load_failed_paths)
+        {
+            st.paused = paused;
+        }
+        if let JsonLoad::Loaded(stopped) =
+            load_json(&st.home.stop_path(), &mut gaps, &mut st.load_failed_paths)
+        {
+            st.stopped = stopped;
+        }
+        if let JsonLoad::Loaded(hosts) =
+            load_json(&st.home.hosts_path(), &mut gaps, &mut st.load_failed_paths)
+        {
+            st.hosts = hosts;
+        }
+        if let JsonLoad::Loaded(locks) =
+            load_json(&st.home.locks_path(), &mut gaps, &mut st.load_failed_paths)
+        {
+            st.lane_locks = locks;
+        }
+        if let JsonLoad::Loaded(saved) =
+            load_json::<Vec<String>>(&st.home.holds_path(), &mut gaps, &mut st.load_failed_paths)
+        {
             st.holds = saved.into_iter().collect();
         }
-        st.control = read_json(&st.home.control_path()).unwrap_or_default();
-        if let Some(saved) = read_json::<serde_json::Value>(&st.home.seq_path()) {
-            if let Some(n) = saved.get("next_seq").and_then(|v| v.as_u64()) {
-                st.next_seq = st.next_seq.max(n);
-            }
+        if let JsonLoad::Loaded(control) = load_json(
+            &st.home.control_path(),
+            &mut gaps,
+            &mut st.load_failed_paths,
+        ) {
+            st.control = control;
+        }
+        match load_json::<serde_json::Value>(
+            &st.home.seq_path(),
+            &mut gaps,
+            &mut st.load_failed_paths,
+        ) {
+            JsonLoad::Loaded(saved) => match saved.get("next_seq").and_then(|v| v.as_u64()) {
+                Some(n) => st.next_seq = st.next_seq.max(n),
+                None => note_corrupt(
+                    &st.home.seq_path(),
+                    "missing or non-integer next_seq field",
+                    &mut gaps,
+                    &mut st.load_failed_paths,
+                ),
+            },
+            JsonLoad::Absent | JsonLoad::Failed => {}
         }
         (st, gaps)
     }
@@ -576,6 +640,13 @@ impl DaemonState {
     fn flush_control(&mut self, writer: &dyn StateWriter, report: &mut FlushReport) -> bool {
         let mut all_ok = true;
         let mut write_opt = |path: PathBuf, value: &Option<String>| -> bool {
+            if self.load_failed_paths.contains(&path) {
+                report.errors.push(format!(
+                    "{}: load failed at boot; refusing to overwrite corrupt or unreadable state",
+                    path.display()
+                ));
+                return false;
+            }
             match value {
                 Some(text) => match writer.write_verified(&path, text.as_bytes()) {
                     Ok(()) => true,
@@ -755,9 +826,46 @@ pub struct FlushReport {
     pub errors: Vec<String>,
 }
 
-fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
-    let text = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text).ok()
+/// The three-way result of loading one state file. Absence is a
+/// legitimate default; corruption and unreadability are named
+/// gaps and mark the path as load-failed (never silently
+/// defaulted, never overwritten by a flush).
+enum JsonLoad<T> {
+    Absent,
+    Loaded(T),
+    Failed,
+}
+
+fn note_corrupt(
+    path: &Path,
+    detail: &str,
+    gaps: &mut Vec<String>,
+    failed_paths: &mut BTreeSet<PathBuf>,
+) {
+    gaps.push(format!("state file {} corrupt: {detail}", path.display()));
+    failed_paths.insert(path.to_path_buf());
+}
+
+fn load_json<T: for<'de> Deserialize<'de>>(
+    path: &Path,
+    gaps: &mut Vec<String>,
+    failed_paths: &mut BTreeSet<PathBuf>,
+) -> JsonLoad<T> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => match serde_json::from_str(&text) {
+            Ok(value) => JsonLoad::Loaded(value),
+            Err(err) => {
+                note_corrupt(path, &err.to_string(), gaps, failed_paths);
+                JsonLoad::Failed
+            }
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => JsonLoad::Absent,
+        Err(err) => {
+            gaps.push(format!("state file {} unreadable: {err}", path.display()));
+            failed_paths.insert(path.to_path_buf());
+            JsonLoad::Failed
+        }
+    }
 }
 
 /// Build a queue record at submit time (state `submitted`, no run
@@ -916,5 +1024,89 @@ pub(crate) mod tests {
         c.note_flush_failure();
         c.note_clear_window();
         assert!(c.should_self_restart(true));
+    }
+
+    #[test]
+    fn corrupt_nonqueue_state_files_are_named_gaps() {
+        let home = StateHome::new(scratch("corrupt-state"));
+        std::fs::create_dir_all(home.queue_dir()).unwrap();
+        for path in [
+            home.pause_path(),
+            home.stop_path(),
+            home.hosts_path(),
+            home.locks_path(),
+            home.holds_path(),
+            home.control_path(),
+            home.seq_path(),
+            home.outbox_cursor_path(),
+        ] {
+            std::fs::write(&path, b"{corrupt").unwrap();
+        }
+        std::fs::write(home.outbox_path(), b"one\ntwo\n").unwrap();
+
+        let (st, gaps) = DaemonState::load(home.clone());
+        for name in [
+            "PAUSED.json",
+            "STOPPED.json",
+            "hosts.json",
+            "locks.json",
+            "holds.json",
+            "control.json",
+            "seq.json",
+            "outbox-cursor.json",
+        ] {
+            assert!(
+                gaps.iter()
+                    .any(|g| g.contains(name) && g.contains("corrupt")),
+                "missing corrupt gap for {name}: {gaps:?}"
+            );
+        }
+        // A corrupt cursor must not silently discard pending lines.
+        assert_eq!(
+            st.outbox_pending(),
+            vec!["one".to_string(), "two".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(home.root());
+    }
+
+    #[test]
+    fn unreadable_state_file_is_a_named_gap_not_a_default() {
+        let root = scratch("unreadable");
+        let home = StateHome::new(root.clone());
+        std::fs::create_dir_all(home.root()).unwrap();
+        // A directory where PAUSED.json belongs: present, but not
+        // readable as a file. That is not absence.
+        std::fs::create_dir_all(home.pause_path()).unwrap();
+        let (state, gaps) = DaemonState::load(home.clone());
+        assert!(
+            gaps.iter()
+                .any(|g| g.contains("PAUSED.json") && g.contains("unreadable")),
+            "{gaps:?}"
+        );
+        assert!(state.load_failed_paths.contains(&home.pause_path()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn corrupt_control_file_is_not_overwritten_by_flush() {
+        let home = StateHome::new(scratch("corrupt-control"));
+        std::fs::create_dir_all(home.queue_dir()).unwrap();
+        std::fs::write(home.control_path(), b"{corrupt-control").unwrap();
+        let (mut st, gaps) = DaemonState::load(home.clone());
+        assert!(gaps.iter().any(|g| g.contains("control.json")));
+
+        st.put_job(new_queue_record(&sample_job("job-after-corrupt-control")));
+        let report = st.flush(&FsWriter::default());
+        assert!(
+            report.errors.iter().any(|e| e.contains("control.json")),
+            "flush must refuse to overwrite a corrupt control file: {:?}",
+            report.errors
+        );
+        assert_eq!(
+            std::fs::read(home.control_path()).unwrap(),
+            b"{corrupt-control",
+            "the corrupt control file is evidence and must not be reset by a flush"
+        );
+        let _ = std::fs::remove_dir_all(home.root());
     }
 }

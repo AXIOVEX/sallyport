@@ -130,6 +130,9 @@ fn runner_reports_unstartable_payload_as_error_never_success() {
 // --once against a home with no daemon socket runs one
 // degraded cycle and exits 0 (transport trouble is a
 // degradation, not a death — main's documented behavior).
+// The identity is pinned explicitly: startup without any
+// identity fails closed (see the test below), and this test
+// exercises the socket cycle, not identity resolution.
 #[test]
 fn agent_binary_usage_and_dead_socket_cycle() {
     let bin = env!("CARGO_BIN_EXE_syncyard-agent");
@@ -144,6 +147,8 @@ fn agent_binary_usage_and_dead_socket_cycle() {
             home.to_str().unwrap(),
             "--install-path",
             root.join("install").to_str().unwrap(),
+            "--agent-id",
+            "agent-bin",
             "--once",
         ])
         .output()
@@ -153,6 +158,40 @@ fn agent_binary_usage_and_dead_socket_cycle() {
         Some(0),
         "stderr: {}",
         String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+// Agent identity fails closed: with no --agent-id and no usable
+// HOSTNAME (the launchd/supervisor shape), startup is a clear
+// error — never the placeholder identity "host".
+#[test]
+fn agent_binary_without_identity_fails_closed() {
+    let bin = env!("CARGO_BIN_EXE_syncyard-agent");
+    let root = scratch("no-identity");
+    let home = root.join("daemon-home");
+    std::fs::create_dir_all(&home).unwrap();
+    let out = Command::new(bin)
+        .args([
+            "--daemon-home",
+            home.to_str().unwrap(),
+            "--install-path",
+            root.join("install").to_str().unwrap(),
+            "--once",
+        ])
+        .env_remove("HOSTNAME")
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "no identity must be a usage error, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--agent-id") && stderr.contains("HOSTNAME"),
+        "the error must name both identity sources: {stderr}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

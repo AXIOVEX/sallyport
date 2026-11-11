@@ -266,3 +266,31 @@ fn t037_12_control_path_spawns_nothing_and_files_exactly_one_command() {
     assert_eq!(filed.command_id, cmd.command_id);
     assert!(filed.verify(&tray_key().public_key()));
 }
+
+#[cfg(unix)]
+#[test]
+fn socket_gatekeeper_bounds_an_oversized_response() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+
+    let root = scratch("oversized-response");
+    let sock = root.join("gk.sock");
+    let listener = UnixListener::bind(&sock).unwrap();
+    let _server = std::thread::spawn(move || {
+        if let Some(Ok(mut stream)) = listener.incoming().next() {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            let mut resp = vec![b'x'; 1_048_577];
+            resp.push(b'\n');
+            let _ = stream.write_all(&resp);
+        }
+    });
+    let ch = SocketGatekeeper { socket_path: sock };
+    let err = ch.call(&serde_json::json!({"verb": "ping"})).unwrap_err();
+    assert!(
+        err.contains("exceeds"),
+        "an oversized response must fail on the named bound, got: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

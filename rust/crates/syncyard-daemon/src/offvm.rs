@@ -270,15 +270,36 @@ pub fn load_records(
     store: &dyn OffVmStore,
     kind: &str,
 ) -> Result<BTreeMap<String, QueueRecord>, OffVmError> {
+    let (records, gaps) = load_records_with_gaps(store, kind)?;
+    if let Some(gap) = gaps.into_iter().next() {
+        return Err(OffVmError::Corrupt(gap));
+    }
+    Ok(records)
+}
+
+/// Parse stored records of a kind, recovering every readable
+/// record and naming each unreadable or corrupt one as a gap.
+/// One bad record suppresses only itself — never its whole kind.
+/// A failure to even list the kind remains a hard error.
+pub fn load_records_with_gaps(
+    store: &dyn OffVmStore,
+    kind: &str,
+) -> Result<(BTreeMap<String, QueueRecord>, Vec<String>), OffVmError> {
     let mut out = BTreeMap::new();
+    let mut gaps = Vec::new();
     for id in store.list_records(kind)? {
-        if let Some(bytes) = store.get_record(kind, &id)? {
-            let rec: QueueRecord = serde_json::from_slice(&bytes)
-                .map_err(|e| OffVmError::Corrupt(format!("{kind}/{id}: {e}")))?;
-            out.insert(rec.id.clone(), rec);
+        match store.get_record(kind, &id) {
+            Ok(Some(bytes)) => match serde_json::from_slice::<QueueRecord>(&bytes) {
+                Ok(rec) => {
+                    out.insert(rec.id.clone(), rec);
+                }
+                Err(e) => gaps.push(format!("off-VM record {kind}/{id} corrupt: {e}")),
+            },
+            Ok(None) => {}
+            Err(e) => gaps.push(format!("off-VM record {kind}/{id} unreadable: {e}")),
         }
     }
-    Ok(out)
+    Ok((out, gaps))
 }
 
 #[cfg(test)]
@@ -290,6 +311,85 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// A store wrapper that fails reads of one named record, to
+    /// prove an unreadable record is a per-record gap, never a
+    /// kind-wide suppression.
+    struct FailOneStore {
+        inner: DirOffVmStore,
+        fail_id: String,
+    }
+
+    impl OffVmStore for FailOneStore {
+        fn read_epoch(&self) -> Result<Option<(EpochRecord, String)>, OffVmError> {
+            self.inner.read_epoch()
+        }
+        fn cas_epoch(
+            &self,
+            expected_sha: Option<&str>,
+            next: &EpochRecord,
+        ) -> Result<String, OffVmError> {
+            self.inner.cas_epoch(expected_sha, next)
+        }
+        fn put_record(&self, kind: &str, job_id: &str, bytes: &[u8]) -> Result<(), OffVmError> {
+            self.inner.put_record(kind, job_id, bytes)
+        }
+        fn get_record(&self, kind: &str, job_id: &str) -> Result<Option<Vec<u8>>, OffVmError> {
+            if job_id == self.fail_id {
+                return Err(OffVmError::Write(crate::vwrite::WriteFailure::Io(
+                    std::io::Error::other("injected read failure"),
+                )));
+            }
+            self.inner.get_record(kind, job_id)
+        }
+        fn list_records(&self, kind: &str) -> Result<Vec<String>, OffVmError> {
+            self.inner.list_records(kind)
+        }
+    }
+
+    #[test]
+    fn load_records_with_gaps_names_unreadable_records() {
+        let store = FailOneStore {
+            inner: DirOffVmStore::new(scratch("flaky")),
+            fail_id: "bad-job".to_string(),
+        };
+        let job = syncyard_contract::JobRecord {
+            id: "ok-job".to_string(),
+            key: "key-ok-job".to_string(),
+            program: "test".to_string(),
+            workflow: "run.yml".to_string(),
+            lane: Some("quick".to_string()),
+            cwd: None,
+            expected_min: 5.0,
+            priority: 0,
+            priority_source: "auto".to_string(),
+            flags: vec![],
+            maintenance: false,
+            adopted: false,
+            notify_chat: None,
+            venue: "native".to_string(),
+            script_path: None,
+            script_sha256: None,
+            grab_path: None,
+            created_at: "2026-11-08T00:00:00Z".to_string(),
+        };
+        let rec = crate::state::new_queue_record(&job);
+        store
+            .put_record(KIND_SUBMITS, "ok-job", &serde_json::to_vec(&rec).unwrap())
+            .unwrap();
+        store
+            .put_record(KIND_SUBMITS, "bad-job", b"whatever")
+            .unwrap();
+        let (records, gaps) = load_records_with_gaps(&store, KIND_SUBMITS).unwrap();
+        assert!(records.contains_key("ok-job"));
+        assert!(
+            gaps.iter()
+                .any(|g| g.contains("bad-job") && g.contains("unreadable")),
+            "{gaps:?}"
+        );
+        // The strict wrapper surfaces the same gap as an error.
+        assert!(load_records(&store, KIND_SUBMITS).is_err());
     }
 
     #[test]

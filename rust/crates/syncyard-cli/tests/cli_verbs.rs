@@ -280,3 +280,65 @@ fn migrate_history_verb_round_trip() {
     assert!(home.history_dir().join("manifest.json").exists());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn fallback_surfaces_queue_load_gaps() {
+    let root = scratch("fallback-gaps");
+    let home = StateHome::new(root.join("home"));
+    std::fs::create_dir_all(home.queue_dir()).unwrap();
+    std::fs::write(home.job_path("broken-record"), b"{corrupt").unwrap();
+    let offvm = root.join("offvm");
+
+    let (code, v) = run(&home, &offvm, &["snapshot"]);
+    assert_eq!(code, 0, "snapshot should still serve: {v}");
+    let gaps = v["load_gaps"]
+        .as_array()
+        .expect("load_gaps must be surfaced");
+    assert!(
+        gaps.iter()
+            .any(|g| g.as_str().unwrap_or_default().contains("broken-record")),
+        "gaps must name the corrupt record: {gaps:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn socket_ping_contract_mismatch_is_refused_by_name() {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixListener;
+
+    let root = scratch("ping-mismatch");
+    let home = StateHome::new(root.join("home"));
+    std::fs::create_dir_all(home.queue_dir()).unwrap();
+    let listener = UnixListener::bind(home.socket_path()).unwrap();
+    let _server = std::thread::spawn(move || {
+        for (i, stream) in listener.incoming().take(2).enumerate() {
+            let mut stream = stream.unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            let resp = if i == 0 {
+                serde_json::json!({
+                    "ok": true,
+                    "version": "0.4.0",
+                    "contract_version": 999,
+                    "epoch": 1
+                })
+            } else {
+                serde_json::json!({"ok": false, "error": "fake socket status"})
+            };
+            stream.write_all(format!("{resp}\n").as_bytes()).unwrap();
+        }
+    });
+    let offvm = root.join("offvm");
+
+    let (code, v) = run(&home, &offvm, &["status", "any-job"]);
+    assert_ne!(code, 0);
+    let error = v["error"].as_str().unwrap_or_default();
+    assert!(
+        error.contains("contract version mismatch") && error.contains("999"),
+        "mismatch must be refused by name, got: {v}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
