@@ -5,20 +5,31 @@
 //! the gatekeeper's published outcomes, never from the write.
 
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
 use std::time::Duration;
 
-use syncyard_contract::{ControlAction, ControlCommand, HostSecretKey, JobRecord};
+#[cfg(unix)]
+use syncyard_contract::JobRecord;
+use syncyard_contract::{ControlAction, ControlCommand, HostSecretKey};
+#[cfg(unix)]
 use syncyard_daemon::dispatch::fake::FakeDispatcher;
+#[cfg(unix)]
 use syncyard_daemon::offvm::{acquire_epoch, DirOffVmStore};
+#[cfg(unix)]
 use syncyard_daemon::serve::{serve, Engine, ServeConfig};
+#[cfg(unix)]
 use syncyard_daemon::state::{new_queue_record, DaemonState, StateHome};
+#[cfg(unix)]
 use syncyard_daemon::vwrite::FsWriter;
-use syncyard_tray::control::{
-    display_state, fetch_outcomes, read_kill_switch, set_kill_switch, CommandDisplay,
-    CommandIssuer, GatekeeperChannel, SocketGatekeeper,
-};
+use syncyard_tray::control::{display_state, CommandDisplay, CommandIssuer};
+#[cfg(unix)]
+use syncyard_tray::control::{fetch_outcomes, read_kill_switch, set_kill_switch};
+#[cfg(unix)]
+use syncyard_tray::control::{GatekeeperChannel, SocketGatekeeper};
 
 const HOST: &str = "test-host";
 
@@ -33,6 +44,7 @@ fn tray_key() -> HostSecretKey {
     HostSecretKey::from_seed([42u8; 32])
 }
 
+#[cfg(unix)]
 struct Daemon {
     ch: SocketGatekeeper,
     shutdown: Arc<AtomicBool>,
@@ -40,6 +52,7 @@ struct Daemon {
     _root: PathBuf,
 }
 
+#[cfg(unix)]
 fn start_daemon(tag: &str) -> Daemon {
     let root = scratch(tag);
     let home = StateHome::new(root.join("gk-home"));
@@ -112,6 +125,7 @@ fn start_daemon(tag: &str) -> Daemon {
     }
 }
 
+#[cfg(unix)]
 impl Drop for Daemon {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::SeqCst);
@@ -124,6 +138,11 @@ impl Drop for Daemon {
 // T037-07 confirmation-from-state + T037-09 cancel path, end
 // to end: PENDING until the gatekeeper's outcome is published;
 // the tray's own write confirms nothing.
+// Unix-only: start_daemon serves over the daemon's socket,
+// and the socket transport refuses by name on non-Unix
+// platforms in this build (serve.rs — the Windows
+// named-pipe transport is not yet wired).
+#[cfg(unix)]
 #[test]
 fn t037_07_and_t037_09_command_round_trip() {
     let daemon = start_daemon("roundtrip");
@@ -219,6 +238,9 @@ fn t037_05_expired_unconfirmed_renders_expired_not_executed() {
 // T037-10 repair-kill-switch (tray half): set and read through
 // the gatekeeper channel; the state the app shows is the
 // gatekeeper's record.
+// Unix-only: same start_daemon socket-transport reason as
+// t037_07_and_t037_09 above.
+#[cfg(unix)]
 #[test]
 fn t037_10_tray_kill_switch_round_trip() {
     let daemon = start_daemon("killswitch");

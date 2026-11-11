@@ -4,7 +4,9 @@
 //! shell scripts executed by the real runner; all state
 //! lives in scratch dirs.
 
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
@@ -19,6 +21,7 @@ fn scratch(tag: &str) -> PathBuf {
     dir
 }
 
+#[cfg(unix)]
 fn payload(dir: &Path, name: &str, shebang: &str, body: &str) -> String {
     let path = dir.join(name);
     std::fs::write(&path, format!("#!{shebang}\n{body}\n")).unwrap();
@@ -43,6 +46,11 @@ fn config(work_root: PathBuf) -> AgentConfig {
 // the verdict: 41 in, failure out; 0 in, success out. The
 // live leg (gatekeeper dispatch to air-inference itself) is
 // an owner-gated field act, recorded in PROGRESS.md.
+// Unix-only: the payloads under test are POSIX shells by
+// name (/bin/zsh, /bin/bash, /bin/sh below); Windows has no
+// such interpreters and no shebang execution, so the spawns
+// fail there before the harvest semantics engage.
+#[cfg(unix)]
 #[test]
 fn t039_05_native_job_verdict_harvest() {
     let root = scratch("t05");

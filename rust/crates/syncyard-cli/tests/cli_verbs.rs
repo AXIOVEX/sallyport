@@ -3,15 +3,24 @@
 //! Scratch state homes only; the live gatekeeper is never touched.
 
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::sync::atomic::AtomicBool;
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
+#[cfg(unix)]
 use std::time::Duration;
 
 use syncyard_cli::run_cli;
+#[cfg(unix)]
 use syncyard_daemon::dispatch::fake::FakeDispatcher;
+#[cfg(unix)]
 use syncyard_daemon::offvm::{acquire_epoch, DirOffVmStore, OffVmStore};
+#[cfg(unix)]
 use syncyard_daemon::serve::{request, serve, Engine, ServeConfig};
-use syncyard_daemon::state::{DaemonState, StateHome};
+#[cfg(unix)]
+use syncyard_daemon::state::DaemonState;
+use syncyard_daemon::state::StateHome;
+#[cfg(unix)]
 use syncyard_daemon::vwrite::FsWriter;
 
 fn scratch(tag: &str) -> PathBuf {
@@ -165,6 +174,11 @@ fn fallback_verbs_end_to_end() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+// Unix-only: the daemon's socket transport refuses by name
+// on non-Unix platforms in this build (serve.rs — the
+// Windows named-pipe transport is not yet wired), so there
+// is no serving daemon to drive there.
+#[cfg(unix)]
 #[test]
 fn socket_verbs_against_live_daemon() {
     let root = scratch("socket");

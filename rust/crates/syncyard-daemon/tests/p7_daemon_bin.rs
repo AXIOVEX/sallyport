@@ -6,10 +6,15 @@
 //! through its own verb before the test ends.
 
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
+#[cfg(unix)]
+use std::process::Stdio;
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(unix)]
 use syncyard_daemon::serve::request;
+#[cfg(unix)]
 use syncyard_daemon::state::StateHome;
 
 fn scratch(tag: &str) -> PathBuf {
@@ -50,6 +55,11 @@ fn daemon_binary_usage_gates() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+// Unix-only: the booted daemon serves over its socket, and
+// the socket transport refuses by name on non-Unix platforms
+// in this build (serve.rs — the Windows named-pipe transport
+// is not yet wired), so the ping loop can never succeed there.
+#[cfg(unix)]
 #[test]
 fn daemon_binary_boots_serves_and_shuts_down() {
     let bin = env!("CARGO_BIN_EXE_syncyard-daemon");
@@ -98,6 +108,9 @@ fn daemon_binary_boots_serves_and_shuts_down() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+// Unix-only: same booted-daemon socket-transport reason as
+// daemon_binary_boots_serves_and_shuts_down above.
+#[cfg(unix)]
 #[test]
 fn daemon_binary_second_instance_refused_by_lock() {
     let bin = env!("CARGO_BIN_EXE_syncyard-daemon");

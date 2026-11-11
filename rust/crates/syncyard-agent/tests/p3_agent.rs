@@ -12,11 +12,19 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use syncyard_agent::agent::Agent;
+#[cfg(unix)]
 use syncyard_agent::channel::ControlChannel;
-use syncyard_agent::fake::{AckMode, FakeChannel};
-use syncyard_agent::runner::{progress_path, run_assignment, AgentConfig};
+#[cfg(unix)]
+use syncyard_agent::fake::AckMode;
+use syncyard_agent::fake::FakeChannel;
+use syncyard_agent::runner::AgentConfig;
+#[cfg(unix)]
+use syncyard_agent::runner::{progress_path, run_assignment};
+#[cfg(unix)]
 use syncyard_agent::socket::SocketChannel;
-use syncyard_contract::{Assignment, CompletionReport};
+use syncyard_contract::Assignment;
+#[cfg(unix)]
+use syncyard_contract::CompletionReport;
 
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("sy-p3-agent-{}-{tag}", std::process::id()));
@@ -57,6 +65,11 @@ fn assignment(job_id: &str, run_id: u64, script: String) -> Assignment {
 // set to a per-job path whose parent directory exists before the
 // payload starts (the payload appends to the file as its first
 // act — a missing directory would fail the run).
+// Unix-only: the payload fixture is a `#!/bin/sh` script the
+// runner spawns by path, and Windows has no shebang execution
+// (CreateProcess cannot run it), so on Windows the spawn fails
+// before the runner semantics under test ever engage.
+#[cfg(unix)]
 #[test]
 fn t034_01_progress_env_set_on_all_venues() {
     let root = scratch("t01");
@@ -127,6 +140,9 @@ fn t034_01_progress_env_set_on_all_venues() {
 // exits 1 produces a completion report whose derived conclusion
 // is failure — the exit code governs, the line is forwarded as
 // display data only.
+// Unix-only: same `#!/bin/sh` payload-fixture reason as
+// t034_01 above.
+#[cfg(unix)]
 #[test]
 fn t034_04_completed_line_is_not_a_verdict_agent() {
     let root = scratch("t04");
@@ -159,6 +175,9 @@ fn t034_04_completed_line_is_not_a_verdict_agent() {
 // still runs to completion, the completion report still goes
 // out, and the degradation is counted in the outcome — never
 // hidden, never fatal, never verdict-relevant.
+// Unix-only: same `#!/bin/sh` payload-fixture reason as
+// t034_01 above.
+#[cfg(unix)]
 #[test]
 fn t034_09_transport_failure_isolated_agent() {
     let root = scratch("t09");
@@ -188,6 +207,9 @@ fn t034_09_transport_failure_isolated_agent() {
 // cadence design): with the daemon answering Throttled to every
 // batch, the run's lines are all still held at payload end and
 // counted as undelivered, and completion is unaffected.
+// Unix-only: same `#!/bin/sh` payload-fixture reason as
+// t034_01 above.
+#[cfg(unix)]
 #[test]
 fn throttled_progress_lines_are_retained() {
     let root = scratch("throttle");
@@ -244,6 +266,11 @@ fn undelivered_completion_is_retried_next_cycle() {
 // the P3 wiring proof for the daemon verbs the claimed cases
 // ride on): submit -> agent poll -> real payload -> streamed
 // progress -> completion with the verdict from the exit code.
+// Unix-only: the daemon's socket transport refuses by name
+// on non-Unix platforms in this build (serve.rs and
+// socket.rs — the Windows named-pipe transport is not yet
+// wired), so there is no serving daemon to drive there.
+#[cfg(unix)]
 #[test]
 fn agent_end_to_end_against_real_daemon() {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -406,6 +433,9 @@ fn socket_client_bounds_an_oversized_response() {
 // survive the REAL SocketChannel encoding. The fake channel carries
 // the struct intact and cannot catch a field dropped by the socket
 // request builder.
+// Unix-only: same daemon socket-transport reason as
+// agent_end_to_end_against_real_daemon above.
+#[cfg(unix)]
 #[test]
 fn socket_completion_carries_interruption_to_daemon() {
     use std::sync::atomic::{AtomicBool, Ordering};

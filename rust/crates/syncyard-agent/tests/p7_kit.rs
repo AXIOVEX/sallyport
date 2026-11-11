@@ -3,6 +3,12 @@
 //! progress files must parse to the identical event stream
 //! in every language.
 
+// Unix-only as a whole: the kit legs execute /bin/bash and
+// python3 payloads through the real runner; Windows has
+// neither interpreter on that path (the PowerShell leg's
+// Windows field exercise is recorded in PROGRESS.md).
+#![cfg(unix)]
+
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
