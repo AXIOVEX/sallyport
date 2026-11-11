@@ -64,7 +64,7 @@ existing refresh tick, from the age of the newest available
 signal:
 
 - **CONNECTED** — newest signal age ≤ `connection.stale_s`
-  (default 180 s: three missed backchannel cycles).
+  (default 600 s).
 - **STALE** — age ≤ `connection.down_s` (default 900 s,
   mirroring the gatekeeper's host liveness limit).
 - **DISCONNECTED** — age beyond `connection.down_s`, **or
@@ -182,7 +182,7 @@ the owner's).
    semantics untouched). Alternative considered: a second
    dot — rejected, two dots invite misreading which is
    which at 16 px.
-2. **(RECOMMENDATION) Defaults 180 s / 900 s** for
+2. **(RECOMMENDATION) Defaults 600 s / 900 s** for
    stale/down, the down bound mirroring the gatekeeper's
    own host liveness limit so tray and gatekeeper agree on
    when a host is "down".

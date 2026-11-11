@@ -456,6 +456,22 @@ namespace SyncyardTray
                     if (e == 'n') sb.Append('\n');
                     else if (e == 't') sb.Append('\t');
                     else if (e == 'r') sb.Append('\r');
+                    else if (e == 'b') sb.Append('\b');
+                    else if (e == 'f') sb.Append('\f');
+                    else if (e == 'u' && j + 5 < text.Length)
+                    {
+                        int code;
+                        if (int.TryParse(text.Substring(j + 2, 4),
+                                NumberStyles.HexNumber,
+                                CultureInfo.InvariantCulture,
+                                out code))
+                        {
+                            sb.Append((char)code);
+                            j += 6;
+                            continue;
+                        }
+                        sb.Append(e);
+                    }
                     else sb.Append(e);
                     j += 2;
                     continue;
@@ -514,9 +530,11 @@ namespace SyncyardTray
     // the keys the reader consumes - the source battery proves the
     // parity. Spec 028: the save is atomic with a .bak, and the
     // load falls back live file -> .bak -> machine profile ->
-    // compiled defaults; the compiled defaults are the
-    // pre-spec-014 behavior, so a tray with no settings file and
-    // no profile anywhere behaves exactly as the old tray did.
+    // compiled defaults. The fleet and connection staleness
+    // defaults match the shipped machine profiles (900 s and
+    // 600 s respectively), so a tray with no settings file and
+    // no profile anywhere judges staleness on the fleet's
+    // bounds, not on older compiled-in numbers.
     internal sealed class TraySettings
     {
         public bool Autostart = true;
@@ -526,7 +544,7 @@ namespace SyncyardTray
         public bool HideStrayConsoles = true;
         public string FleetStatusPath =
             @"C:\Users\trist\Development\Syncyard\status\fleet-status.json";
-        public int FleetStaleSeconds = 300;
+        public int FleetStaleSeconds = 900;
         // Spec 021 FR-007: the runner root is per-machine. The
         // default is the original desktop layout; a machine
         // whose lanes live elsewhere (the laptop) sets
@@ -541,7 +559,7 @@ namespace SyncyardTray
         // reads the same file through the distro's UNC share.
         public string ConnectionHeartbeatPath =
             @"\\wsl.localhost\Ubuntu-24.04\home\tpierson\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json";
-        public int ConnectionStaleSeconds = 180;
+        public int ConnectionStaleSeconds = 600;
         public int ConnectionDownSeconds = 900;
         // Spec 025: the gatekeeper host name this tray's
         // heartbeat claims. The host guard's convention
@@ -755,7 +773,7 @@ namespace SyncyardTray
                 // An inverted pair cannot be evaluated; fall
                 // back to the FR-001 defaults rather than
                 // guess which bound the owner meant.
-                ConnectionStaleSeconds = 180;
+                ConnectionStaleSeconds = 600;
                 ConnectionDownSeconds = 900;
             }
         }
@@ -842,7 +860,7 @@ namespace SyncyardTray
                 // An inverted pair cannot be evaluated; fall
                 // back to the FR-001 defaults rather than
                 // guess which bound the owner meant.
-                s.ConnectionStaleSeconds = 180;
+                s.ConnectionStaleSeconds = 600;
                 s.ConnectionDownSeconds = 900;
             }
             foreach (var lane in s.Lanes)

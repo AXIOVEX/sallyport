@@ -18,9 +18,10 @@ itself. Every layer below therefore fails closed and says so.
 ## The enforcement layers
 
 1. **Transport workflows** (`runner/workflows/run.yml`,
-   `runner/workflows/wsl.yml`, and their copies in
-   `.github/workflows/` and in the dispatch door repo
-   `tbitcs/desktop-runner`):
+   `runner/workflows/wsl.yml`, and their copies in the dispatch
+   door repo `tbitcs/desktop-runner`; the retired desktop-label
+   copies under `runner/legacy/` are history, not live
+   transports):
    - a `shell: cmd` preflight step, which cannot itself run under
      any PowerShell, checks for
      `%ProgramFiles%\PowerShell\7\pwsh.exe` and verifies it reports

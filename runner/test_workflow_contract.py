@@ -13,14 +13,25 @@ invariants every Syncyard transport workflow must keep:
     label lists, so any host carrying the lane label can serve.
   - transport inputs: execute workflows take cmd_b64; the grab
     workflow takes path.
+  - Linux door parity: runner/workflows/linux.yml and the
+    vendored production-door fixture must both carry the
+    production-critical Linux properties (timeout of at least
+    1440 minutes, isolated checkout git config, spec 013 hold
+    file, spec 011 running-job registry, and GNU base64 decode).
+    linux.yml and macos.yml share the dispatch/lane/input
+    contract only; their script bodies are intentionally OS
+    specific and are not asserted identical.
 
 Run: python3 runner/test_workflow_contract.py
 """
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WF_DIR = os.path.join(HERE, "workflows")
+DOOR_LINUX_FIXTURE = os.path.join(
+    HERE, "fixtures", "door-linux.yml")
 EXECUTE = ("run.yml", "wsl.yml", "linux.yml", "macos.yml", "docker.yml")
 GRAB = ("grab.yml",)
 
@@ -64,10 +75,10 @@ for fname in EXECUTE + GRAB:
     else:
         check(f"{fname}: takes path", "\n      path:" in text)
 
-# The checkpoint hold signal (spec 013 FR-007): the two venue
+# The checkpoint hold signal (spec 013 FR-007): the venue
 # workflows that carry a holds_dir declare the hold_file input
 # and pass it to the job as SYNCYARD_HOLD_FILE.
-for fname in ("run.yml", "wsl.yml"):
+for fname in ("run.yml", "wsl.yml", "linux.yml"):
     text = open(os.path.join(WF_DIR, fname)).read()
     check(f"{fname}: takes hold_file (spec 013)", "hold_file:" in text)
     check(f"{fname}: exposes SYNCYARD_HOLD_FILE (spec 013)",
@@ -96,6 +107,12 @@ check("wsl.yml: unregisters at job end (spec 011)",
 check("grab.yml: no registry (no hold venue, not "
       "checkpoint-capable)",
       ".entry" not in open(os.path.join(WF_DIR, "grab.yml")).read())
+ltext = open(os.path.join(WF_DIR, "linux.yml")).read()
+check("linux.yml: registers the running job (spec 011)",
+      "reg_file" in ltext and ".entry" in ltext
+      and "job_id=" in ltext and "/running" in ltext)
+check("linux.yml: unregisters at job end (spec 011)",
+      'rm -f "$reg_file"' in ltext)
 
 # The docker transport declares its venue inputs and runs docker.
 dtext = open(os.path.join(WF_DIR, "docker.yml")).read()
@@ -104,25 +121,53 @@ check("docker.yml: takes mounts", "\n      mounts:" in dtext)
 check("docker.yml: runs the container", "docker run" in dtext)
 
 
-# The POSIX transports share one script body; drift fails here.
-def run_block(text):
-    lines = text.splitlines()
-    for i, ln in enumerate(lines):
-        if ln.strip() == "run: |":
-            indent = len(ln) - len(ln.lstrip())
-            body = []
-            for b in lines[i + 1:]:
-                if b.strip() and (len(b) - len(b.lstrip())) <= indent:
-                    break
-                body.append(b)
-            pad = min((len(b) - len(b.lstrip())) for b in body if b.strip())
-            return "\n".join(b[pad:] for b in body)
-    return ""
+# Linux door parity. The production door is a separate repo with
+# no battery of its own, so a pinned fixture of its linux.yml is
+# vendored here. Both the fixture and the repo copy must carry
+# the properties production depends on; if either side drifts,
+# this battery fails instead of the fleet discovering it.
+def timeout_minutes(text):
+    m = re.search(r"^\s*timeout-minutes:\s*(\d+)\s*$", text, re.M)
+    return int(m.group(1)) if m else None
 
 
-check("linux.yml body == macos.yml body",
-      run_block(open(os.path.join(WF_DIR, "linux.yml")).read())
-      == run_block(open(os.path.join(WF_DIR, "macos.yml")).read()))
+def check_linux_door_parity(label, text):
+    check(f"{label}: timeout is at least 1440 minutes",
+          (timeout_minutes(text) or 0) >= 1440)
+    check(f"{label}: checkout uses isolated GIT_CONFIG_GLOBAL",
+          "actions/checkout@" in text
+          and "GIT_CONFIG_GLOBAL:" in text
+          and "syncyard-checkout-gitconfig" in text)
+    check(f"{label}: hold file input and environment are present",
+          "hold_file:" in text and "SYNCYARD_HOLD_FILE" in text)
+    check(f"{label}: running-job registry is present",
+          ".entry" in text and "/running" in text
+          and "job_id=" in text)
+    check(f"{label}: payload decode uses GNU base64 -d",
+          "base64 -d" in text and "openssl base64" not in text)
+
+
+check("door linux fixture exists", os.path.isfile(DOOR_LINUX_FIXTURE))
+if os.path.isfile(DOOR_LINUX_FIXTURE):
+    fixture = open(DOOR_LINUX_FIXTURE).read()
+    check("door linux fixture names its source and refresh duty",
+          "tbitcs/desktop-runner" in fixture
+          and ".github/workflows/linux.yml" in fixture
+          and "Refresh duty:" in fixture
+          and "0b3bf7000d6eda93bd2b2ecaf8eddde5c521ab81" in fixture)
+    check_linux_door_parity("door linux fixture", fixture)
+check_linux_door_parity("linux.yml", ltext)
+
+# The POSIX pair parity is deliberately narrowed: linux.yml and
+# macos.yml share the generic dispatch/lane/cmd_b64 contract
+# checked above, but their bodies serve different userlands. The
+# macOS file states that boundary and neither file may revive
+# the old identical-body claim.
+mtext = open(os.path.join(WF_DIR, "macos.yml")).read()
+check("linux/macos pair parity is narrowed to the shared contract",
+      "intentionally not identical" in mtext
+      and "identical to macos.yml" not in ltext
+      and "identical to linux.yml" not in mtext)
 
 print()
 if fails:
