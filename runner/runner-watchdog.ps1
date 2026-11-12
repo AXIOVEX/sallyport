@@ -1,7 +1,7 @@
 #Requires -Version 7.0
-# runner-watchdog.ps1 - Desktop runner watchdog for TRISTEN-DESKTOP.
+# runner-watchdog.ps1 - Desktop runner watchdog for the desktop host.
 #
-# Runs every 5 minutes as a user scheduled task under trist (see the
+# Runs every 5 minutes as a user scheduled task under the operator account (see the
 # install note in gatekeeper/README.md). For each configured runner
 # directory it checks whether that runner's listener process
 # (Runner.Listener.exe living under the runner directory) is alive.
@@ -13,8 +13,8 @@
 # per rolling hour; when the cap is hit it logs OWNER NEEDED and stops
 # restarting that runner until restarts age out of the window.
 #
-# Writes C:\Users\trist\Development\Syncyard\watchdog\status.json and appends to
-# C:\Users\trist\Development\Syncyard\watchdog\watchdog.log.
+# Writes C:\Users\you\Development\Syncyard\watchdog\status.json and appends to
+# C:\Users\you\Development\Syncyard\watchdog\watchdog.log.
 #
 # ASCII only (Windows PowerShell 5.1 mis-parses UTF-8-no-BOM scripts
 # containing non-ASCII characters - recorded fleet lesson).
@@ -23,13 +23,13 @@ $ErrorActionPreference = "Stop"
 
 # --- Config: one entry per runner registration on this machine. -------
 # Add the lane runner directories here at lane stand-up, e.g.
-# "C:\Users\trist\Development\Syncyard\runners\quick", "C:\Users\trist\Development\Syncyard\runners\normal",
-# "C:\Users\trist\Development\Syncyard\runners\gpu".
+# "C:\Users\you\Development\Syncyard\runners\quick", "C:\Users\you\Development\Syncyard\runners\normal",
+# "C:\Users\you\Development\Syncyard\runners\gpu".
 $RunnerDirs = @(
-    "C:\Users\trist\Development\Syncyard\runners\long"
+    "C:\Users\you\Development\Syncyard\runners\long"
 )
 
-$StatusDir       = "C:\Users\trist\Development\Syncyard\watchdog"
+$StatusDir       = "C:\Users\you\Development\Syncyard\watchdog"
 $StatusFile      = Join-Path $StatusDir "status.json"
 $LogFile         = Join-Path $StatusDir "watchdog.log"
 $RestartFile     = Join-Path $StatusDir "restarts.json"

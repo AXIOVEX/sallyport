@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
+- Machine-specific configuration is local-only (#100): the
+  gatekeeper's built-in defaults and the shipped example config
+  now describe a FICTIONAL fleet (one Windows host, user "you",
+  and its WSL2 distro); the spec 010 golden fixture is that
+  fictional fleet. Tray profiles, tray/guard/backchannel/client
+  default paths, and the door workflows' default working
+  directories use the same fictional values. Real hosts and
+  paths live only in a local `syncyard.yaml` beside the
+  gatekeeper, which is now gitignored along with `hosts.json`.
 - Project home and attribution moved from AXIOVEX/Axiovex Systems to
   the ElectroHire org (electrohire/syncyard, electrohire/gh-syncyard,
   electrohire/desktop-runner) by owner order 2026-11-12 (#99). Repo

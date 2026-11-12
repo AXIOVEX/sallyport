@@ -97,7 +97,7 @@ TRAY = """{"host": "desktop", "build": "0.4.4.0", "pid": 4242,
 # --- Fresh beat: stored, not stale, shown without a stale mark -----------
 res = run_driver(r"""
 tray = %s
-hb = {"ts": "2026-11-05T12:01:00Z", "host": "TRISTEN-DESKTOP",
+hb = {"ts": "2026-11-05T12:01:00Z", "host": "EXAMPLE-HOST",
       "stopped": False, "tray": tray}
 sweep_with(hb)
 st = hosts_state()["desktop"]
@@ -133,7 +133,7 @@ check("tray beat: the status line shows the beat and its build "
 # --- Lagging beat: stale, ledgered once, shown; then recovery ------------
 res = run_driver(r"""
 tray = %s
-hb1 = {"ts": "2026-11-05T12:01:00Z", "host": "TRISTEN-DESKTOP",
+hb1 = {"ts": "2026-11-05T12:01:00Z", "host": "EXAMPLE-HOST",
        "stopped": False, "tray": tray}
 sweep_with(hb1)
 hb2 = dict(hb1, ts="2026-11-05T12:10:00Z")
@@ -168,7 +168,7 @@ check("tray beat: a fresh beat clears the staleness and "
 
 # --- No tray record: no claim --------------------------------------------
 res = run_driver(r"""
-hb = {"ts": "2026-11-05T12:01:00Z", "host": "TRISTEN-DESKTOP",
+hb = {"ts": "2026-11-05T12:01:00Z", "host": "EXAMPLE-HOST",
       "stopped": False}
 sweep_with(hb)
 st = hosts_state().get("desktop", {})

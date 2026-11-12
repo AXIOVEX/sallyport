@@ -71,11 +71,11 @@ namespace SyncyardGuard
         public int WindowS = 120;
         public string Distro = "Ubuntu-24.04";
         public string SyncyardDir =
-            @"C:\Users\trist\Development\Syncyard";
+            @"C:\Users\you\Development\Syncyard";
         public string HoldsDirWin =
-            @"C:\Users\trist\Development\Syncyard\holds";
+            @"C:\Users\you\Development\Syncyard\holds";
         public string HoldsDirWsl =
-            "/home/tpierson/.syncyard/holds";
+            "/home/you/.syncyard/holds";
 
         public string GoingDownPath
         {

@@ -6,7 +6,7 @@
 .DESCRIPTION
   Downloads SyncyardGuard.cs from the Syncyard repo, compiles it with
   the csc.exe that ships with Windows (no SDK install), installs the
-  exe under C:\Users\trist\Development\Syncyard\guard, writes the
+  exe under C:\Users\you\Development\Syncyard\guard, writes the
   default guard-settings.json if none exists (an existing settings
   file is never overwritten), registers the exe in the HKCU Run key
   so it starts at logon, and launches it now. The guard is
@@ -57,9 +57,9 @@ if (-not (Test-Path $settings)) {
   "host": "desktop",
   "window_s": 120,
   "distro": "Ubuntu-24.04",
-  "syncyard_dir": "C:\\Users\\trist\\Development\\Syncyard",
-  "holds_dir_win": "C:\\Users\\trist\\Development\\Syncyard\\holds",
-  "holds_dir_wsl": "/home/tpierson/.syncyard/holds"
+  "syncyard_dir": "C:\\Users\\you\\Development\\Syncyard",
+  "holds_dir_win": "C:\\Users\\you\\Development\\Syncyard\\holds",
+  "holds_dir_wsl": "/home/you/.syncyard/holds"
 }
 '@ | Set-Content -Path $settings -Encoding UTF8
 } else {

@@ -2,7 +2,7 @@
 # install-backchannel.sh - install the Syncyard backchannel agent
 # as a WSL systemd user service (spec 009 FR-002).
 #
-# Run INSIDE WSL2 (Ubuntu-24.04) as tpierson on TRISTEN-DESKTOP.
+# Run INSIDE WSL2 (Ubuntu-24.04) as the WSL user on the Windows host.
 # Idempotent: re-running refreshes the agent copy and the unit,
 # reloads systemd, and restarts the service.
 #

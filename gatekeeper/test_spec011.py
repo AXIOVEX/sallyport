@@ -78,7 +78,7 @@ def job(jid, lane, key=None, program="prog", workflow="wsl.yml",
          "maintenance": maint, "notify_chat": chat,
          "run_id": run_id, "run_status": run_status,
          "run_conclusion": None, "flags": [], "watermarks": {},
-         "expected_min": expected, "cwd": "/home/tpierson"}
+         "expected_min": expected, "cwd": "/home/you"}
     path = os.path.join(gk.QUEUE_DIR, jid + ".json")
     with open(path, "w") as f:
         json.dump(j, f)
@@ -343,7 +343,7 @@ check("writer contract: exactly once per (host, ts) — the "
 res = run_driver(r"""
 job("w", "quick", key="worker", state="watching", run_id=42,
     run_status="in_progress")
-hb1 = {"ts": "2026-11-02T12:01:00Z", "host": "TRISTEN-DESKTOP",
+hb1 = {"ts": "2026-11-02T12:01:00Z", "host": "EXAMPLE-HOST",
        "stopped": False,
        "guard": {"host": "desktop", "ts": "2026-11-02T12:00:30Z",
                  "active": 2, "draining": False}}

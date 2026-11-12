@@ -13,7 +13,7 @@
 # Usage: desktop-wsl.sh "<bash command>" [wsl-cwd]
 REPO="electrohire/syncyard"
 CMD="$1"
-CWD="${2:-/home/tpierson}"
+CWD="${2:-/home/you}"
 if [ -z "$CMD" ]; then echo "Usage: $0 \"<bash command>\" [wsl-cwd]" >&2; exit 2; fi
 B64=$(printf '%s' "$CMD" | base64 -w0)
 BEFORE=$(date -u +%Y-%m-%dT%H:%M:%SZ)

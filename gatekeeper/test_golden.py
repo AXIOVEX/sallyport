@@ -65,7 +65,7 @@ LEGACY = {
     "LOCK_STALE_MIN": 10,
     "WORKFLOWS": ("run.yml", "wsl.yml", "grab.yml"),
     "LANES": ("quick", "normal", "long", "gpu"),
-    "DEFAULT_CWD": {"run.yml": r"C:\Users\trist", "wsl.yml": "/home/tpierson",
+    "DEFAULT_CWD": {"run.yml": r"C:\Users\you", "wsl.yml": "/home/you",
                     "grab.yml": None},
     "QUEUED_WM": {"quick": (10, 30), "normal": (20, 45), "long": (45, 120),
                   "gpu": (30, 90)},
@@ -293,7 +293,7 @@ def job(**kw):
     return j
 out = {}
 gk.dispatch_one(job(workflow="wsl.yml", lane="quick",
-                    script_path=script, cwd="/home/tpierson"), [])
+                    script_path=script, cwd="/home/you"), [])
 out["plain"] = calls[-1]
 gk.dispatch_one(job(workflow="docker.yml", lane="quick",
                     script_path=script, cwd="/",
@@ -323,8 +323,8 @@ try:
           res["out"]["plain"] == base + ["wsl.yml", "-R", "electrohire/desktop-runner",
                                          "-f", "cmd_b64=" + b64,
                                          "-f", "lane=lane-quick",
-                                         "-f", "cwd=/home/tpierson",
-                                         "-f", "hold_file=/home/tpierson/"
+                                         "-f", "cwd=/home/you",
+                                         "-f", "hold_file=/home/you/"
                                                ".syncyard/holds/j1.hold"],
           str(res["out"]["plain"]))
     check("dispatch argv: docker job carries image + mounts",
@@ -566,7 +566,7 @@ def fake_gh_json(args, timeout=120):
     if "actions/runners" in a:
         st = "online" if RUNNERS_ONLINE else "offline"
         return {"total_count": 1, "runners": [
-            {"name": "tristen-desktop", "status": st, "busy": False}]}, None
+            {"name": "example-desktop", "status": st, "busy": False}]}, None
     return None, "unexpected gh call: " + a
 gk.gh_json = fake_gh_json
 

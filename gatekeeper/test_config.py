@@ -70,9 +70,9 @@ check("golden checkpoint contract (spec 013 FR-007)",
       and cfg["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE"
       and cfg["checkpoint"]["holds_dir"] == {
           "run.yml": {
-              "desktop": r"C:\Users\trist\Development\Syncyard\holds",
-              "laptop": r"D:\Development\Syncyard\holds"},
-          "wsl.yml": "/home/tpierson/.syncyard/holds"})
+              "desktop": r"C:\Users\you\Development\Syncyard\holds",
+              "laptop": r"C:\Users\you\Development\Syncyard\holds"},
+          "wsl.yml": "/home/you/.syncyard/holds"})
 check("golden drain (spec 011 FR-005/FR-007)",
       cfg["drain"]["window_s"] == 120
       and cfg["drain"]["per_lane_window_s"] == {}
@@ -81,9 +81,9 @@ check("golden lock TTLs (spec 015 FR-011)",
       cfg["lock"]["default_ttl_min"] == 240
       and cfg["lock"]["max_ttl_min"] == 1440)
 check("golden log cap", cfg["retention"]["human_log_max_bytes"] == 1000000)
-check("golden cwd windows", cfg["hosts"]["desktop"]["cwd"]["run.yml"] == r"C:\Users\trist")
+check("golden cwd windows", cfg["hosts"]["desktop"]["cwd"]["run.yml"] == r"C:\Users\you")
 check("golden cwd grab null", cfg["hosts"]["desktop"]["cwd"]["grab.yml"] is None)
-check("golden cwd wsl", cfg["hosts"]["desktop-wsl"]["cwd"]["wsl.yml"] == "/home/tpierson")
+check("golden cwd wsl", cfg["hosts"]["desktop-wsl"]["cwd"]["wsl.yml"] == "/home/you")
 check("golden wsl via+distro", cfg["hosts"]["desktop-wsl"]["via"] == "desktop"
       and cfg["hosts"]["desktop-wsl"]["distro"] == "Ubuntu-24.04")
 for lane, (q, mode, vals) in {

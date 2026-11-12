@@ -97,7 +97,7 @@ def job(jid, lane, key=None, program="prog", workflow="wsl.yml",
          "maintenance": maint, "notify_chat": chat,
          "run_id": run_id, "run_status": run_status,
          "run_conclusion": None, "flags": [], "watermarks": {},
-         "expected_min": expected, "cwd": "/home/tpierson"}
+         "expected_min": expected, "cwd": "/home/you"}
     if prio is not None:
         j["priority"], j["priority_source"] = prio
     path = os.path.join(gk.QUEUE_DIR, jid + ".json")

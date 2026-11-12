@@ -9,12 +9,12 @@ on:
   workflow_dispatch:
     inputs:
       cmd_b64:
-        description: "Base64-encoded bash script to execute inside WSL2 (Ubuntu) on TRISTEN-DESKTOP"
+        description: "Base64-encoded bash script to execute inside WSL2 (Ubuntu) on the Windows host"
         required: true
       cwd:
         description: "WSL working directory"
         required: false
-        default: '/home/tpierson'
+        default: '/home/you'
 
 jobs:
   wsl:

@@ -63,7 +63,7 @@ def job(jid, lane, key=None, program="prog", workflow="wsl.yml",
          "maintenance": maint, "notify_chat": chat,
          "run_id": run_id, "run_status": run_status,
          "run_conclusion": None, "flags": [], "watermarks": {},
-         "expected_min": expected, "cwd": "/home/tpierson"}
+         "expected_min": expected, "cwd": "/home/you"}
     if prio is not None:
         j["priority"], j["priority_source"] = prio
     path = os.path.join(gk.QUEUE_DIR, jid + ".json")
@@ -374,7 +374,7 @@ print(json.dumps({
     "flag": flag_before,
     "sig_maint": sig.get("maintenance") if sig else None,
     "sig_wf": sig.get("workflow") if sig else None,
-    "script_names_path": "/home/tpierson/.syncyard/holds/t1.hold"
+    "script_names_path": "/home/you/.syncyard/holds/t1.hold"
                          in script,
     "events": events,
     "rc_release": rc_r,

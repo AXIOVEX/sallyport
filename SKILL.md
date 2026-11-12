@@ -423,7 +423,7 @@ The runners run under the **Syncyard Tray** supervisor
   job's priority and its human/auto source, and the focus
   selectors — in the menu header, the tooltip, and the
   dialog's fleet section — from a snapshot file at
-  `C:\Users\trist\Development\Syncyard\status\fleet-status.json`
+  `C:\Users\you\Development\Syncyard\status\fleet-status.json`
   when a publisher writes one. No publisher exists yet
   (spec 014 FR-009), so the section normally reads
   unavailable with its reason; the tray never edits fleet

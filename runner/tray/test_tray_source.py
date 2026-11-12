@@ -666,7 +666,7 @@ def main():
         # the hardcoded desktop lane paths must not come back.
         check("runner root is a setting with the desktop default",
               "public string RunnerRoot" in SRC
-              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners"'
+              and '@"C:\\Users\\you\\Development\\Syncyard\\runners"'
               in SRC
               and '"runnerRoot"' in SRC),
         # Spec 028 FR-004/FR-005 supersedes the four hardcoded
@@ -677,9 +677,9 @@ def main():
         # that matters from the original check stands: no
         # hardcoded desktop lane path may come back.
         check("no hardcoded desktop lane paths remain",
-              '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\long"'
+              '@"C:\\Users\\you\\Development\\Syncyard\\runners\\long"'
               not in SRC
-              and '@"C:\\Users\\trist\\Development\\Syncyard\\runners\\gpu"'
+              and '@"C:\\Users\\you\\Development\\Syncyard\\runners\\gpu"'
               not in SRC),
         check("settings load before the runner table is built",
               SRC.find("_settings = TraySettings.Load();") >= 0

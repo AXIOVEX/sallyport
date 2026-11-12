@@ -2,7 +2,7 @@
 # agent.sh - Syncyard failsafe backchannel agent (spec 009 FR-002/FR-004).
 #
 # Runs as a WSL systemd user service (syncyard-backchannel.service)
-# under tpierson on TRISTEN-DESKTOP. Independent of the Actions
+# under the WSL user on the Windows host. Independent of the Actions
 # runners, the Syncyard tray, and the gatekeeper.
 #
 # Loop (~60s): git pull the PRIVATE repo tbitcs/syncyard-backchannel,
@@ -79,8 +79,8 @@ TAIL_BYTES="${SYNCBC_TAIL_BYTES:-8000}"
 # agent never interprets either record: the gatekeeper dedupes
 # going-down records per (host, ts) and judges guard staleness
 # itself, so a stale file is harmless here.
-GOING_DOWN_FILE="${SYNCBC_GOING_DOWN_FILE:-/mnt/c/Users/trist/Development/Syncyard/going-down.json}"
-GUARD_FILE="${SYNCBC_GUARD_FILE:-/mnt/c/Users/trist/Development/Syncyard/guard-heartbeat.json}"
+GOING_DOWN_FILE="${SYNCBC_GOING_DOWN_FILE:-/mnt/c/Users/you/Development/Syncyard/going-down.json}"
+GUARD_FILE="${SYNCBC_GUARD_FILE:-/mnt/c/Users/you/Development/Syncyard/guard-heartbeat.json}"
 # Spec 025 (tray liveness): the tray writes its heartbeat file
 # beside its log; write_heartbeat merges it into the heartbeat
 # payload verbatim (as `tray`) every cycle, exactly like the
@@ -89,7 +89,7 @@ GUARD_FILE="${SYNCBC_GUARD_FILE:-/mnt/c/Users/trist/Development/Syncyard/guard-h
 # live host). A missing or unreadable tray file is skipped —
 # the heartbeat never fails because the tray is absent; that
 # absence is precisely what the gatekeeper needs to see.
-TRAY_FILE="${SYNCBC_TRAY_FILE:-/mnt/c/Users/trist/AppData/Local/SyncyardTray/tray-heartbeat.json}"
+TRAY_FILE="${SYNCBC_TRAY_FILE:-/mnt/c/Users/you/AppData/Local/SyncyardTray/tray-heartbeat.json}"
 LOG_FILE="$BASE/agent.log"
 LAST_ID_FILE="$BASE/.last_executed_id"
 SELFTEST_FILE="$BASE/.self_test.json"

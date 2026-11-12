@@ -49,7 +49,13 @@ class ConfigError(Exception):
     pass
 
 
-# --- Built-in defaults: the pre-config constants, verbatim. ---
+# --- Built-in defaults: the FICTIONAL example fleet. ---
+# These values describe no real machine (one Windows host,
+# user "you", and its WSL2 distro) and exist so a fresh
+# checkout runs its test batteries and shows the config
+# shape. Real deployments override every host-specific
+# value from a local syncyard.yaml beside the gatekeeper
+# (never committed; see config/syncyard.example.yaml).
 DEFAULTS = {
     "version": 1,
     "door_repo": "electrohire/desktop-runner",
@@ -103,17 +109,17 @@ DEFAULTS = {
     # tree lives under its own Windows profile, a path the
     # laptop's runner identity cannot create (field case
     # 2026-11-05: every laptop run.yml job died in the door
-    # wrapper on 'Access to the path C:\Users\trist\...').
+    # wrapper on 'Access to the path C:\Users\you\...').
     "checkpoint": {
         "exit_code": 86,
         "marker": "CHECKPOINT_PAUSED",
         "env_var": "SYNCYARD_HOLD_FILE",
         "holds_dir": {
             "run.yml": {
-                "desktop": r"C:\Users\trist\Development\Syncyard\holds",
-                "laptop": r"D:\Development\Syncyard\holds",
+                "desktop": r"C:\Users\you\Development\Syncyard\holds",
+                "laptop": r"C:\Users\you\Development\Syncyard\holds",
             },
-            "wsl.yml": "/home/tpierson/.syncyard/holds",
+            "wsl.yml": "/home/you/.syncyard/holds",
         },
     },
     # Host drain (spec 011 FR-005/FR-007): `gk drain --host`
@@ -145,7 +151,7 @@ DEFAULTS = {
             "workflows": {"run.yml": "execute", "wsl.yml": "execute",
                           "grab.yml": "grab"},
             "identity": ["LID_HOST", "LID_WINUSER", "LID_OS"],
-            "cwd": {"run.yml": r"C:\Users\trist", "grab.yml": None},
+            "cwd": {"run.yml": r"C:\Users\you", "grab.yml": None},
         },
         "desktop-wsl": {
             "type": "wsl2",
@@ -153,7 +159,7 @@ DEFAULTS = {
             "distro": "Ubuntu-24.04",
             "workflows": {"wsl.yml": "execute", "grab.yml": "grab"},
             "identity": ["LID_HOST", "LID_WSLUSER", "LID_OS"],
-            "cwd": {"wsl.yml": "/home/tpierson"},
+            "cwd": {"wsl.yml": "/home/you"},
         },
     },
     "workflows": ["run.yml", "wsl.yml", "grab.yml"],
