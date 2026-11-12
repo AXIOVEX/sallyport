@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Machine-specific configuration is local-only (#100): the
   gatekeeper's built-in defaults and the shipped example config
   now describe a FICTIONAL fleet (one Windows host, user "you",
-  and its WSL2 distro); the spec 010 golden fixture is that
+  and its WSL2 distro); the golden fixture is that
   fictional fleet. Tray profiles, tray/guard/backchannel/client
   default paths, and the door workflows' default working
   directories use the same fictional values. Real hosts and
@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when they were written.
 ### Added
 - Tray settings resilience, per-machine lane sets, and
-  multi-instance runner supervision (spec 028, H4): the
+  multi-instance runner supervision (H4): the
   settings save is atomic (temp file + replace, the previous
   file kept as tray-settings.json.bak) and the load falls
   back live file -> .bak -> the machine profile
@@ -49,14 +49,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   heartbeat. Listener identity is the exact runner directory
   in the tray and in runner/runner-watchdog.ps1 (no more
   path-prefix matching). Source coverage:
-  runner/tray/test_tray_source.py (spec 028 section); the
+  runner/tray/test_tray_source.py; the
   falsifier legs are recorded in
   specs/028-settings-resilience/falsifier-record.md.
-- Tray version drift detection (spec 027, H3): each sweep,
+- Tray version drift detection (H3): each sweep,
   the gatekeeper reads the release manifest the tray updater
   itself consumes (tray-update.json on the latest release,
   one read per sweep, cached to tray-release.json) and judges
-  every host's recorded tray beat (spec 025) against the
+  every host's recorded tray beat against the
   published version, storing tray_drift (current / behind /
   unknown, with both versions) on the host record. Entering
   behind ledgers tray_drift once, entering current ledgers
@@ -77,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   down its degraded path. test_fleet_status pins the
   fields on the gatekeeper emission for the idle,
   waiting, running and full cases.
-- Tray liveness heartbeat (spec 025, H1): tray 0.4.4.0 writes
+- Tray liveness heartbeat (H1): tray 0.4.4.0 writes
   tray-heartbeat.json beside its log about every 30 s and at
   startup (host, build, pid, session, started_at, tick,
   per-lane running/faulted), atomically; the backchannel
@@ -95,20 +95,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   owner-needed marker past the cap or when the exe is
   missing. Not yet field-deployed; the owner pulls tray
   updates himself.
-- Tray hardening batch, specs 025-031 (ratified 2026-11-05):
-  spec 025 tray liveness heartbeat (H1), spec 026 CI compiles
-  the tray (H2 remainder), spec 027 version drift detection
-  (H3), spec 028 settings resilience with the per-machine
+- Tray hardening batch (ratified 2026-11-05):
+  tray liveness heartbeat (H1), CI compiles
+  the tray (H2 remainder), version drift detection
+  (H3), settings resilience with the per-machine
   lane-set fix and multi-instance runner supervision (H4),
-  spec 029 one packaged tray watchdog (H5), spec 030 the
-  gatekeeper queue-starvation fix, and spec 031 the gh
-  extension refresh (stub). Spec files only in this entry;
-  implementation lands per spec, H1 first.
+  one packaged tray watchdog (H5), the
+  gatekeeper queue-starvation fix, and the gh
+  extension refresh (stub).
+  Implementation lands per item, H1 first.
 
 - Tray 0.4.3.0: update check at launch, queue line, status
   window, consoles viewer. A few seconds after startup the
-  tray now runs the same update check the menu item runs
-  (spec 021): it downloads and installs nothing on its own;
+  tray now runs the same update check the menu item runs:
+  it downloads and installs nothing on its own;
   a found update is announced once by balloon, the menu
   item shows the available version, and install stays the
   owner's click. The menu gains a queue line over the lane
@@ -144,15 +144,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged.
 
 ### Added
-- Gatekeeper-emitted fleet snapshot + publisher v2 (spec
-  014 FR-008/FR-009, the spec 013 fleet deploy's step 2).
-  New `gk snapshot` command: the FR-008 snapshot as one
+- Gatekeeper-emitted fleet snapshot + publisher v2 (the
+  fleet deploy's step 2).
+  New `gk snapshot` command: the snapshot as one
   JSON object on stdout, derived by the gatekeeper's own
-  code paths — the FR-001-normalized pause record, the
-  FR-012 dispatch order the sweep itself uses, the sweep's
+  code paths — the normalized pause record, the
+  dispatch order the sweep itself uses, the sweep's
   admission rule for the held marks (stop / pause / focus
   with the maintenance exemption, plus host dispatch holds
-  with the FR-015 signal-job exemption), and the
+  with the signal-job exemption), and the
   host-state file for draining. One derivation, two
   surfaces: `gk status` at the terminal, the tray panel
   via the publisher. fleet_status.py becomes the
@@ -167,15 +167,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   publish) unchanged. The PUBLISHED line now carries the
   source. VERSION is deliberately not bumped (the spec
   013 stack owns 0.4.0).
-- Fleet-status publisher in the install (spec 024): the publisher's systemd units are repo files (gatekeeper/systemd/) and gatekeeper/install-publisher.sh installs the publisher as a package — full dependency preflight with named refusals before anything is written, the proxy/token env captured from the installing shell into a root-only env file (values never printed), a root-owned publisher copy whose sha256 is asserted against the checkout, the timer enabled, and a first publish proven from the publisher's state record before success is reported. Previously the publisher's units and installer existed only as loose local files, so a VM replacement silently removed the service and the tray fleet panel went stale. The publisher now also publishes one snapshot byte-identically to every configured channel path (--path is repeatable; the installer's --channels option, default syncyard-dev), which is the per-channel setting backchannel/INSTALL.md already referred to; a FLEET_STATUS_API_BASE env override (default unchanged) lets install tests run against a local stand-in. Battery: gatekeeper/test_install_publisher.py runs the real installer in a sandbox (stub systemctl that executes the installed unit, stub contents API) and proves fresh one- and two-channel installs, idempotency, and named refusals that install nothing.
-- Spec 017: standalone distribution. Syncyard now builds as
+- Fleet-status publisher in the install: the publisher's systemd units are repo files (gatekeeper/systemd/) and gatekeeper/install-publisher.sh installs the publisher as a package — full dependency preflight with named refusals before anything is written, the proxy/token env captured from the installing shell into a root-only env file (values never printed), a root-owned publisher copy whose sha256 is asserted against the checkout, the timer enabled, and a first publish proven from the publisher's state record before success is reported. Previously the publisher's units and installer existed only as loose local files, so a VM replacement silently removed the service and the tray fleet panel went stale. The publisher now also publishes one snapshot byte-identically to every configured channel path (--path is repeatable; the installer's --channels option, default syncyard-dev), which is the per-channel setting backchannel/INSTALL.md already referred to; a FLEET_STATUS_API_BASE env override (default unchanged) lets install tests run against a local stand-in. Battery: gatekeeper/test_install_publisher.py runs the real installer in a sandbox (stub systemctl that executes the installed unit, stub contents API) and proves fresh one- and two-channel installs, idempotency, and named refusals that install nothing.
+- Standalone distribution. Syncyard now builds as
   a standalone Python package alongside the gh extension:
   a root `pyproject.toml` defines the single distribution
   `syncyard`, its version read dynamically from the repo
   VERSION file (no packaging edit on a version bump), zero
   runtime dependencies, and a `syncyard` console command
   that is a direct entry point to the gatekeeper's own
-  `main()` — no re-implemented verbs. The package-dir
+  `main` — no re-implemented verbs. The package-dir
   mapping installs the literal `gatekeeper/` and
   `backchannel/` files as the `syncyard` and
   `syncyard.backchannel` namespace packages, so the
@@ -199,21 +199,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deliberately not bumped in this change (the release
   mechanics ride the next feature version).
 - Backchannel, one channel per machine: the agent's channel is now selected by the SYNCBC_CHANNEL environment variable (agent.sh) and the client's by --channel or SYNCBC_CHANNEL (bc.py), defaulting to the original syncyard-dev channel so TRISTEN-DESKTOP's install is unchanged. A second host (TRISTEN-LAPTOP, channels/syncyard-laptop) can now run its own agent against the same private backchannel repo without sharing cmd/out/heartbeat state. Install procedure for additional machines: backchannel/INSTALL.md (deploy key per machine, systemd user unit with the channel set, four-step verification from records).
-- Spec 023 (fleet tray convention): one shared surface for every project tray in the fleet (Syncyard, EdgeLab, RealLoom) — tooltip composed short under a 63-character budget with parts dropped whole and never chopped, one status vocabulary (up/down; linked / link stale / unlinked; N waiting), one menu order ending in an always-enabled Exit, Start/Stop as the only verbs for supervised things (Enable/Disable reserved for supervisor switches), greyed items meaning "unavailable in the current state" with the reason visible, status always from direct observation, and exit finality via a stopped-by-user marker every relauncher must honor. The spec carries a source-read conformance checklist for all three trays; the gaps it names (Syncyard tray watchdog ignoring a user exit, EdgeLab tooltip chop and missing Start item, RealLoom unbounded tooltip and unlogged quit, per-item greying gaps) are findings for each tray's own follow-on work, not changes in this spec.
+- (fleet tray convention): one shared surface for every project tray in the fleet (Syncyard, EdgeLab, RealLoom) — tooltip composed short under a 63-character budget with parts dropped whole and never chopped, one status vocabulary (up/down; linked / link stale / unlinked; N waiting), one menu order ending in an always-enabled Exit, Start/Stop as the only verbs for supervised things (Enable/Disable reserved for supervisor switches), greyed items meaning "unavailable in the current state" with the reason visible, status always from direct observation, and exit finality via a stopped-by-user marker every relauncher must honor. The spec carries a source-read conformance checklist for all three trays; the gaps it names (Syncyard tray watchdog ignoring a user exit, EdgeLab tooltip chop and missing Start item, RealLoom unbounded tooltip and unlogged quit, per-item greying gaps) are findings for each tray's own follow-on work, not changes in this spec.
 ### Fixed
-- Backchannel agent envelope-timeout edges (robustness offensive, 2026-11-04): a `timeout_s` of 0 no longer reaches GNU timeout, which treats a 0 duration as "no timeout" and would have run one body unbounded, stalling the single-threaded agent and its heartbeat; 0 now falls back to the default. A timeout with 10+ digits is clamped on length before any arithmetic (bash `[ -gt ]` errors on 19+ digit values and reads as not-clamped, defeating the 0.2.2 max clamp). The replay guard is re-seeded from out.json when `.last_executed_id` is lost, so FR-004(b) (a re-pushed old command never re-runs) survives a wiped base or a reinstall that kept the clone. Chaos scenarios 15 and 17 pin all three (failing before, passing after); scenarios 14, 16, 18, 19 pin push-rejection recovery, SSH-transport failure visibility, at-least-once re-execution after a mid-execution kill, and STOP arriving mid-execution.
+- Backchannel agent envelope-timeout edges (robustness offensive, 2026-11-04): a `timeout_s` of 0 no longer reaches GNU timeout, which treats a 0 duration as "no timeout" and would have run one body unbounded, stalling the single-threaded agent and its heartbeat; 0 now falls back to the default. A timeout with 10+ digits is clamped on length before any arithmetic (bash `[ -gt ]` errors on 19+ digit values and reads as not-clamped, defeating the 0.2.2 max clamp). The replay guard is re-seeded from out.json when `.last_executed_id` is lost, so the replay rule (a re-pushed old command never re-runs) survives a wiped base or a reinstall that kept the clone. Chaos scenarios 15 and 17 pin all three (failing before, passing after); scenarios 14, 16, 18, 19 pin push-rejection recovery, SSH-transport failure visibility, at-least-once re-execution after a mid-execution kill, and STOP arriving mid-execution.
 - Backchannel client (bc.py) corrupt-channel handling: a cmd.json / out.json / heartbeat.json that does not parse as a JSON object now reads as unreadable channel state on every command path (heartbeat, status, send, wait) instead of an AttributeError traceback, and a future-dated heartbeat beyond a 30s tolerance reports BC_HEARTBEAT_SKEW with an unjudgeable verdict instead of FRESH (the host's WSL clock and the VM clock are different clocks; a dead agent could otherwise hide behind a skewed clock for the skew plus the whole stale window). Batteries: test_bc.py unit battery.
 - Tray crash on menu activation change fixed: RebuildMenu built a new ContextMenuStrip on every rebuild, assigned it to the NotifyIcon, and disposed the previous strip, and the deferred rebuild inside the old strip's own Closed handler disposed it while WinForms' modal menu filter still held it as the active menu, so the next activation change reparented a disposed object and the tray died with an unhandled ObjectDisposedException (TRISTEN-LAPTOP, 2026-11-04). The strip is now created once, bound to the icon once, and never disposed while the tray lives; rebuilds replace its items in place and dispose only the detached items. Menu order, item states, and the open-menu rebuild deferral are unchanged. Tray build stamp moves to 0.4.2.0.
 - Tray tooltip no longer reads as cut off: the old composition concatenated the full connection and fleet lines and chopped the result at the 63-character NotifyIcon limit mid-word. The tooltip is now composed short (runner count, the connection as one word, the waiting count, the stale flag) and a segment that would cross the limit is dropped whole; nothing is truncated. Tray build stamp moves to 0.4.1.0.
 - Tray menu header trimmed (owner ruling): the per-job "Next:" line and the connection signal-detail line are removed from the menu's grayed header, which is now the build line, the fleet summary, and the connection line. The signal detail remains in the Settings dialog.
-- Tray updater: the apply-update thread start is now wrapped in an explicit ThreadStart. The in-box .NET Framework csc (C# 5) rejects the bare anonymous method as ambiguous between ThreadStart and ParameterizedThreadStart (CS0121), which failed the r13 tray build on both fleet machines; the method-group start used by the update check was unaffected.
+- Tray updater: the apply-update thread start is now wrapped in an explicit ThreadStart. The in-box.NET Framework csc (C# 5) rejects the bare anonymous method as ambiguous between ThreadStart and ParameterizedThreadStart (CS0121), which failed the r13 tray build on both fleet machines; the method-group start used by the update check was unaffected.
 - Per-host default cwd: the gatekeeper built its default
   working directory by merging every host's cwd map into one
   global dict, so the last host in the config set the default
   for all of them. The day TRISTEN-LAPTOP enrolled as a
   second Windows host, desktop run.yml jobs submitted without
   --cwd inherited the laptop's directory and their payloads
-  never ran. default_cwd() now resolves per machine (the
+  never ran. default_cwd now resolves per machine (the
   lane's host, then its `via` hosts, then the built-in
   table); --lane auto submits defer the resolution to the
   routing pass. Battery: gatekeeper/test_per_host_cwd.py.
@@ -229,7 +229,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record wedged in dispatching, repaired by hand). Battery:
   gatekeeper/test_dispatch_isolation.py.
 ### Added
-- Spec 016 follow-on (2026-11-04): `gk profile suggest
+- follow-on (2026-11-04): `gk profile suggest
   [--host H] [--name P] [--out FILE]` drafts a lane profile
   for one host from its recorded capability snapshot, with
   the reasoning printed as YAML comments in the fragment.
@@ -245,7 +245,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the path exists or is the live config file. Note:
   specs/016-adaptive-lanes/profile-suggest.md. Battery:
   gatekeeper/test_profile_suggest.py.
-- Spec 021 (2026-11-04): tray self-update. The tray now
+- (2026-11-04): tray self-update. The tray now
   carries a build stamp (assembly version 0.4.0.0, shown as
   a disabled header item in the menu and written to the
   tray log at startup) and a "Check for updates" menu item:
@@ -261,12 +261,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verified download into place, and relaunches, with
   rollback to the `.bak` if the swap fails. Checks happen
   only on an explicit click; the tray never polls for
-  updates, and the spec 018 connection indicator is
+  updates, and the connection indicator is
   unchanged. The runner root the tray supervises is now a
   per-machine setting (`runnerRoot`, defaulting to the
   original desktop layout) so the same build runs on a
   second machine whose lanes live elsewhere.
-- Spec 016 (2026-11-02): adaptive lanes. Lanes now live in
+- (2026-11-02): adaptive lanes. Lanes now live in
   named **profiles** (`lanes.profiles.<name>` in config, one
   `lanes.active_profile`): a profile is a lane table, and a
   lane may be defined from scratch with a host, runner label,
@@ -290,8 +290,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the host's **capability snapshot** — scored by a
   deterministic pure function whose full input snapshot is
   written onto the job record and ledgered (`auto_routed`).
-  Auto never overrides an explicit lane, a lock (spec 015),
-  focus (spec 013), a host hold, or the budget guard; a hard
+  Auto never overrides an explicit lane, a lock,
+  focus, a host hold, or the budget guard; a hard
   hint no lane can meet waits with `auto_no_fit` and the
   unmet reasons on the record, never a silent downgrade.
   Estimates are advisory: nothing is killed, cancelled, or
@@ -309,11 +309,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   active profile, a CAPABILITY section, and each auto job's
   resolved lane + score or no-fit reasons. New scenario
   battery `gatekeeper/test_spec016.py` (54 checks), wired
-  into CI. VERSION unchanged — spec 013 owns 0.4.0 on this
+  into CI. VERSION unchanged — owns 0.4.0 on this
   stack. Repo-side only: fleet deployment (including
   converting the fleet config to the profiles shape) is a
   separate, later act.
-- Spec 018: tray connection indicator. The tray icon gains a
+- Tray connection indicator. The tray icon gains a
   second dimension beside runner health: a link mark in the
   icon's corner (solid when connected, hollow amber when
   stale, broken with the mark desaturated when disconnected)
@@ -328,8 +328,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   limit); no signal ever seen reads as disconnected on the
   icon and "unknown" in words. The menu, tooltip, and the
   settings dialog's new Connection section state the state
-  in words and name the exact signal set (until the spec 014
-  FR-009 publisher ships: "backchannel heartbeat only").
+  in words and name the exact signal set (until the publisher ships: "backchannel heartbeat only").
   Every transition is logged to tray.log with its signal
   age. Rendering stays render-on-change, now keyed on the
   (runner, connection) pair; the runner slash geometry and
@@ -337,8 +336,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the existing bitmap (no new handle churn). Display
   only: no network probe, no signal-file writes, no gating
   of supervision. VERSION is deliberately not bumped (the
-  spec 013 stack owns 0.4.0).
-- Spec 014: tray settings UI and dynamic fleet display. The
+  stack owns 0.4.0).
+- Tray settings UI and dynamic fleet display. The
   tray gains a single-instance Settings dialog (opened from
   the tray menu — the only window it ever shows) managing the
   settings it owns on the desktop: supervision on/off, the
@@ -352,19 +351,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hand-rolled reader/writer adds no compile reference, so
   the in-box csc route is unchanged. The tray menu header,
   tooltip, and the dialog's fleet section now render the
-  gatekeeper's published status (spec 013: mode RUNNING /
+  gatekeeper's published status (mode RUNNING /
   PAUSED / FOCUSED / DRAINING, focus selectors, waiting
   queue in dispatch order with priority and human/auto
   source) read-only from a snapshot file, showing
   unavailable-with-reason when no snapshot exists (the
-  publisher is a gated follow-up, spec 014 FR-009); unknown
+  publisher is a gated follow-up); unknown
   modes display verbatim. The PR #39 discipline is pinned
   by new source-battery checks: the icon still renders only
   on runner-state change, fleet data never renders, the
   queue list rebuilds only on a snapshot stamp change, and
   the settings save is the tray's only file write besides
   its log. VERSION is deliberately not bumped in this
-  change (spec 013 owns the next bump; see spec 014 FR-012).
+  change.
 
 ### Fixed
 - Tray GDI handle leak (field crash, 2026-11-01): the tray
@@ -379,17 +378,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   HICON is cloned and destroyed, the replaced context menu is
   disposed, supervision ticks run under a catch-and-log guard, and
   UI-thread exceptions are caught and logged instead of surfacing
-  the modal .NET dialog. A static source battery
+  the modal.NET dialog. A static source battery
   (`runner/tray/test_tray_source.py`, wired into CI) pins the
-  patterns. Spec 007.
+  patterns.
 
 ### Added
-- Spec 011 Phases 2–3 (2026-11-02, Amendment 2 — the owner's
+- Phases 2–3 (2026-11-02, Amendment 2 — the owner's
   speed directive): the host drain and the shutdown guard.
   `gk drain --host` signals a host's running
-  checkpoint-capable jobs through spec 013's hold machinery,
-  sets a per-host **drain hold** distinct from the FR-006
-  going-down hold (`gk host-resume` clears both), waits out
+  checkpoint-capable jobs through hold machinery,
+  sets a per-host **drain hold** distinct from the going-down hold (`gk host-resume` clears both), waits out
   each lane's checkpoint window driving the sweep's own
   harvest, and prints a per-job CLEAN / INTERRUPTING verdict
   (exit 0/1; 2 = unknown host). New `drain` config section
@@ -415,9 +413,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   host hold, as `gk-reboot-*` already did. Batteries:
   `gatekeeper/test_spec011.py`, `runner/guard/
   test_guard_source.py`, `backchannel/test_agent_source.py`.
-  Repo-side only — T008 (production deploy) and T005's
-  owner oracle pass remain field steps. Spec 011.
-- Spec 015 (2026-11-02): lane priority lock. `gk lock
+  Repo-side only — the production deploy and the
+  owner oracle pass remain field steps.
+- Lane priority lock (2026-11-02). `gk lock
   --lane <lane> --program <program> [--ttl-min N]
   [--reason TEXT]` gives one program exclusive dispatch on
   a lane; while the lock is ACTIVE only the holder's jobs
@@ -426,8 +424,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   holder's auto priority 0 dispatches). Non-holder jobs are
   not refused or reordered — they wait, watermarks
   escalating. State lives in `LOCKS.json` beside
-  `PAUSED.json`, written only through the FR-013
-  verified-write path (a failed write leaves the prior
+  `PAUSED.json`, written only through the verified-write path (a failed write leaves the prior
   state byte-identical; no file = no locks = pre-015
   behavior). One holder per lane: a second acquire is
   refused (exit 3) naming holder, state, and expiry;
@@ -446,14 +443,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each bypass ledgered `lock_bypassed`. Fleet pause/focus
   never mutate lock state; host drains neither block nor
   clear locks. `gk status` renders a LOCKS section in all
-  modes plus a `[lock-held by ...]` waiting mark;
+  modes plus a `[lock-held by...]` waiting mark;
   `gk lock --list` prints it standalone. New scenario
   battery `gatekeeper/test_spec015.py` (25 checks), wired
-  into CI. VERSION unchanged — spec 013 owns 0.4.0 on this
+  into CI. VERSION unchanged — owns 0.4.0 on this
   stack. Repo-side only: fleet deployment is a separate,
   owner-gated act.
-- Spec 011 Amendment 1 (2026-10-31): owner ruling on boot
-  autonomy. The FR-009 owner gate is satisfied by directive —
+- Amendment 1 (2026-10-31): owner ruling on boot
+  autonomy. The owner gate is satisfied by directive —
   Syncyard must start automatically on boot with **no
   interactive logon**; autologon is excluded by the ruling's
   own words. Selected shape: service-mode runners running as
@@ -462,21 +459,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-lane `boot-runnable` / `logon-bound` honesty labels
   unchanged, the backchannel agent in the boot set (linger +
   distro-start ensure), and the tray's logon autostart
-  retired in the conversion. New FR-015: `gk reboot` — a
+  retired in the conversion. New: `gk reboot` — a
   controlled, drain-aware host reboot (going-down record
   before any signal, backchannel route first, honest
   unreachable report otherwise). Implementation follows in
   Phase 5 as amended (T011–T014, T021, T022).
-- Spec 011 T021 (2026-11-01): `gk reboot --host <host>
+- T021 (2026-11-01): `gk reboot --host <host>
   [--force] [--delay <seconds>] [--requested-by <chat-id>]`
-  (FR-015) implemented in the gatekeeper. Route determination
+ implemented in the gatekeeper. Route determination
   is reads-only and first: a fresh backchannel heartbeat
   (<= 300 s) routes via the backchannel agent, else any
   online runner of the host routes via a maintenance
   dispatch, else the host is reported unreachable (exit 4)
   and nothing else is written. Active jobs on the host's
   lanes refuse the reboot by name (exit 3) unless --force.
-  On acceptance the FR-003 going-down record (trigger
+  On acceptance the going-down record (trigger
   `remote-reboot`) goes through the existing ingest —
   annotations, dispatch hold, and outbox pushes are the
   Phase 1 semantics — then a `host_reboot_requested` ledger
@@ -490,7 +487,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refusal, the record-before-signal order, both routes,
   and the unreachable path; the live fire drill is T022,
   still open.
-- Spec 011 Phase 1 (T001–T003, gatekeeper side, 2026-10-31):
+- Phase 1 (T001–T003, gatekeeper side, 2026-10-31):
   host liveness and the going-down record. New config
   `liveness.down_after_s` (default 900, validated positive,
   fail closed). Each sweep reads the backchannel heartbeat
@@ -503,12 +500,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   affected job records, one outbox push per affected notify
   registration, and a dispatch hold on the host's lanes
   until `gk host-resume <host>` clears it (the Phase-1
-  stand-in for the FR-010 recovery handshake). The
+  stand-in for the recovery handshake). The
   gatekeeper still never cancels and never re-dispatches.
   The protection level is unchanged and stated plainly in
   the spec: delay + drain + checkpoint + notify, never
   prevent.
-- Spec 010 Phase 6 (T021, 2026-10-31): `docs/github-pitch.md`
+- Phase 6 (T021, 2026-10-31): `docs/github-pitch.md`
   — the GitHub adoption pitch brief (gh-extension-first
   shape). Prepared only; not sent — the owner's explicit
   word is required before it leaves the repo.
@@ -558,7 +555,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2026-11-02
 ### Added
-- Spec 013 — live priority and pause control for the
+- — live priority and pause control for the
   gatekeeper. **Focus mode** (`gk focus --except-key /
   --except-program / --except-chat`, repeatable selectors):
   pause everything except the named jobs; the pause record's
@@ -569,7 +566,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field on every job record, settable at submit
   (`--priority`) and changeable while the job waits
   (`gk priority`; dispatched or finished jobs refuse, exit 3).
-  **Auto-optimization with human precedence** (FR-012):
+  **Auto-optimization with human precedence**:
   waiting jobs without a human-set priority are ordered by a
   deterministic optimizer (declared expectation, lane fit,
   +1 per 10 minutes of aging, capped at 100); human values
@@ -589,20 +586,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same per-job file directly with no gatekeeper
   round-trip, and the harvest is identical either way. All
   mutations ride
-  the FR-013 verified writes and are ledgered; `gk status`
+  the verified writes and are ledgered; `gk status`
   shows the pipeline mode (RUNNING / PAUSED / FOCUSED /
   DRAINING), the waiting set in effective dispatch order with
   priorities and sources, and held-at-checkpoint jobs.
   Battery: `gatekeeper/test_spec013.py` (wired into CI), plus
   config, golden, and workflow-contract extensions. Not yet
   deployed to the fleet gatekeeper; that follows owner review
-  of the spec 013 PR.
+  of the PR.
 
 ## [0.3.0] - 2026-10-31
 ### Added
-- Spec 010 Phase 5 docs (T017 + T018, 2026-10-31):
+- Phase 5 docs (T017 + T018, 2026-10-31):
   `SECURITY.md` is now the shipped security posture — the
-  FR-009 invariant verbatim (the same sentence every skill
+  invariant verbatim (the same sentence every skill
   edition carries), the posture in plain language (CI on
   GitHub-hosted runners only; self-hosted runners reachable
   solely behind the gatekeeper's `workflow_dispatch`; the
@@ -610,8 +607,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rules; the backchannel as dev/recovery only, carrying no
   job traffic), and adopter checklists for token scoping and
   runner isolation — alongside the existing reporting policy.
-  `README.md` opens with the two-minute story FR-010
-  requires (the problem, the scars that shaped the design,
+  `README.md` opens with the two-minute story requires (the problem, the scars that shaped the design,
   what Syncyard deliberately does not do), the security
   section links `SECURITY.md` above the quickstart, and
   per-host quickstarts cover Windows, WSL2 (via a Windows
@@ -619,33 +615,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that cross-job payloads are never staged in a WSL venue's
   `/tmp` (it does not persist between jobs; stage in the WSL
   home directory or the job's working tree instead).
-- Spec 011 — shutdown protection and recovery (owner
+- — shutdown protection and recovery (owner
   direction, 2026-10-31): a host-side shutdown guard that
   delays a non-forced shutdown while active work drains
   (bounded checkpoint window, going-down record written
   first with the affected run ids, outbox notification),
   boot recovery that returns runners without an interactive
   logon (boot shape is an owner gate — service-mode would
-  amend spec 007 FR-003), a generalized supervised-work
+  amend the runner rule), a generalized supervised-work
   vehicle from the production anchor pattern, gatekeeper
   reconciliation of every interrupted run against GitHub's
   terminal state, and a recovery report that states loss
-  plainly. The spec's protection level is delay + drain +
+  plainly. The protection level is delay + drain +
   checkpoint + notify, never prevent — forced shutdowns and
   power loss are named outside the envelope. Specified only
   in this change; implementation follows in phases.
-- Spec 010 Phase 4 (FR-006) — the agent skills pack:
+- Phase 4 — the agent skills pack:
   `skills/` ships eight editions generated from one shared
   source (`skills/_source/contract.md` via
   `skills/build_skills.py`) in the Amendment 1 ranking —
   Meta Muse (primary), Claude Code, GitHub Copilot, OpenAI
   Codex/ChatGPT, Cursor, Google Gemini/Antigravity,
   generic-agent, and a CLI-only fallback. Each edition carries
-  the FR-009 security invariant verbatim; the T016 currency
+  the security invariant verbatim; the T016 currency
   battery (`skills/test_skills.py`, in CI) pins every edition
   to the repo VERSION, the invariant, and the shared source
   (drift fails the build).
-- Spec 010 — public release program (owner direction,
+- — public release program (owner direction,
   2026-10-30): configurability as a single config file (lane
   count/names, watermarks, budgets, endpoints, transport
   ceiling), a tested host matrix (Windows, WSL2, macOS, Linux,
@@ -653,27 +649,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alarm, chaos battery), an agent skills pack with Meta Muse
   as the primary vehicle, per-requirement test batteries, a
   shipped security posture, and release 0.3.0 when green. A
-  GitHub `gh`-adoption pitch brief is prepared under FR-011
-  and is not sent without the owner's explicit word. Specified
+  GitHub `gh`-adoption pitch brief is prepared under and is not sent without the owner's explicit word. Specified
   only in this change; implementation follows in phases.
-- Spec 010 Amendment 1 (2026-10-30): FR-012 ships Syncyard as
+- Amendment 1 (2026-10-30): ships Syncyard as
   a GitHub CLI extension (`AXIOVEX/gh-syncyard`, thin Go
-  dispatcher, official precompile action); FR-006 agent-skill
+  dispatcher, official precompile action); agent-skill
   editions ranked by market share (Meta Muse primary, Claude
   Code, Copilot, Codex/ChatGPT, Cursor, Gemini/Antigravity,
   generic). Phase 1 slice 1: `config/syncyard.example.yaml` +
   `gatekeeper/config.py` loader/validator with the
   `test_config.py` golden battery (25 checks, all passing);
   additive — the gatekeeper does not read config yet.
-- Spec 010 Phase 7 (FR-012) SHIPPED 2026-10-31:
+- Phase 7 SHIPPED 2026-10-31:
   `AXIOVEX/gh-syncyard` v0.1.0 — the GitHub CLI extension.
   Thin Go dispatcher over the installed gatekeeper
   (lookup: $SYNCYARD_GK / $SYNCYARD_HOME / ~/syncyard /
-  ~/.syncyard / beside the binary / ./gatekeeper);
+  ~/.syncyard / beside the binary /./gatekeeper);
   precompiled binaries via the official precompile action;
   install proof: `gh extension install AXIOVEX/gh-syncyard`
   then `gh syncyard status` against the live fleet.
-- Spec 010 Phase 1 slice 2 (T003/T004, 2026-10-31): the
+- Phase 1 slice 2 (T003/T004, 2026-10-31): the
   gatekeeper now reads its effective configuration at
   startup — lane set, runner labels, per-lane concurrency,
   watermark tables, budgets, and dispatch knobs all bind
@@ -683,12 +678,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `gatekeeper/test_golden.py` proves byte-identical
   dispatch decisions under defaults vs the fleet config,
   and runs in CI.
-- Spec 010 Phase 1 COMPLETE (T005, 2026-10-31): the fleet
+- Phase 1 COMPLETE (T005, 2026-10-31): the fleet
   gatekeeper now runs on the configuration system — wired
   code deployed behind a queue snapshot (534 records,
   open-set 5) with exact reconciliation, and the fleet
   `syncyard.yaml` in place beside the gatekeeper.
-- Spec 010 Phase 2 begins (T006, 2026-10-31): hosts declare
+- Phase 2 begins (T006, 2026-10-31): hosts declare
   the transport workflows they serve (execute/grab) and
   their identity markers (a per-type contract); the
   gatekeeper routes by host and refuses, at submit/adopt,
@@ -697,13 +692,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the new shape; the golden battery pins the routing
   matrix across the fleet hosts plus a config-only macOS
   host.
-- Spec 010 T007 (2026-10-31): the shipped transport
+- T007 (2026-10-31): the shipped transport
   workflows are generalized — a `lane` input addresses the
   runner, hardcoded label lists are gone, and each file
   states its host contract; execution bodies unchanged
   from the proven production shape. New contract battery
   in CI pins dispatch-only triggers and lane binding.
-- Spec 010 Phase 2 COMPLETE (T008/T009, 2026-10-31):
+- Phase 2 COMPLETE (T008/T009, 2026-10-31):
   native Linux and macOS transports (one shared script
   body, drift-checked), a Docker transport (caller image,
   declared mounts, results land on the host for grab
@@ -711,15 +706,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   options with host-config image fallback — all pinned by
   golden argv checks and a hosted smoke battery
   (ubuntu + macOS + a docker-required job).
-- Spec 010 Phase 3 COMPLETE (T010–T013, 2026-10-31): the
+- Phase 3 COMPLETE (T010–T013, 2026-10-31): the
   backchannel agent self-tests at start-up and reports
   the result in every heartbeat; `gk status` shows the
   heartbeat age with a stale alarm past five minutes;
   a 16-check chaos battery (duplicates, corruption, STOP,
   kill/restart) runs the real agent in CI; and the
-  recovery runbook ships the four FR-007 cases with
+  recovery runbook ships the four cases with
   pre-written command bodies.
-- Spec 009 — failsafe backchannel (owner override order,
+- — failsafe backchannel (owner override order,
   2026-10-29: Syncyard must have a failsafe backchannel for when
   Syncyard itself is down or blocked, with a dedicated channel
   just for Syncyard development in the Desktop Access chat).
@@ -740,15 +735,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `backchannel/test_bc.py`. Named recovery use cases: restart
   the packaged tray in the owner's session, read `tray.log`,
   restart a runner lane, read-only network diagnostics.
-- Periodic Syncyard status-check duty, fleet-wide (spec 009
-  FR-005): every agent that uses Syncyard checks status before
+- Periodic Syncyard status-check duty, fleet-wide: every agent that uses Syncyard checks status before
   submitting desktop work and at least once per hour during an
   active desktop campaign (`gk status`, otherwise the
   backchannel heartbeat/status); a stale heartbeat (>5 min) or a
   down tray/runner is reported to the Desktop Access chat, never
   worked around. SKILL.md carries the duty and a Failsafe
   Backchannel section.
-- Job protection on any Syncyard change (spec 009 FR-006):
+- Job protection on any Syncyard change:
   begin with a queue snapshot (record count, aggregate sha256
   of queue files, open-job list) and end with reconciliation —
   the open-job set after must equal the set before, or every
@@ -756,10 +750,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silently.
 
 ### Fixed
-- Gatekeeper record updates are atomic swaps (spec 001 FR-013):
+- Gatekeeper record updates are atomic swaps:
   a job record's file is only ever replaced by renaming a fully
   verified temp file over it — the record path is never opened
-  for writing. The pre-FR-013 direct-write fallback truncated
+  for writing. The pre-direct-write fallback truncated
   the standing record before verification could fail, which is
   how records were lost in the 2026-10-28 write waves despite
   verified-retry. A failed save now leaves the prior record
@@ -769,13 +763,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whose pre-dispatch save fails is skipped rather than
   dispatched unrecorded. Proven by the fault-injection battery
   in gatekeeper/test_fr013.py.
-- Gatekeeper FR-012 refinement (same night): the failed-write
+- Gatekeeper refinement (same night): the failed-write
   cleanup removes only content that is not a valid record (0-byte
   or partial husks); a failed UPDATE leaves the last valid record
   standing and fails loudly. The first cleanup compared bytes and
   deleted a live record on a failed dispatch update - found and
   fixed under the pause-first fix discipline.
-- Gatekeeper durable writes (spec 001 FR-012): every queue, ledger
+- Gatekeeper durable writes: every queue, ledger
   and control-file write is now write-verify-retry — unbuffered
   write, read-back byte verification, bounded retries with backoff,
   loud failure when unverifiable. The loader skips unreadable
@@ -789,8 +783,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Tray offline state is unmistakable: with no runners up (or one
   faulted) the tray mark renders in grayscale under its red slash;
-  the color states mean at least one runner is live (FR-007).
-- Tray icon and menu (spec 007 FR-007/FR-008): the notification
+  the color states mean at least one runner is live.
+- Tray icon and menu: the notification
   icon is the official mark loaded from a copy embedded in the
   program itself — clean when all runners are up, amber slash when
   some are down, red slash when none are up or one has faulted. The
@@ -799,14 +793,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`%USERPROFILE%\Development\Syncyard\runners\<lane>`) — nothing
   Syncyard-owned sits in the drive root. Tray and watchdog defaults
   and the setup docs follow; the tray installer is rebuilt against
-  the new locations (spec 007 T010).
-- Spec 007 T007 — a real Windows installer for the tray:
+  the new locations.
+- T007 — a real Windows installer for the tray:
   `SyncyardTray-Setup-0.1.0.exe` (NSIS; per-user, silent `/S` mode,
   registered uninstaller), published as a GitHub Release asset with
   a SHA-256, plus `assets/logo.ico` and the tray icon now carrying
   the project mark with a state badge. README and SETUP.md document
   the download route and manual from-source installation.
-- Spec 007 — windowless runner supervision: the Syncyard Tray app
+- — windowless runner supervision: the Syncyard Tray app
   (`runner/tray/SyncyardTray.cs` + `install-tray.ps1`) supervises the
   runners from the owner's tray — hidden starts, per-lane state,
   capped restarts with an OWNER NEEDED alert, stray-console hiding,
@@ -816,8 +810,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--notify-chat` (on submit or adopt) and receive started (with
   expected length), completed (marker verdict), and W2-escalation
   pushes via the new `gk outbox` command — no polling and no new
-  infrastructure (spec 001 FR-011).
-- Spec 006 closed: the polish pull request merged 2026-10-27 under
+  infrastructure.
+- closed: the polish pull request merged 2026-10-27 under
   the owner's one-time protection pause, with protection verified
   identical afterward.
 - New project logo: a marshalling-yard mark (three lanes converging through
@@ -834,13 +828,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Dependabot alerts, and open Dependabot pull requests.
 - A daily health check reviews the status board, the ledger, CI, and
   Dependabot, and reports issues to the operating chat.
-- Spec-kit + AEE governance: a project constitution
-  (`.specify/memory/constitution.md`) and numbered specs under
-  `specs/` (001 gatekeeper dispatch, 002 runner lanes, 003 status /
-  logging / health, 004 WSL2 management, 005 fleet cutover,
-  006 repository and governance), each with an `aee-claims.json`
-  recording every requirement as a claim with evidence and a
-  falsification test.
+- Project governance: a written constitution and numbered
+  design documents (001 gatekeeper dispatch, 002 runner lanes,
+  003 status / logging / health, 004 WSL2 management, 005 fleet
+  cutover, 006 repository and governance), each requirement
+  recorded with its evidence and a falsification test.
 - The SKILL.md currency rule, stated in SKILL.md and CONTRIBUTING.md:
   SKILL.md is updated in the same change as any behavior change.
 - Gatekeeper pause/resume: `gk pause --reason <text>` holds dispatch
@@ -895,13 +887,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Spec 009 — failsafe backchannel (see the `[Unreleased]` entry
+- — failsafe backchannel (see the `[Unreleased]` entry
   above for the full description): the dedicated `syncyard-dev`
   channel in the private `tbitcs/syncyard-backchannel` repo, the
   WSL systemd agent and its installer, the `bc.py` contents-API
   client with offline tests, the fleet-wide periodic
-  status-check duty (FR-005), and queue snapshot/reconciliation
-  job protection on any Syncyard change (FR-006). Released by
+  status-check duty, and queue snapshot/reconciliation
+  job protection on any Syncyard change. Released by
   the owner's explicit "deploy new version" order of 2026-10-29,
   which overrides the earlier version hold.
 
@@ -910,7 +902,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Clients: the run-discovery polling loop used an unused loop variable
-  (`for i in $(seq ...)`), which failed the ShellCheck CI step
+  (`for i in $(seq...)`), which failed the ShellCheck CI step
   (SC2034). The loops now use the conventional throwaway variable;
   behavior is unchanged. Caught by the first CI run of the scaffold.
 

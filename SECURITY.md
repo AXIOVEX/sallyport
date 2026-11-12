@@ -43,7 +43,7 @@ What that means in plain language:
   requests to the gatekeeper; it checks the shared API budget,
   refuses duplicates, records the job, and only then dispatches.
   Two of its rules are security rules, not just reliability rules:
-  - *Verified writes* (spec 001 FR-012/FR-013): every queue, ledger,
+  - *Verified writes*: every queue, ledger,
     and control-file write is written, read back, and verified
     byte-for-byte, and a record update lands only as an atomic swap
     of a fully verified file — a failed save never destroys the
@@ -54,7 +54,7 @@ What that means in plain language:
     with the same key while one is active is refused — a retry or a
     double-click can never run the same job twice.
 - **The backchannel carries no work.** The failsafe backchannel
-  (spec 009) is a development and recovery channel between the
+   is a development and recovery channel between the
   operator and the host — health heartbeats in, recovery commands
   out. It lives in its own **private** repository, its agent executes
   only freshly-issued command ids, and a STOP file halts it. Program

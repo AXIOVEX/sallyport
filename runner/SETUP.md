@@ -90,7 +90,7 @@ Confirm all four show as **online** (one API call):
 gh api repos/electrohire/syncyard/actions/runners --jq '.runners[] | "\(.name) \(.status) labels=\([.labels[].name] | join(","))"'
 ```
 
-## Step 4 — Install the tray supervisor (spec 007)
+## Step 4 — Install the tray supervisor 
 
 The runners run windowless under the **Syncyard Tray** supervisor: a
 per-user tray app that starts every runner hidden, shows per-lane
@@ -122,7 +122,7 @@ the tray (green badge when all lanes are up) and
 `%LOCALAPPDATA%\SyncyardTray\tray.log` shows each runner started
 hidden.
 
-**Connection indicator (spec 018).** The icon's corner carries a
+**Connection indicator.** The icon's corner carries a
 link mark — solid when this host is connected to the fleet, hollow
 amber when stale, broken (with the mark desaturated) when
 disconnected — judged only from the backchannel agent's heartbeat
@@ -177,7 +177,7 @@ until it passes.
   `_diag` logs in its directory before restarting anything by hand.
 - **A dispatch queues forever on one lane.** Check the runner is
   online *and carries the exact lane label* — a label mismatch queues
-  silently forever. `gh api .../actions/runners` (step 3) shows every
+  silently forever. `gh api.../actions/runners` (step 3) shows every
   label.
 - **WSL-side jobs cannot reach a device on the machine's local
   network.** Some networks are visible only from the owner's own WSL

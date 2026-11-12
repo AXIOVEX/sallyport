@@ -1,4 +1,4 @@
-# Backchannel recovery runbook (spec 009 FR-007, spec 010 T013)
+# Backchannel recovery runbook
 
 The failsafe backchannel exists for the moments the normal door
 cannot help: Syncyard itself is down or blocked, the tray is the
@@ -21,12 +21,12 @@ git-protocol sync only (no REST quota).
   its age, and the agent's start-up self-test
   (`BC_SELFTEST ok=...`). **Stale = age > 300 s.**
 - `gk status` prints the same heartbeat age as its second line
-  and raises `!! BACKCHANNEL STALE` past 300 s (spec 010 T011).
+  and raises `!! BACKCHANNEL STALE` past 300 s.
 - On the desktop (WSL): `systemctl --user status
   syncyard-backchannel.service` and the tail of
   `~/syncyard-backchannel/agent.log`.
 
-## The four recovery cases (FR-007)
+## The four recovery cases
 
 Send each body with `bc.py send --file body.sh` (it stamps a
 fresh id + sha256), then `bc.py wait --id <id>`.
@@ -88,11 +88,11 @@ that is an owner decision, not a retry loop.
 "
 ```
 
-## Going-down records and the guard heartbeat (spec 011 Phase 3)
+## Going-down records and the guard heartbeat
 
 The agent's message set grew by exactly two **merged fields**
 on the heartbeat payload; the agent originates neither. The
-host guard (spec 011 Phase 3, `runner/guard/`) writes two
+host guard (`runner/guard/`) writes two
 files on the Windows side, and `write_heartbeat` merges each
 into the heartbeat verbatim when it holds a non-empty JSON
 object:
@@ -124,7 +124,7 @@ per pass, and the channel syncs over the git protocol only —
 no new API class, no new heartbeat format (the Phase 1
 reader is unchanged). The agent remains a dumb merger: it
 never interprets either record, and queue access stays
-read-only (FR-004 above is unchanged).
+read-only (the rule above is unchanged).
 
 Triage additions: a going-down record that never ingests —
 check the heartbeat payload actually carries `going_down`

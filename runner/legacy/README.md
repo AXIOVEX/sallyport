@@ -8,8 +8,7 @@ back there or treated as the current transport contract.
 
 This generation bound the fixed desktop runner labels
 (`[self-hosted, Windows, X64, desktop, gpu]`) and predates the
-lane-addressed contract: it has no `lane` input, no spec 013
-`hold_file`, and no spec 011 running-job registry. The live
+lane-addressed contract: it has no `lane` input, no `hold_file`, and no running-job registry. The live
 transport copies are under `runner/workflows/`; the production
 dispatch door is the separate `electrohire/desktop-runner` repo.
 

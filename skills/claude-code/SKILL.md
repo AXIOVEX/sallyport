@@ -66,7 +66,7 @@ $GK status
 $GK pause --reason "operator working on the machines"
 $GK resume
 
-# Focus (spec 013): dispatch only the selected jobs — repeatable
+# Focus: dispatch only the selected jobs — repeatable
 # selectors (key or key-prefix, program, notify endpoint).
 # `gk resume` clears pause and focus together. Add --drain to
 # pause or focus to let executing work finish before the
@@ -74,19 +74,19 @@ $GK resume
 $GK focus --except-program <program> [--except-key <key-or-prefix>]
 $GK pause --drain
 
-# Priorities (spec 013): set at submit or live while waiting;
+# Priorities: set at submit or live while waiting;
 # unset priorities are auto-optimized (see below) and any
 # explicit value pins the job against the optimizer.
 $GK submit ... [--priority N]
 $GK priority <job-id-or-key> <N>
 
-# Checkpoint hold (spec 013): signal one job to stop itself at
+# Checkpoint hold: signal one job to stop itself at
 # its next checkpoint; release with resume --job. Continuation
 # is a fresh submission by the job's owner.
 $GK hold <job-id-or-key>
 $GK resume --job <job-id-or-key>
 
-# Lane priority lock (spec 015): hold a lane for your program
+# Lane priority lock: hold a lane for your program
 # so no other program's jobs dispatch on it — priority never
 # trumps a lock. Non-holder jobs wait (not refused, not
 # reordered); re-running lock renews the TTL; --suspend keeps
@@ -97,7 +97,7 @@ $GK lock --lane <lane> --program <your-program> --suspend|--resume
 $GK unlock --lane <lane> --program <your-program>
 $GK lock --list
 
-# Lane profiles + auto routing (spec 016): lanes live in named
+# Lane profiles + auto routing: lanes live in named
 # config profiles (fleet-default = today's four lanes); render
 # them with profile. Submit with --lane auto to let the sweep
 # pick the lane from your resource hints, your program's
@@ -135,12 +135,11 @@ $GK outbox
   list: watermark breaches and escalations, failed or pending log
   harvests, a dispatch stuck needing a human, and completions with
   no marker verdict. Read it before concluding the fleet is healthy.
-- Every gatekeeper state write is write-verify-retry (spec 001
-  FR-012/FR-013): a record's file is only ever replaced by renaming
+- Every gatekeeper state write is write-verify-retry: a record's file is only ever replaced by renaming
   a fully verified temp file over it, so a failed save can never
   destroy the standing record. Never treat a 0-byte state file as
   real, and never trust an unverified write.
-- **Priorities (spec 013).** Within the waiting set, higher
+- **Priorities.** Within the waiting set, higher
   effective priority dispatches first. A priority you set
   (`--priority`, `gk priority`) is human-set and pinned: the
   optimizer never changes it, it wins ties against auto values,
@@ -151,11 +150,11 @@ $GK outbox
   nothing starves. `gk status` shows the waiting set in
   effective order with each job's priority and source. Admission
   (pause/focus/drain/host holds) outranks priority absolutely.
-- **Checkpoint holds are cooperative (spec 013).** The
+- **Checkpoint holds are cooperative.** The
   gatekeeper cannot stop a running script from outside; it can
   only signal. The signal file may be created by any actor that
   can write the venue path — including a host-local process
-  acting without any gatekeeper round-trip (the spec 011 host
+  acting without any gatekeeper round-trip (the host
   guard raises it directly when a shutdown is imminent) — and
   the harvest is identical whichever side raised it. A job
   that wants to be holdable polls the path
@@ -169,7 +168,7 @@ $GK outbox
   owner continues the work with a fresh submission (the old
   job's checkpoints are the resume state), after the operator
   clears the signal with `gk resume --job <id>`.
-- **Host drains and the shutdown guard (spec 011).**
+- **Host drains and the shutdown guard.**
   `gk drain --host <host>` is the polite prelude to restarting
   or shutting down one host: it signals the host's running
   checkpoint-capable jobs, sets the host's drain hold, waits
@@ -189,7 +188,7 @@ $GK outbox
   heartbeat rides the host liveness record; a stale guard
   beat in `gk status` means the protection is down — report
   it, never work around it.
-- **Lane priority locks (spec 015).** One program can hold a
+- **Lane priority locks.** One program can hold a
   lane (`gk lock --lane … --program …`): while the lock is
   ACTIVE, only the holder's jobs dispatch on that lane, and no
   priority — human or optimizer — admits anyone else; waiting
@@ -208,7 +207,7 @@ $GK outbox
   conjunction: focus admission AND, on a locked lane, being
   the holder. `gk status` renders a LOCKS section in all
   modes and marks lock-held waiting jobs.
-- **Profiles and auto routing (spec 016).** Lanes are defined
+- **Profiles and auto routing.** Lanes are defined
   by the active config profile; profiles may define lanes
   from scratch (resource class cpu|gpu|any, duration band,
   optional workflow pin), and switching profiles is an
@@ -229,7 +228,7 @@ $GK outbox
   default 60 minutes) degrades routing to bands and load,
   ledgered, and unknown fields count as neutral, never zero.
 
-## Periodic status-check duty (spec 009 FR-005)
+## Periodic status-check duty 
 
 **Every agent that uses Syncyard checks Syncyard status before
 submitting work for the machines, and at least once per hour during
@@ -340,7 +339,7 @@ systemd units on Linux/WSL targets), never as hand-started console
 windows:
 
 - The Windows tray icon also shows whether the host is
-  connected to the fleet (spec 018): a link mark — solid when
+  connected to the fleet: a link mark — solid when
   connected, hollow amber when stale, broken and desaturated
   when disconnected — judged only from host-local signals
   (the backchannel agent's heartbeat file, and the fleet
@@ -382,7 +381,7 @@ station) follow an extra discipline on top of everything above:
   copied off the device before the job ends; results left only on
   the device mean the job failed.
 
-## Failsafe backchannel (spec 009)
+## Failsafe backchannel 
 
 Syncyard has a failsafe backchannel for the case where Syncyard
 itself — the runners, the tray, or gatekeeper dispatch — is down
@@ -420,7 +419,7 @@ or blocked. It is deliberately narrow:
   id + the sha256 of the body, and verifies by reading `cmd.json`
   back.
 - **Your part**: read-only. Use `bc.py heartbeat` / `status` for
-  the FR-005 status check when the gatekeeper is unreachable, and
+  the status check when the gatekeeper is unreachable, and
   report a stale heartbeat (>5 min) or a down tray/runner to the
   coordination point. Recovery procedures live in
   `backchannel/RUNBOOK.md`.

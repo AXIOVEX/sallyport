@@ -2,7 +2,7 @@
 
 There are three ways to put the Syncyard gatekeeper on a
 machine. All three run the identical code — the package and the
-checkout are byte-for-byte the same files (spec 017 FR-003) —
+checkout are byte-for-byte the same files —
 so the choice is about how the machine is managed, not about
 behavior.
 
@@ -32,8 +32,7 @@ syncyard submit --program myprogram --workflow run.yml \
 The full verb surface — `submit`, `adopt`, `status`, `cancel`,
 `sweep`, `pause`, `resume`, `start`, `stop`, `purge`, `outbox`,
 `host-resume`, `reboot` — is the gatekeeper's own; the console
-command is a direct entry point to it, not a wrapper (spec 017
-FR-002). The failsafe backchannel client ships in the package
+command is a direct entry point to it, not a wrapper. The failsafe backchannel client ships in the package
 as a module:
 
 ```bash

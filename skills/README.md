@@ -7,10 +7,9 @@ the failsafe backchannel only for Syncyard recovery.
 
 Every edition is generated from one shared source,
 [`_source/contract.md`](_source/contract.md), so the content
-cannot drift between hosts. Editions are listed in the spec 010
-FR-006 (Amendment 1) support ranking — Meta Muse is the owner's
-primary vehicle and the first-class edition; the rest follow
-agent market share.
+cannot drift between hosts. Editions are listed in the support
+ranking — Meta Muse is the owner's primary vehicle and the
+first-class edition; the rest follow agent market share.
 
 | Edition | Host | Install |
 |---|---|---|
@@ -28,12 +27,12 @@ agent market share.
 ```bash
 python3 skills/build_skills.py          # rewrite all editions from the source
 python3 skills/build_skills.py --check  # fail if any edition has drifted
-python3 skills/test_skills.py           # the T016 currency battery
+python3 skills/test_skills.py           # the currency battery
 ```
 
 Edit the contract in `_source/contract.md` only, then regenerate.
 CI runs the battery on every change: each edition's version must
-equal the repo `VERSION`, the FR-009 security invariant must
+equal the repo `VERSION`, the security invariant must
 appear verbatim, and no edition may drift from the shared source.
 A Syncyard behavior change updates the contract in the same
 change (the standing SKILL.md currency rule).
