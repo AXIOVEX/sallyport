@@ -1,5 +1,5 @@
 ; SyncyardTray.nsi - NSIS installer for the Syncyard Tray supervisor.
-; Spec: AXIOVEX/syncyard spec 007 (windowless supervision).
+; Spec: electrohire/syncyard spec 007 (windowless supervision).
 ;
 ; Per-user install (no admin): files under
 ; %LOCALAPPDATA%\Programs\SyncyardTray, autostart via the HKCU Run
@@ -25,7 +25,7 @@ VIProductVersion "0.4.4.0"
 VIAddVersionKey "ProductName" "Syncyard Tray"
 VIAddVersionKey "FileDescription" "Syncyard runner tray supervisor (spec 007)"
 VIAddVersionKey "FileVersion" "0.4.4.0"
-VIAddVersionKey "CompanyName" "AXIOVEX"
+VIAddVersionKey "CompanyName" "ElectroHire"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -74,7 +74,7 @@ Section "Syncyard Tray" SecMain
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayName" "Syncyard Tray"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "AXIOVEX"
+  WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "ElectroHire"
   WriteRegStr HKCU "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\logo.ico"
   WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'

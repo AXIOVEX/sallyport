@@ -42,7 +42,7 @@ Syncyard is one engine with two ways in:
   syncyard`): the gatekeeper itself as a Python package, driven
   as the `syncyard` command. See [Installation](installation.md).
 - **GitHub CLI extension** — `gh extension install
-  AXIOVEX/gh-syncyard`: a thin dispatcher that adds `gh syncyard …`
+  electrohire/gh-syncyard`: a thin dispatcher that adds `gh syncyard …`
   and forwards to an installed gatekeeper, unchanged.
 
 Both drive the identical code and the identical verb surface.

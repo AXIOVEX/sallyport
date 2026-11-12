@@ -52,8 +52,8 @@ class ConfigError(Exception):
 # --- Built-in defaults: the pre-config constants, verbatim. ---
 DEFAULTS = {
     "version": 1,
-    "door_repo": "tbitcs/desktop-runner",
-    "project_repo": "AXIOVEX/syncyard",
+    "door_repo": "electrohire/desktop-runner",
+    "project_repo": "electrohire/syncyard",
     "budget": {
         "standdown_remaining": 1000,
         "critical_remaining": 500,

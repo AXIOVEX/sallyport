@@ -640,7 +640,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and is not sent without the owner's explicit word. Specified
   only in this change; implementation follows in phases.
 - Spec 010 Amendment 1 (2026-10-30): FR-012 ships Syncyard as
-  a GitHub CLI extension (`AXIOVEX/gh-syncyard`, thin Go
+  a GitHub CLI extension (`electrohire/gh-syncyard`, thin Go
   dispatcher, official precompile action); FR-006 agent-skill
   editions ranked by market share (Meta Muse primary, Claude
   Code, Copilot, Codex/ChatGPT, Cursor, Gemini/Antigravity,
@@ -649,12 +649,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test_config.py` golden battery (25 checks, all passing);
   additive — the gatekeeper does not read config yet.
 - Spec 010 Phase 7 (FR-012) SHIPPED 2026-10-31:
-  `AXIOVEX/gh-syncyard` v0.1.0 — the GitHub CLI extension.
+  `electrohire/gh-syncyard` v0.1.0 — the GitHub CLI extension.
   Thin Go dispatcher over the installed gatekeeper
   (lookup: $SYNCYARD_GK / $SYNCYARD_HOME / ~/syncyard /
   ~/.syncyard / beside the binary / ./gatekeeper);
   precompiled binaries via the official precompile action;
-  install proof: `gh extension install AXIOVEX/gh-syncyard`
+  install proof: `gh extension install electrohire/gh-syncyard`
   then `gh syncyard status` against the live fleet.
 - Spec 010 Phase 1 slice 2 (T003/T004, 2026-10-31): the
   gatekeeper now reads its effective configuration at
@@ -863,7 +863,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all-rights-reserved terms the 0.1.x releases shipped with. The
   historical release entries below are unchanged.
 - Project renamed from Sallyport to Syncyard. The repository is now
-  `AXIOVEX/syncyard`; GitHub redirects the previous repository URL.
+  `electrohire/syncyard`; GitHub redirects the previous repository URL.
   Documentation, the agent skill, workflow and client repository
   constants, setup defaults, templates, and release metadata now use
   the Syncyard name.
@@ -940,4 +940,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository policies: pull request and issue templates, Dependabot
   for GitHub Actions, CODEOWNERS, and branch protection requiring a
   pull request, an approving review, and green CI.
-- License: all rights reserved, © Axiovex Systems, LLC.
+- License: all rights reserved, © ElectroHire, Inc..

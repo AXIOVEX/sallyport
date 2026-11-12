@@ -25,7 +25,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRaw = "https://raw.githubusercontent.com/AXIOVEX/syncyard/$Ref/runner/tray"
+$repoRaw = "https://raw.githubusercontent.com/electrohire/syncyard/$Ref/runner/tray"
 
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 $src = Join-Path $InstallDir "SyncyardTray.cs"
@@ -34,7 +34,7 @@ $exe = Join-Path $InstallDir "SyncyardTray.exe"
 Write-Host "Fetching SyncyardTray.cs (ref $Ref)"
 Invoke-WebRequest "$repoRaw/SyncyardTray.cs" -OutFile $src
 Invoke-WebRequest "$repoRaw/logo.ico" -OutFile (Join-Path $InstallDir "logo.ico")
-$repoRoot = "https://raw.githubusercontent.com/AXIOVEX/syncyard/$Ref"
+$repoRoot = "https://raw.githubusercontent.com/electrohire/syncyard/$Ref"
 Invoke-WebRequest "$repoRoot/assets/logo.png" -OutFile (Join-Path $InstallDir "logo.png")
 
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"

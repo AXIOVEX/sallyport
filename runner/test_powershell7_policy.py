@@ -53,7 +53,7 @@ def transport_paths():
         p = os.path.join(HERE, "workflows", wf)
         if os.path.exists(p):
             paths.append(p)
-    # The dispatch door repo (tbitcs/desktop-runner) is not part of
+    # The dispatch door repo (electrohire/desktop-runner) is not part of
     # this repository; when a checkout sits beside this one in the
     # fleet's working trees, hold it to the same contract.
     door = os.path.join(os.path.dirname(REPO), "door",

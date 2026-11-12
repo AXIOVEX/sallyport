@@ -5,8 +5,8 @@
 site_name: Syncyard
 site_description: Synchronized, gated dispatch to your own machines - self-hosted runner lanes plus an API-budget gatekeeper for agent workflows.
 site_url: https://syncyard.readthedocs.io/
-repo_url: https://github.com/AXIOVEX/syncyard
-repo_name: AXIOVEX/syncyard
+repo_url: https://github.com/electrohire/syncyard
+repo_name: electrohire/syncyard
 
 theme:
   name: mkdocs

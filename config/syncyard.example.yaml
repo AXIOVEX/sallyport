@@ -14,8 +14,8 @@ version: 1
 
 # Repositories. door_repo is the PRIVATE repo whose workflows
 # dispatch to your runners; project_repo is this project.
-door_repo: tbitcs/desktop-runner
-project_repo: AXIOVEX/syncyard
+door_repo: electrohire/desktop-runner
+project_repo: electrohire/syncyard
 
 # GitHub API discipline. The fleet budget is one account-wide
 # bucket; the sweep stands down rather than starve it.

@@ -1,6 +1,6 @@
 ---
 name: syncyard
-description: Dispatch and watch jobs on the operator's own machines through the Syncyard gatekeeper (AXIOVEX/syncyard) — self-hosted GitHub Actions runner lanes with a shared API budget. Use whenever work must run on the operator's desktop or laptop: builds, probes, renders, hardware sessions, file returns. Covers submit/adopt/status, lane routing, marker verdicts, API discipline, and watermark escalation etiquette.
+description: Dispatch and watch jobs on the operator's own machines through the Syncyard gatekeeper (electrohire/syncyard) — self-hosted GitHub Actions runner lanes with a shared API budget. Use whenever work must run on the operator's desktop or laptop: builds, probes, renders, hardware sessions, file returns. Covers submit/adopt/status, lane routing, marker verdicts, API discipline, and watermark escalation etiquette.
 ---
 
 # Syncyard — agent skill
@@ -13,7 +13,7 @@ assigns lanes, watches every run in one batched sweep, and records
 verdicts. If you are an agent with work for the operator's machines, work
 through the gatekeeper.
 
-Repository: `AXIOVEX/syncyard`. The live gatekeeper copy runs on the
+Repository: `electrohire/syncyard`. The live gatekeeper copy runs on the
 operator's control machine and tracks this repository's releases.
 
 ## Keeping this skill current (standing rule)
@@ -640,12 +640,12 @@ constants it replaced — golden-proven); spec text lives at
 `specs/010-public-release/`.
 
 Amendment 1 (2026-10-30): **FR-012** — Syncyard also ships as
-a GitHub CLI extension from `AXIOVEX/gh-syncyard` (`gh syncyard
+a GitHub CLI extension from `electrohire/gh-syncyard` (`gh syncyard
 ...`); a thin Go dispatcher over the Python gatekeeper,
 cross-compiled release binaries via GitHub's official
 precompile action. **SHIPPED 2026-10-31: v0.1.0 released
 and install-proven** (`gh extension install
-AXIOVEX/gh-syncyard`; `gh syncyard status` served the live
+electrohire/gh-syncyard`; `gh syncyard status` served the live
 fleet gatekeeper). Gatekeeper lookup: $SYNCYARD_GK,
 $SYNCYARD_HOME, ~/syncyard, ~/.syncyard, beside the binary,
 ./gatekeeper. **FR-006 editions are ranked by agent
@@ -754,5 +754,5 @@ by the packaging battery (`packaging/test_packaging.py`).
 The skills contract now names the standalone route beside
 the checkout and `gh syncyard` routes wherever a command
 form is given, in all eight regenerated editions. Flagged
-follow-up, not built here: teach the `AXIOVEX/gh-syncyard`
+follow-up, not built here: teach the `electrohire/gh-syncyard`
 doctor lookup to also resolve a pip-installed `syncyard`.

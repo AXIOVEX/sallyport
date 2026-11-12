@@ -27,7 +27,7 @@ this page annotates. Copy it to `syncyard.yaml` and edit.
 - `door_repo` — the **private** repository whose workflows
   dispatch to your runners. The gatekeeper's dispatch and
   watch calls go here.
-- `project_repo` — this project (`AXIOVEX/syncyard`), used
+- `project_repo` — this project (`electrohire/syncyard`), used
   by `status --repo` for CI and Dependabot health.
 
 ## Budget

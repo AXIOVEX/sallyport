@@ -19,7 +19,7 @@ itself. Every layer below therefore fails closed and says so.
 
 1. **Transport workflows** (`runner/workflows/run.yml`,
    `runner/workflows/wsl.yml`, and their copies in the dispatch
-   door repo `tbitcs/desktop-runner`; the retired desktop-label
+   door repo `electrohire/desktop-runner`; the retired desktop-label
    copies under `runner/legacy/` are history, not live
    transports):
    - a `shell: cmd` preflight step, which cannot itself run under

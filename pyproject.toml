@@ -25,7 +25,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "Apache-2.0" }
 authors = [
-    { name = "Axiovex Systems, LLC" },
+    { name = "ElectroHire, Inc." },
 ]
 keywords = ["github-actions", "self-hosted-runners", "agents", "dispatch", "gatekeeper"]
 classifiers = [
@@ -42,10 +42,10 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/AXIOVEX/syncyard"
-Repository = "https://github.com/AXIOVEX/syncyard"
+Homepage = "https://github.com/electrohire/syncyard"
+Repository = "https://github.com/electrohire/syncyard"
 Documentation = "https://syncyard.readthedocs.io"
-Issues = "https://github.com/AXIOVEX/syncyard/issues"
+Issues = "https://github.com/electrohire/syncyard/issues"
 
 [project.scripts]
 # The console command IS the gatekeeper: this entry point is a

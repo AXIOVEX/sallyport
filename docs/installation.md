@@ -64,11 +64,11 @@ See [Configuration](configuration.md) for the file itself.
 ## Route 2: GitHub CLI extension
 
 ```bash
-gh extension install AXIOVEX/gh-syncyard
+gh extension install electrohire/gh-syncyard
 gh syncyard status
 ```
 
-The extension (separate repository, `AXIOVEX/gh-syncyard`) is
+The extension (separate repository, `electrohire/gh-syncyard`) is
 a thin dispatcher: it locates a gatekeeper on disk — via
 `$SYNCYARD_GK`, `$SYNCYARD_HOME`, `~/syncyard`, `~/.syncyard`,
 beside the extension binary, or `./gatekeeper` — and forwards
@@ -81,7 +81,7 @@ The founding fleet runs the gatekeeper straight from a clone,
 by path:
 
 ```bash
-git clone https://github.com/AXIOVEX/syncyard
+git clone https://github.com/electrohire/syncyard
 python3 syncyard/gatekeeper/gk.py status
 ```
 

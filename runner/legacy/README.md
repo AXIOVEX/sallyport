@@ -11,7 +11,7 @@ This generation bound the fixed desktop runner labels
 lane-addressed contract: it has no `lane` input, no spec 013
 `hold_file`, and no spec 011 running-job registry. The live
 transport copies are under `runner/workflows/`; the production
-dispatch door is the separate `tbitcs/desktop-runner` repo.
+dispatch door is the separate `electrohire/desktop-runner` repo.
 
 These files are retained only as history for reading old runs
 and contract changes.

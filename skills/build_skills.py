@@ -152,7 +152,7 @@ EDITIONS = [
             "as operating instructions for a human or a script. "
             "Prefer the `gh syncyard ...` command form throughout "
             "(install once with `gh extension install "
-            "AXIOVEX/gh-syncyard`), or the standalone `syncyard` "
+            "electrohire/gh-syncyard`), or the standalone `syncyard` "
             "command (install once with `pipx install syncyard`); "
             "every `gk.py` invocation below has the same arguments "
             "after either."

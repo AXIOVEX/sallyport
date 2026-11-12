@@ -40,12 +40,12 @@ most reinventions are either unsafe or quota-hostile.
 **A `gh` extension first — not a core merge, not a platform
 change.** This already exists and works:
 
-- `gh extension install AXIOVEX/gh-syncyard` installs
+- `gh extension install electrohire/gh-syncyard` installs
   `gh syncyard`, a thin Go dispatcher over the Syncyard
   gatekeeper (the engine stays Python; the extension is a
   front door). Released as gh-syncyard v0.1.0 with
   precompiled binaries for the standard platforms.
-- The engine is [AXIOVEX/syncyard](https://github.com/AXIOVEX/syncyard)
+- The engine is [electrohire/syncyard](https://github.com/electrohire/syncyard)
   (Apache-2.0), at v0.3.0: a config-driven gatekeeper, lane
   routing across Windows / WSL2 / Linux / macOS / Docker
   hosts, a failsafe backchannel for recovery, and a ranked
@@ -139,7 +139,7 @@ gaps are presentational and procedural, listed honestly:
 > fleet polling standard that keeps one account's quota
 > healthy, and a skills pack that teaches eight agent tools
 > the same contract. It already ships as a working gh
-> extension — `gh extension install AXIOVEX/gh-syncyard` —
+> extension — `gh extension install electrohire/gh-syncyard` —
 > and the ask is modest: discoverability for the extension,
 > and consideration of the dispatch-only pattern where
 > GitHub documents self-hosted runner safety.

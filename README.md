@@ -6,8 +6,8 @@
 
 **Synchronized, gated dispatch to your own machines: self-hosted CPU/GPU runner lanes plus an API-budget gatekeeper for agent workflows.**
 
-[![CI](https://github.com/AXIOVEX/syncyard/actions/workflows/ci.yml/badge.svg)](https://github.com/AXIOVEX/syncyard/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/AXIOVEX/syncyard)](https://github.com/AXIOVEX/syncyard/releases)
+[![CI](https://github.com/electrohire/syncyard/actions/workflows/ci.yml/badge.svg)](https://github.com/electrohire/syncyard/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/electrohire/syncyard)](https://github.com/electrohire/syncyard/releases)
 
 ## The two-minute story
 
@@ -81,7 +81,7 @@ python3 gatekeeper/gk.py status
 
 A scheduled `gk.py sweep` (every 5 minutes) dispatches within budget, watches all runs in one batched pass, and records the verdict markers each job prints. See [gatekeeper/README.md](gatekeeper/README.md).
 
-Prefer the GitHub CLI? Syncyard ships as an extension: `gh extension install AXIOVEX/gh-syncyard`, then `gh syncyard status` drives the same gatekeeper.
+Prefer the GitHub CLI? Syncyard ships as an extension: `gh extension install electrohire/gh-syncyard`, then `gh syncyard status` drives the same gatekeeper.
 
 Prefer a standalone install? Syncyard also ships as a Python package (spec 017): `pipx install syncyard` (or `pip install syncyard` in a venv), then the `syncyard` command drives the same gatekeeper — the packaged code is the checkout code, byte for byte, with zero runtime dependencies. An installed gatekeeper keeps its state beside the installed package and takes its fleet config from `SYNCYARD_CONFIG` or a `syncyard.yaml` beside the code; see the documentation's installation page for the details and the trade-offs.
 
@@ -96,7 +96,7 @@ gh api -X POST repos/<you>/<door-repo>/actions/runners/registration-token --jq .
 .\runner\setup-runner.ps1 -Name "myhost-quick" -Labels "lane-quick" -RunnerDir "C:\Users\<you>\Development\Syncyard\runners\quick" -RegistrationToken <token> -Start
 ```
 
-The full owner-session runbook — all four lanes, the tray supervisor install, and the per-lane identity proof — is [runner/SETUP.md](runner/SETUP.md). Supervise the runners windowlessly with the Syncyard Tray: download `SyncyardTray-Setup-0.1.0.exe` from [Releases](https://github.com/AXIOVEX/syncyard/releases), run it (per-user, no admin), and the runners start hidden under a tray icon that shows per-lane state and restarts a dead runner.
+The full owner-session runbook — all four lanes, the tray supervisor install, and the per-lane identity proof — is [runner/SETUP.md](runner/SETUP.md). Supervise the runners windowlessly with the Syncyard Tray: download `SyncyardTray-Setup-0.1.0.exe` from [Releases](https://github.com/electrohire/syncyard/releases), run it (per-user, no admin), and the runners start hidden under a tray icon that shows per-lane state and restarts a dead runner.
 - **How a job reaches it:** a job submitted with `--workflow run.yml` and a lane whose config host is this Windows machine dispatches to the runner carrying that lane's label. Identity markers: `LID_HOST`, `LID_WINUSER`, `LID_OS`.
 - **Honest limits:** runners started by the tray start at logon, not at boot — a rebooted machine serves no jobs until its user signs in (closing that gap is spec 011's work, not a shipped feature). The runner process is not elevated; work that needs administrator rights is work the owner runs by hand from a prepared script.
 
@@ -159,7 +159,7 @@ The full standard is [docs/STANDARD.md](docs/STANDARD.md).
 
 Per-agent editions of the same contract ship in [skills/](skills/README.md), generated from one shared source and ranked by how agents actually reach this project: **Meta Muse** (primary), Claude Code, GitHub Copilot, OpenAI Codex/ChatGPT, Cursor, Google Gemini/Antigravity, a generic-agent edition, and a CLI-only fallback. Each edition carries the security invariant verbatim, and a CI battery fails the build if an edition drifts from the source or from the repo VERSION.
 
-Driving Syncyard from the GitHub CLI instead: `gh extension install AXIOVEX/gh-syncyard` adds `gh syncyard …` — a thin dispatcher over the installed gatekeeper with output and exit codes forwarded unchanged.
+Driving Syncyard from the GitHub CLI instead: `gh extension install electrohire/gh-syncyard` adds `gh syncyard …` — a thin dispatcher over the installed gatekeeper with output and exit codes forwarded unchanged.
 
 ## Repository layout
 
@@ -185,4 +185,4 @@ Syncyard uses [Semantic Versioning](https://semver.org). Changes are recorded in
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
 
-Copyright © 2026 Axiovex Systems, LLC.
+Copyright © 2026 ElectroHire, Inc..

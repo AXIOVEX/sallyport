@@ -1,6 +1,6 @@
 #!/bin/bash
 # desktop-wsl.sh - Syncyard client: run a bash command inside WSL2 on a
-# self-hosted runner machine via GitHub Actions (AXIOVEX/syncyard,
+# self-hosted runner machine via GitHub Actions (electrohire/syncyard,
 # workflow wsl.yml).
 #
 # PREFERRED ROUTE: submit jobs through the gatekeeper (gatekeeper/gk.py).
@@ -11,7 +11,7 @@
 # watch polls at gh's default fast interval; see docs/STANDARD.md).
 #
 # Usage: desktop-wsl.sh "<bash command>" [wsl-cwd]
-REPO="AXIOVEX/syncyard"
+REPO="electrohire/syncyard"
 CMD="$1"
 CWD="${2:-/home/tpierson}"
 if [ -z "$CMD" ]; then echo "Usage: $0 \"<bash command>\" [wsl-cwd]" >&2; exit 2; fi

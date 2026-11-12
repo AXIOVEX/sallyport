@@ -50,8 +50,8 @@ def expect_error(name, text):
 # 1+2: example parses and is golden against the constants.
 cfg = cfgmod.load_config(EXAMPLE)
 check("example loads", True)
-check("golden door_repo", cfg["door_repo"] == "tbitcs/desktop-runner")
-check("golden project_repo", cfg["project_repo"] == "AXIOVEX/syncyard")
+check("golden door_repo", cfg["door_repo"] == "electrohire/desktop-runner")
+check("golden project_repo", cfg["project_repo"] == "electrohire/syncyard")
 check("golden workflows", cfg["workflows"] == ["run.yml", "wsl.yml", "grab.yml"])
 check("golden budget", (cfg["budget"]["standdown_remaining"],
                         cfg["budget"]["critical_remaining"]) == (1000, 500))
