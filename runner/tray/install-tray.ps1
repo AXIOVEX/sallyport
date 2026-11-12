@@ -6,7 +6,7 @@
 .DESCRIPTION
   Downloads SyncyardTray.cs from the Syncyard repo, compiles it with
   the csc.exe that ships with Windows (no SDK install), installs the
-  exe under C:\Users\trist\Development\Syncyard\tray, registers it in
+  exe under C:\Users\you\Development\Syncyard\tray, registers it in
   the HKCU Run key so it starts at logon with no window, and launches
   it now. The tray starts every registered runner hidden, restarts a
   dead runner (capped, then it asks for the owner), and hides stray

@@ -56,7 +56,7 @@ fresh "tray started".
 ### 2. Read tray.log
 
 ```bash
-tail -n 200 "/mnt/c/Users/trist/AppData/Local/SyncyardTray/tray.log"
+tail -n 200 "/mnt/c/Users/you/AppData/Local/SyncyardTray/tray.log"
 ```
 
 ### 3. Restart a runner lane
@@ -97,8 +97,8 @@ files on the Windows side, and `write_heartbeat` merges each
 into the heartbeat verbatim when it holds a non-empty JSON
 object:
 
-- `going_down` ← `C:\Users\trist\Development\Syncyard\
-  going-down.json` (WSL view: `/mnt/c/Users/trist/
+- `going_down` ← `C:\Users\you\Development\Syncyard\
+  going-down.json` (WSL view: `/mnt/c/Users/you/
   Development/Syncyard/going-down.json`, override
   `SYNCBC_GOING_DOWN_FILE`). The Phase 1 going-down record:
   `{host, ts, trigger, active_run_ids, supervised,
@@ -133,7 +133,7 @@ names the config host, e.g. `desktop`, in its `host` field).
 A `guard_stale` ledger line with a live heartbeat — the
 guard process died or its beat file stopped updating; the
 guard's own log sits beside its executable
-(`C:\Users\trist\Development\Syncyard\guard\guard.log`).
+(`C:\Users\you\Development\Syncyard\guard\guard.log`).
 
 ## Failure triage
 

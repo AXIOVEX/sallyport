@@ -543,7 +543,7 @@ namespace SyncyardTray
         public int TickSeconds = 5;
         public bool HideStrayConsoles = true;
         public string FleetStatusPath =
-            @"C:\Users\trist\Development\Syncyard\status\fleet-status.json";
+            @"C:\Users\you\Development\Syncyard\status\fleet-status.json";
         public int FleetStaleSeconds = 900;
         // Spec 021 FR-007: the runner root is per-machine. The
         // default is the original desktop layout; a machine
@@ -551,14 +551,14 @@ namespace SyncyardTray
         // runnerRoot in tray-settings.json and the lane dirs
         // are built from it. Nothing else about a lane changes.
         public string RunnerRoot =
-            @"C:\Users\trist\Development\Syncyard\runners";
+            @"C:\Users\you\Development\Syncyard\runners";
         // Spec 018: the backchannel agent's heartbeat file on this
         // host. The deployed agent (backchannel/agent.sh) writes
         // it at ~/syncyard-backchannel/repo/channels/syncyard-dev/
         // heartbeat.json inside the owner's WSL distro; the tray
         // reads the same file through the distro's UNC share.
         public string ConnectionHeartbeatPath =
-            @"\\wsl.localhost\Ubuntu-24.04\home\tpierson\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json";
+            @"\\wsl.localhost\Ubuntu-24.04\home\you\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json";
         public int ConnectionStaleSeconds = 600;
         public int ConnectionDownSeconds = 900;
         // Spec 025: the gatekeeper host name this tray's
@@ -3091,7 +3091,7 @@ namespace SyncyardTray
             // the next activation change reparented a disposed
             // object and the tray died with an unhandled
             // ObjectDisposedException ('ContextMenuStrip',
-            // TRISTEN-LAPTOP 2026-11-04). Items are the only
+            // field case on the laptop host, 2026-11-04). Items are the only
             // things a rebuild may dispose, and only once they
             // are detached from the strip (end of this method).
             //

@@ -17,7 +17,7 @@ emergency role in a much narrower form.
   matched by command id), and
   `channels/syncyard-dev/heartbeat.json` (desktop, every poll).
 - **Desktop side**: `agent.sh`, running as the WSL systemd user
-  service `syncyard-backchannel.service` under `tpierson` on
+  service `syncyard-backchannel.service` under the WSL user on
   TRISTEN-DESKTOP. It is independent of the runners, the tray, and
   the gatekeeper, syncs over git (no REST quota), polls about
   every 60 seconds, and logs to `~/syncyard-backchannel/agent.log`
@@ -103,7 +103,7 @@ unless the recovery itself is the act ordered.
 2. **Read tray.log**:
 
    ```bash
-   tail -n 100 "/mnt/c/Users/trist/AppData/Local/SyncyardTray/tray.log"
+   tail -n 100 "/mnt/c/Users/you/AppData/Local/SyncyardTray/tray.log"
    ```
 
 3. **Restart a runner lane** — stop the lane's listener, let the
@@ -161,7 +161,7 @@ tail -f ~/syncyard-backchannel/agent.log
 
 Note: for the service to run while no WSL session is open, the
 owner's WSL user lingering must be enabled
-(`loginctl enable-linger tpierson`) — an owner-session act,
+(`loginctl enable-linger <wsl-user>`) — an owner-session act,
 checked at install time by the Desktop Access chat.
 
 ## Recovery

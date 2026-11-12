@@ -25,7 +25,7 @@ on:
       cwd:
         description: "WSL working directory"
         required: false
-        default: '/home/tpierson'
+        default: '/home/you'
       hold_file:
         description: "Checkpoint hold-signal path inside the distro (spec 013 FR-007); the job reads it via $SYNCYARD_HOLD_FILE"
         required: false

@@ -62,7 +62,7 @@ def job(jid, lane, script_path, created, sha):
          "script_sha256": sha, "maintenance": False,
          "notify_chat": None, "run_id": None, "run_status": None,
          "run_conclusion": None, "flags": [], "watermarks": {},
-         "expected_min": 5, "cwd": "/home/tpierson"}
+         "expected_min": 5, "cwd": "/home/you"}
     path = os.path.join(gk.QUEUE_DIR, jid + ".json")
     with open(path, "w") as f:
         json.dump(j, f)

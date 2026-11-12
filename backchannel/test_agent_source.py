@@ -36,12 +36,12 @@ def main():
         check("going-down source path is the guard's file "
               "(SYNCBC_GOING_DOWN_FILE override, fleet default)",
               'GOING_DOWN_FILE="${SYNCBC_GOING_DOWN_FILE:-'
-              '/mnt/c/Users/trist/Development/Syncyard/'
+              '/mnt/c/Users/you/Development/Syncyard/'
               'going-down.json}"' in SRC),
         check("guard heartbeat source path (SYNCBC_GUARD_FILE "
               "override, fleet default)",
               'GUARD_FILE="${SYNCBC_GUARD_FILE:-'
-              '/mnt/c/Users/trist/Development/Syncyard/'
+              '/mnt/c/Users/you/Development/Syncyard/'
               'guard-heartbeat.json}"' in SRC),
         check("write_heartbeat receives both source paths",
               '"$GOING_DOWN_FILE" "$GUARD_FILE"' in SRC),
@@ -53,7 +53,7 @@ def main():
               "override, fleet default is the tray's log dir "
               "under /mnt/c)",
               'TRAY_FILE="${SYNCBC_TRAY_FILE:-'
-              '/mnt/c/Users/trist/AppData/Local/SyncyardTray/'
+              '/mnt/c/Users/you/AppData/Local/SyncyardTray/'
               'tray-heartbeat.json}"' in SRC),
         check("write_heartbeat receives the tray source path",
               '"$GUARD_FILE" "$SYNC_FILE" "$TRAY_FILE"' in SRC),

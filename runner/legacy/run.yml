@@ -9,12 +9,12 @@ on:
   workflow_dispatch:
     inputs:
       cmd_b64:
-        description: "Base64-encoded PowerShell script to execute on TRISTEN-DESKTOP"
+        description: "Base64-encoded PowerShell script to execute on the Windows host"
         required: true
       cwd:
         description: "Working directory"
         required: false
-        default: 'C:\Users\trist'
+        default: 'C:\Users\you'
 
 jobs:
   run:

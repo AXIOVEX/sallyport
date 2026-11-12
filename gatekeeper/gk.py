@@ -82,7 +82,7 @@ STALE_DISPATCHING_MIN = 10       # dispatching state older than this = human fla
 LOCK_STALE_MIN = 10
 WORKFLOWS = ("run.yml", "wsl.yml", "grab.yml")
 LANES = ("quick", "normal", "long", "gpu")
-DEFAULT_CWD = {"run.yml": r"C:\Users\trist", "wsl.yml": "/home/tpierson",
+DEFAULT_CWD = {"run.yml": r"C:\Users\you", "wsl.yml": "/home/you",
                "grab.yml": None}
 
 # Part 4 watermark tables, minutes: lane -> (W1, W2)
@@ -158,7 +158,7 @@ def default_cwd(lane, workflow):
     order, so the LAST host in the config silently set the
     default for all of them. With one machine that was
     invisible; the day the laptop enrolled as a second
-    Windows host, its run.yml directory (D:\\Development\\
+    Windows host, its run.yml directory (C:\\Users\\you\\Development\\
     Inductoheat) overwrote the desktop's and every desktop
     run.yml job submitted without --cwd was dispatched into
     a directory that does not exist there, so its payload

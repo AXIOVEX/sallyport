@@ -10,11 +10,11 @@
 # watch polls at gh's default fast interval; see docs/STANDARD.md).
 #
 # Usage: desktop-run.sh "<powershell command>" [cwd]
-#   cwd defaults to C:\Users\trist
+#   cwd defaults to C:\Users\you
 # Companion: desktop-wsl.sh for bash inside WSL2.
 REPO="electrohire/syncyard"
 CMD="$1"
-CWD="${2:-C:\\Users\\trist}"
+CWD="${2:-C:\\Users\\you}"
 if [ -z "$CMD" ]; then echo "Usage: $0 \"<powershell command>\" [cwd]" >&2; exit 2; fi
 B64=$(printf '%s' "$CMD" | base64 -w0)
 BEFORE=$(date -u +%Y-%m-%dT%H:%M:%SZ)

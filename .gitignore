@@ -16,3 +16,8 @@ dist/
 build/
 *.egg-info/
 site/
+
+# Local-only fleet configuration (never committed; see
+# config/syncyard.example.yaml for the fictional example)
+syncyard.yaml
+hosts.json

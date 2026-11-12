@@ -1,6 +1,11 @@
-# Syncyard configuration — example expressing the original
-# production fleet exactly (spec 010 FR-001 golden fixture).
-# Copy to `syncyard.yaml` beside the gatekeeper and edit.
+# Syncyard configuration — a FICTIONAL example fleet (one
+# Windows host, user "you", and its WSL2 distro). It doubles
+# as the spec 010 FR-001 golden fixture: the built-in defaults
+# in gatekeeper/config.py carry these same fictional values,
+# and test_config.py proves the two agree. Real deployments
+# copy this to `syncyard.yaml` beside the gatekeeper and put
+# their real hosts and paths there — that file is local-only
+# and is never committed (see .gitignore).
 # Every key is optional: an absent key falls back to the
 # built-in default, which is the value shown here unless a
 # comment says otherwise. An invalid file fails closed with a
@@ -93,9 +98,9 @@ checkpoint:
   env_var: SYNCYARD_HOLD_FILE
   holds_dir:
     run.yml:
-      desktop: "C:\\Users\\trist\\Development\\Syncyard\\holds"
-      laptop: "D:\\Development\\Syncyard\\holds"
-    wsl.yml: /home/tpierson/.syncyard/holds
+      desktop: "C:\\Users\\you\\Development\\Syncyard\\holds"
+      laptop: "C:\\Users\\you\\Development\\Syncyard\\holds"
+    wsl.yml: /home/you/.syncyard/holds
 
 # Host drain (spec 011 FR-005/FR-007). `gk drain --host <host>`
 # holds dispatch to that one host, signals its running
@@ -148,7 +153,7 @@ hosts:
       grab.yml: grab
     identity: [LID_HOST, LID_WINUSER, LID_OS]
     cwd:
-      run.yml: "C:\\Users\\trist"
+      run.yml: "C:\\Users\\you"
       grab.yml: null
   desktop-wsl:
     type: wsl2
@@ -159,7 +164,7 @@ hosts:
       grab.yml: grab
     identity: [LID_HOST, LID_WSLUSER, LID_OS]
     cwd:
-      wsl.yml: /home/tpierson
+      wsl.yml: /home/you
 
 # Workflows available for dispatch, by file name.
 workflows:

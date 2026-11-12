@@ -117,7 +117,7 @@ def tray(build):
             ' "lanes": []}' % build)
 
 
-HB = ('{"ts": "2026-11-06T12:01:00Z", "host": "TRISTEN-DESKTOP",'
+HB = ('{"ts": "2026-11-06T12:01:00Z", "host": "EXAMPLE-HOST",'
       ' "stopped": False, "tray": %s}')
 
 # --- Current: beat equals the release --------------------------------------
@@ -235,7 +235,7 @@ check("unknown: the status line renders the word unknown",
 
 # --- No beat: no judgement, no manifest read --------------------------------
 res = run_driver(r"""
-hb = {"ts": "2026-11-06T12:01:00Z", "host": "TRISTEN-DESKTOP",
+hb = {"ts": "2026-11-06T12:01:00Z", "host": "EXAMPLE-HOST",
       "stopped": False}
 sweep_with(hb)
 st = hosts_state().get("desktop", {})

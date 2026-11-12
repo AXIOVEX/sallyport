@@ -197,7 +197,7 @@ def seed_heartbeat(api, age_s):
     ts = datetime.now(timezone.utc) - timedelta(seconds=age_s)
     api.seed_json(bc.HEARTBEAT_PATH, {
         "ts": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "host": "TESTHOST", "user": "tpierson",
+        "host": "TESTHOST", "user": "you",
         "last_executed_id": None, "stopped": False})
 
 

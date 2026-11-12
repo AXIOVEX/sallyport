@@ -3,9 +3,9 @@
 
 The defect: gk.py built its default cwd by merging every
 host's cwd map into ONE global dict in file order. With a
-single machine that was invisible. When TRISTEN-LAPTOP
+single machine that was invisible. When the laptop host
 enrolled as a second Windows host (2026-11-04), its run.yml
-cwd (D:\\Development\\Inductoheat) silently overwrote the
+cwd (C:\\Users\\you\\Development\\Inductoheat) silently overwrote the
 desktop's, and every desktop run.yml job submitted without
 --cwd was dispatched into a directory that does not exist
 on the desktop, so its payload never ran (field case:
@@ -55,7 +55,7 @@ hosts:
       grab.yml: grab
     identity: [LID_HOST, LID_WINUSER, LID_OS]
     cwd:
-      run.yml: "C:\\Users\\trist"
+      run.yml: "C:\\Users\\you"
       grab.yml: null
   desktop-wsl:
     type: wsl2
@@ -66,7 +66,7 @@ hosts:
       grab.yml: grab
     identity: [LID_HOST, LID_WSLUSER, LID_OS]
     cwd:
-      wsl.yml: /home/tpierson
+      wsl.yml: /home/you
   laptop:
     type: windows
     workflows:
@@ -75,7 +75,7 @@ hosts:
       grab.yml: grab
     identity: [LID_HOST, LID_WINUSER, LID_OS]
     cwd:
-      run.yml: "D:\\Development\\Inductoheat"
+      run.yml: "C:\\Users\\you\\Development\\Inductoheat"
       grab.yml: null
   laptop-wsl:
     type: wsl2
@@ -158,14 +158,14 @@ def main():
         got = json.loads(r.stdout.strip().splitlines()[-1]) \
             if r.returncode == 0 else {}
         check("desktop lane run.yml cwd is the desktop's",
-              got.get("quick|run.yml") == r"C:\Users\trist",
+              got.get("quick|run.yml") == r"C:\Users\you",
               repr(got.get("quick|run.yml")))
         check("laptop lane run.yml cwd is the laptop's (regression)",
               got.get("laptop-quick|run.yml")
-              == r"D:\Development\Inductoheat",
+              == r"C:\Users\you\Development\Inductoheat",
               repr(got.get("laptop-quick|run.yml")))
         check("desktop wsl.yml cwd via the machine's wsl host",
-              got.get("long|wsl.yml") == "/home/tpierson",
+              got.get("long|wsl.yml") == "/home/you",
               repr(got.get("long|wsl.yml")))
         check("laptop wsl.yml cwd via the laptop's own wsl host",
               got.get("laptop-long|wsl.yml") == "/home/lapuser",
@@ -174,8 +174,8 @@ def main():
               got.get("quick|grab.yml") is None
               and got.get("laptop-quick|grab.yml") is None)
         check("unknown or absent lane falls back to the built-in",
-              got.get("nope|run.yml") == r"C:\Users\trist"
-              and got.get("None|run.yml") == r"C:\Users\trist")
+              got.get("nope|run.yml") == r"C:\Users\you"
+              and got.get("None|run.yml") == r"C:\Users\you")
 
         # --- real submits, read back from queue records ----
         def submit(key, *args):
@@ -199,13 +199,13 @@ def main():
         rec, err = submit("cb-desktop-run", "--lane", "quick",
                           "--workflow", "run.yml")
         check("submit on desktop lane records the desktop cwd",
-              rec is not None and rec.get("cwd") == r"C:\Users\trist",
+              rec is not None and rec.get("cwd") == r"C:\Users\you",
               err or repr(rec and rec.get("cwd")))
         rec, err = submit("cb-laptop-run", "--lane", "laptop-quick",
                           "--workflow", "run.yml")
         check("submit on laptop lane records the laptop cwd",
               rec is not None
-              and rec.get("cwd") == r"D:\Development\Inductoheat",
+              and rec.get("cwd") == r"C:\Users\you\Development\Inductoheat",
               err or repr(rec and rec.get("cwd")))
         rec, err = submit("cb-explicit", "--lane", "laptop-quick",
                           "--workflow", "run.yml",
@@ -228,7 +228,7 @@ def main():
               err or repr(rec))
         rec, err = submit("cb-grab", "--lane", "quick",
                           "--workflow", "grab.yml",
-                          "--grab-path", r"C:\Users\trist\x.txt")
+                          "--grab-path", r"C:\Users\you\x.txt")
         check("grab submit records null cwd",
               rec is not None and rec.get("cwd") is None
               and not rec.get("cwd_auto"),

@@ -127,7 +127,7 @@ link mark — solid when this host is connected to the fleet, hollow
 amber when stale, broken (with the mark desaturated) when
 disconnected — judged only from the backchannel agent's heartbeat
 file on this host (default
-`\\wsl.localhost\Ubuntu-24.04\home\tpierson\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json`;
+`\\wsl.localhost\Ubuntu-24.04\home\you\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json`;
 the path and the stale/down thresholds, 180 s / 900 s, are tray
 settings in the dialog's Connection section). The tray menu and
 tooltip state the connection in words, the dialog names the exact

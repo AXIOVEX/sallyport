@@ -25,7 +25,7 @@ on:
       cwd:
         description: "Working directory"
         required: false
-        default: 'C:\Users\trist'
+        default: 'C:\Users\you'
       hold_file:
         description: "Checkpoint hold-signal path on this host (spec 013 FR-007); the job reads it via $env:SYNCYARD_HOLD_FILE"
         required: false

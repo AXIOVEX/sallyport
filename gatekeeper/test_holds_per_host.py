@@ -3,11 +3,11 @@
 
 The defect (field case 2026-11-05): checkpoint.holds_dir
 mapped run.yml to ONE directory — the desktop's profile tree
-C:\\Users\\trist\\Development\\Syncyard\\holds — and
+C:\\Users\\you\\Development\\Syncyard\\holds — and
 hold_signal_path used it for every Windows job regardless of
 host. Laptop jobs were handed a hold path inside another
 Windows user's profile; the door wrapper's directory creation
-was denied ('Access to the path C:\\Users\\trist\\...') and
+was denied ('Access to the path C:\\Users\\you\\...') and
 every laptop run.yml job died before its payload ran.
 
 The fix: a holds_dir entry is either one directory valid on
@@ -53,7 +53,7 @@ hosts:
       grab.yml: grab
     identity: [LID_HOST, LID_WINUSER, LID_OS]
     cwd:
-      run.yml: "C:\\Users\\trist"
+      run.yml: "C:\\Users\\you"
       grab.yml: null
   desktop-wsl:
     type: wsl2
@@ -64,7 +64,7 @@ hosts:
       grab.yml: grab
     identity: [LID_HOST, LID_WSLUSER, LID_OS]
     cwd:
-      wsl.yml: /home/tpierson
+      wsl.yml: /home/you
   laptop:
     type: windows
     workflows:
@@ -73,7 +73,7 @@ hosts:
       grab.yml: grab
     identity: [LID_HOST, LID_WINUSER, LID_OS]
     cwd:
-      run.yml: "D:\\Development\\Inductoheat"
+      run.yml: "C:\\Users\\you\\Development\\Inductoheat"
       grab.yml: null
   laptop-wsl:
     type: wsl2
@@ -176,17 +176,17 @@ def run_driver(yaml_text):
 # --- A: shipped defaults (no checkpoint section in the yaml) -------------
 got = run_driver(BASE_YAML)
 check("laptop run.yml job gets the laptop holds dir",
-      got["lap_run"] == r"D:\Development\Syncyard\holds\j-lap.hold",
+      got["lap_run"] == r"C:\Users\you\Development\Syncyard\holds\j-lap.hold",
       repr(got["lap_run"]))
 check("desktop run.yml job keeps the desktop holds dir",
       got["desk_run"]
-      == r"C:\Users\trist\Development\Syncyard\holds\j-desk.hold",
+      == r"C:\Users\you\Development\Syncyard\holds\j-desk.hold",
       repr(got["desk_run"]))
 check("laptop wsl.yml job keeps the shared string holds dir",
-      got["lap_wsl"] == "/home/tpierson/.syncyard/holds/j-lw.hold",
+      got["lap_wsl"] == "/home/you/.syncyard/holds/j-lw.hold",
       repr(got["lap_wsl"]))
 check("desktop wsl.yml job keeps the shared string holds dir",
-      got["desk_wsl"] == "/home/tpierson/.syncyard/holds/j-dw.hold",
+      got["desk_wsl"] == "/home/you/.syncyard/holds/j-dw.hold",
       repr(got["desk_wsl"]))
 check("grab.yml job still has no hold venue",
       got["grab"] is None, repr(got["grab"]))

@@ -228,7 +228,7 @@ def write_capability(host, snap, probed_at="2026-11-02T12:00:00Z"):
     with open(gk.HOSTS_FILE, "w") as f:
         json.dump(state, f)
 
-DESKTOP_CAP = {"platform": "windows", "hostname": "TRISTEN-DESKTOP",
+DESKTOP_CAP = {"platform": "windows", "hostname": "EXAMPLE-HOST",
                "cpu_cores": 24, "cpu_model": "i9", "cpu_load_1m": None,
                "ram_total_mb": 65536, "ram_free_mb": 40000,
                "storage_free_gb": 900.0, "storage_root": "C:",
@@ -655,7 +655,7 @@ check("a resolved auto job is never re-resolved (FR-007)",
 # --- Probe parsers against fixtures --------------------------------
 WINDOWS_REPORT = """SYNCYARD_PROBE 1 platform=windows
 ## hostname
-TRISTEN-DESKTOP
+EXAMPLE-HOST
 ## cpu
 
 
@@ -686,7 +686,7 @@ PROBE_END
 
 LINUX_REPORT = """SYNCYARD_PROBE 1 platform=linux
 ## hostname
-tristen-desktop
+example-desktop
 ## cpuinfo
 model name	: AMD Ryzen 9 7950X 16-Core Processor
 processors: 32
@@ -706,7 +706,7 @@ PROBE_END
 
 DARWIN_REPORT = """SYNCYARD_PROBE 1 platform=darwin
 ## hostname
-tristens-mac
+example-mac
 ## sysctl
 Apple M2 Pro
 cores: 10
@@ -742,7 +742,7 @@ def parse_in_driver(report, name):
 snap = parse_in_driver(WINDOWS_REPORT, "windows")
 check("windows probe parser (FR-005)",
       snap["platform"] == "windows"
-      and snap["hostname"] == "TRISTEN-DESKTOP"
+      and snap["hostname"] == "EXAMPLE-HOST"
       and snap["cpu_cores"] == 24
       and snap["cpu_model"].startswith("Intel(R)")
       and snap["ram_total_mb"] == 33453056 // 1024
