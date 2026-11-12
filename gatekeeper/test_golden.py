@@ -55,8 +55,8 @@ def check(name, cond, detail=""):
 
 # --- Legacy literal table (the pre-config constants, verbatim) -----
 LEGACY = {
-    "REPO": "tbitcs/desktop-runner",
-    "PROJECT_REPO": "AXIOVEX/syncyard",
+    "REPO": "electrohire/desktop-runner",
+    "PROJECT_REPO": "electrohire/syncyard",
     "HLOG_MAX_BYTES": 1000000,
     "MAX_ACTIVE_DISPATCHED": 2,
     "STANDDOWN_REMAINING": 1000,
@@ -320,7 +320,7 @@ try:
     b64 = res["b64"]
     base = ["gh", "workflow", "run"]
     check("dispatch argv: plain job",
-          res["out"]["plain"] == base + ["wsl.yml", "-R", "tbitcs/desktop-runner",
+          res["out"]["plain"] == base + ["wsl.yml", "-R", "electrohire/desktop-runner",
                                          "-f", "cmd_b64=" + b64,
                                          "-f", "lane=lane-quick",
                                          "-f", "cwd=/home/tpierson",
@@ -328,7 +328,7 @@ try:
                                                ".syncyard/holds/j1.hold"],
           str(res["out"]["plain"]))
     check("dispatch argv: docker job carries image + mounts",
-          res["out"]["docker"] == base + ["docker.yml", "-R", "tbitcs/desktop-runner",
+          res["out"]["docker"] == base + ["docker.yml", "-R", "electrohire/desktop-runner",
                                           "-f", "cmd_b64=" + b64,
                                           "-f", "lane=lane-quick",
                                           "-f", "cwd=/",
@@ -336,7 +336,7 @@ try:
                                           "-f", "mounts=/a:/mnt/a"],
           str(res["out"]["docker"]))
     check("dispatch argv: grab job",
-          res["out"]["grab"] == base + ["grab.yml", "-R", "tbitcs/desktop-runner",
+          res["out"]["grab"] == base + ["grab.yml", "-R", "electrohire/desktop-runner",
                                         "-f", "path=/x/file.bin",
                                         "-f", "lane=lane-quick"],
           str(res["out"]["grab"]))

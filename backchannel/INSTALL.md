@@ -50,7 +50,7 @@ mkdir -p ~/syncyard-backchannel
 git clone git@github.com:tbitcs/syncyard-backchannel.git ~/syncyard-backchannel/repo
 ```
 
-Place `agent.sh` from this repo (AXIOVEX/syncyard `backchannel/`,
+Place `agent.sh` from this repo (electrohire/syncyard `backchannel/`,
 at a pinned merged commit; verify its sha256 against the merge
 record) at `~/syncyard-backchannel/agent.sh`, `chmod +x`.
 

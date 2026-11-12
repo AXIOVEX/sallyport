@@ -1,6 +1,6 @@
 // SyncyardGuard.cs - host shutdown guard for Syncyard (spec 011).
 //
-// Spec: AXIOVEX/syncyard spec 011 (shutdown protection and
+// Spec: electrohire/syncyard spec 011 (shutdown protection and
 // recovery), Phase 3 - the guard component and the going-down
 // WRITER. The gatekeeper side of this contract (ingest,
 // exactly-once per (host, ts), the FR-006 dispatch hold)

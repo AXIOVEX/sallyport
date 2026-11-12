@@ -29,7 +29,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repoRaw = "https://raw.githubusercontent.com/AXIOVEX/syncyard/$Ref/runner/guard"
+$repoRaw = "https://raw.githubusercontent.com/electrohire/syncyard/$Ref/runner/guard"
 
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 $src = Join-Path $InstallDir "SyncyardGuard.cs"

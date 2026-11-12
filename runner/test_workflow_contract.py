@@ -151,7 +151,7 @@ check("door linux fixture exists", os.path.isfile(DOOR_LINUX_FIXTURE))
 if os.path.isfile(DOOR_LINUX_FIXTURE):
     fixture = open(DOOR_LINUX_FIXTURE).read()
     check("door linux fixture names its source and refresh duty",
-          "tbitcs/desktop-runner" in fixture
+          "electrohire/desktop-runner" in fixture
           and ".github/workflows/linux.yml" in fixture
           and "Refresh duty:" in fixture
           and "0b3bf7000d6eda93bd2b2ecaf8eddde5c521ab81" in fixture)

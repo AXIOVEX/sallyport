@@ -179,7 +179,7 @@ guard's own log sits beside its executable
   line, not from the tail's length.
 - **Corrupt cmd.json** — harmless by design (the agent skips
   it and keeps heartbeating); overwrite it with a fresh send.
-- **Reinstall** — from a checkout of AXIOVEX/syncyard, run
+- **Reinstall** — from a checkout of electrohire/syncyard, run
   `backchannel/install-backchannel.sh` inside WSL. It is
   idempotent: it refreshes the agent copy, rewrites the unit,
   restarts the service, and prints `SYNCBC_INSTALL_OK 1` when

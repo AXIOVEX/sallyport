@@ -59,7 +59,7 @@ Two constants at the top of `gk.py` are the fleet's configuration
 points:
 
 - `REPO` — the GitHub repository the runners are registered to
-  (`AXIOVEX/syncyard`).
+  (`electrohire/syncyard`).
 - `DEFAULT_CWD` — the default working directory per workflow on the
   operator's machines. Set these to your own account's paths when
   deploying your own fleet.

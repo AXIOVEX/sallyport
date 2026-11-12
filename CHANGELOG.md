@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Project home and attribution moved from AXIOVEX/Axiovex Systems to
+  the ElectroHire org (electrohire/syncyard, electrohire/gh-syncyard,
+  electrohire/desktop-runner) by owner order 2026-11-12 (#99). Repo
+  path strings in code, config defaults, docs and installer metadata
+  now name the electrohire repos; LICENSE attribution names
+  ElectroHire, Inc. Historical spec records keep the names in force
+  when they were written.
 ### Added
 - Tray settings resilience, per-machine lane sets, and
   multi-instance runner supervision (spec 028, H4): the

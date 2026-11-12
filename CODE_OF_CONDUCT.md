@@ -52,7 +52,7 @@ spaces.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the project maintainers through GitHub's private reporting
-channels or by contacting Axiovex Systems, LLC directly. All complaints will
+channels or by contacting ElectroHire, Inc. directly. All complaints will
 be reviewed and investigated promptly and fairly. Maintainers are obligated
 to respect the privacy and security of the reporter of any incident.
 

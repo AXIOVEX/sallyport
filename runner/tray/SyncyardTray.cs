@@ -1,6 +1,6 @@
 // SyncyardTray.cs - windowless supervisor for the Syncyard runners.
 //
-// Spec: AXIOVEX/syncyard spec 007 (windowless supervision),
+// Spec: electrohire/syncyard spec 007 (windowless supervision),
 // spec 014 (tray settings UI and dynamic fleet display), and
 // spec 018 (tray connection indicator).
 // Claim: the desktop runners run with NO console window created and
@@ -109,9 +109,9 @@ using System.Windows.Forms;
 // repo VERSION file on every release.
 [assembly: System.Reflection.AssemblyTitle("Syncyard Tray")]
 [assembly: System.Reflection.AssemblyDescription("Syncyard fleet tray: runner supervision, settings, and connection status")]
-[assembly: System.Reflection.AssemblyCompany("Axiovex Systems, LLC")]
+[assembly: System.Reflection.AssemblyCompany("ElectroHire, Inc.")]
 [assembly: System.Reflection.AssemblyProduct("Syncyard Tray")]
-[assembly: System.Reflection.AssemblyCopyright("Copyright (c) Axiovex Systems, LLC")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright (c) ElectroHire, Inc.")]
 [assembly: System.Reflection.AssemblyVersion("0.4.4.0")]
 [assembly: System.Reflection.AssemblyFileVersion("0.4.4.0")]
 
@@ -1663,7 +1663,7 @@ namespace SyncyardTray
         // threads below; the workers never touch the menu.
         private const string BuildId = "0.4.4.0";
         private const string UpdateManifestUrl =
-            "https://github.com/AXIOVEX/syncyard/releases/latest/download/tray-update.json";
+            "https://github.com/electrohire/syncyard/releases/latest/download/tray-update.json";
         private string _updateVersion;     // newer build, if any
         private string _updateSha256;
         private string _updateUrl;

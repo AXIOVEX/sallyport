@@ -6,7 +6,7 @@ Please report security issues privately, not in public issues:
 
 - Use GitHub's **private vulnerability reporting** for this repository
   (the "Report a vulnerability" button under the Security tab), or
-- Contact the maintainers at Axiovex Systems, LLC directly.
+- Contact the maintainers at ElectroHire, Inc. directly.
 
 We will acknowledge reports, investigate, and coordinate a fix and a
 disclosure timeline with the reporter. Please give us a reasonable

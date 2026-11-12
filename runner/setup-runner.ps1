@@ -10,7 +10,7 @@
 #   -RegistrationToken must be a fresh runner registration token for
 #   the repository (they expire in about an hour). Fetch it at setup
 #   time, for example:
-#     gh api -X POST repos/AXIOVEX/syncyard/actions/runners/registration-token --jq .token
+#     gh api -X POST repos/electrohire/syncyard/actions/runners/registration-token --jq .token
 #   This script never writes the token to disk and never prints it.
 #   (The runner's own config stores its credentials next to the runner;
 #   that is the runner's normal mechanism.)
@@ -36,7 +36,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$RegistrationToken,
 
-    [string]$RepoUrl = "https://github.com/AXIOVEX/syncyard",
+    [string]$RepoUrl = "https://github.com/electrohire/syncyard",
 
     [string]$RunnerVersion = "2.338.2",
 

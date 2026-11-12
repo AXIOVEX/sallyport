@@ -2,7 +2,7 @@
 # 0.1.2 (2026-11-09, owner order): the upload carries retention-days: 1;
 # grabbed files are transport only and must self-expire in a day, not
 # the 90-day default (see the 2026-11-09 artifact backlog purge).
-# Part of AXIOVEX/syncyard. Dispatch-only by design: this workflow binds
+# Part of electrohire/syncyard. Dispatch-only by design: this workflow binds
 # self-hosted runners and must NEVER be triggered by pull_request,
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.

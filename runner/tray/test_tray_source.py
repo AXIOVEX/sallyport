@@ -557,7 +557,7 @@ def main():
         check("startup log carries the build stamp",
               'Log("tray build " + BuildId)' in SRC),
         check("update check reads the published manifest",
-              '"https://github.com/AXIOVEX/syncyard/releases/'
+              '"https://github.com/electrohire/syncyard/releases/'
               'latest/download/tray-update.json"' in SRC),
         check("update menu item texts exist",
               '"Check for updates"' in SRC

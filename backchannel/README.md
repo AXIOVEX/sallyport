@@ -150,7 +150,7 @@ Desktop Access chat explicitly directs otherwise.
 
 ## Install (desktop, WSL)
 
-From a checkout of AXIOVEX/syncyard inside WSL2 on the desktop:
+From a checkout of electrohire/syncyard inside WSL2 on the desktop:
 
 ```bash
 bash backchannel/install-backchannel.sh

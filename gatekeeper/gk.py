@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """gk.py - Desktop Access gatekeeper: the single dispatch/watch door for the
-tbitcs/desktop-runner self-hosted runner fleet.
+electrohire/desktop-runner self-hosted runner fleet.
 
 Implements the fleet standard (github-polling-census-and-standard-2026-10-27,
 Parts 2 and 4):
@@ -59,8 +59,8 @@ TRAY_RELEASE_FILE = os.path.join(BASE, "tray-release.json")
 LOCKS_FILE = os.path.join(BASE, "LOCKS.json")   # lane locks (spec 015)
 LANES_LIVE_FILE = os.path.join(BASE, "LANES_LIVE")
 
-REPO = "tbitcs/desktop-runner"
-PROJECT_REPO = "AXIOVEX/syncyard"   # canonical project repo (status --repo)
+REPO = "electrohire/desktop-runner"
+PROJECT_REPO = "electrohire/syncyard"   # canonical project repo (status --repo)
 BC_REPO = "tbitcs/syncyard-backchannel"  # failsafe backchannel (spec 009)
 BC_HEARTBEAT_PATH = "channels/syncyard-dev/heartbeat.json"
 BC_STALE_S = 300                         # heartbeat older = stale alarm

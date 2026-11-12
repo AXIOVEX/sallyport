@@ -1,5 +1,5 @@
 # Vendored door-parity fixture - NOT a live workflow.
-# Source: tbitcs/desktop-runner, .github/workflows/linux.yml,
+# Source: electrohire/desktop-runner, .github/workflows/linux.yml,
 # pinned at commit 0b3bf7000d6eda93bd2b2ecaf8eddde5c521ab81
 # (source file sha256 ef99693f375c654014b1846dcf7e4356b7deb0ff5bfa08d3200beb2d62ede52c
 # before this fixture header was prepended).
@@ -11,7 +11,7 @@
 # fixture and the repo copy, so a stale fixture fails CI.
 #
 # Syncyard linux workflow - version 0.1.0
-# Part of AXIOVEX/syncyard. Dispatch-only by design: this workflow binds
+# Part of electrohire/syncyard. Dispatch-only by design: this workflow binds
 # self-hosted runners and must NEVER be triggered by pull_request,
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.

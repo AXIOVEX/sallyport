@@ -46,7 +46,7 @@ the session where the lanes are registered — not as a separate event.
    tokens are fetched fresh in the session and never stored. The
    runner watchdog is installed in the same session and pointed at all
    four directories. The runbook is
-   [runner/SETUP.md](https://github.com/AXIOVEX/syncyard/blob/main/runner/SETUP.md).
+   [runner/SETUP.md](https://github.com/electrohire/syncyard/blob/main/runner/SETUP.md).
 3. **Identity proof per lane.** Before any real dispatch routes to a
    lane through this repository, run an identity job on it: a dispatch
    whose log prints the machine name, the Windows user, and (from the
