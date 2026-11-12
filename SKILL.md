@@ -420,8 +420,8 @@ The runners run under the **Syncyard Tray** supervisor
   selectors — in the menu header, the tooltip, and the
   dialog's fleet section — from a snapshot file at
   `C:\Users\you\Development\Syncyard\status\fleet-status.json`
-  when a publisher writes one. No publisher exists yet
-  , so the section normally reads
+  when a publisher writes one. No publisher exists yet,
+  so the section normally reads
   unavailable with its reason; the tray never edits fleet
   state and never invokes the gatekeeper.
 - The tray icon also answers "are we connected?":
