@@ -25,15 +25,15 @@ A marshalling yard sorts work onto parallel tracks so everything moves in order 
 
 Syncyard's rules are not theory; each one is a repair:
 
-- **Silent write corruption made the gatekeeper paranoid about its own records.** The host platform intermittently refused writes in waves and dropped buffered writes silently, leaving 0-byte queue files standing where records should be. So every gatekeeper write is written, read back, and verified byte-for-byte before it counts (spec 001 FR-012), and a record update lands only as an atomic swap of a fully verified file — a failed save can never destroy the standing record, and the gatekeeper never dispatches a job it could not record first (FR-013).
+- **Silent write corruption made the gatekeeper paranoid about its own records.** The host platform intermittently refused writes in waves and dropped buffered writes silently, leaving 0-byte queue files standing where records should be. So every gatekeeper write is written, read back, and verified byte-for-byte before it counts, and a record update lands only as an atomic swap of a fully verified file — a failed save can never destroy the standing record, and the gatekeeper never dispatches a job it could not record first.
 - **Run colors lied, so verdicts come from markers.** Platform run status has lagged far behind reality — a run can sit at "queued" long after its work finished, or show green for a job that failed inside. Every Syncyard job prints marker lines into its own log, and the gatekeeper harvests those as the verdict. A success color without markers is not a success.
 - **A queue file destroyed at open taught the transport its shape.** Jobs travel as base64 scripts in workflow inputs, which have a hard size ceiling (about 54 KB in practice); oversize dispatches fail, so the config carries a transport ceiling and a chunked transport exists for payloads that outgrow it.
 - **The dispatch-only invariant is the whole security model.** Self-hosted runners are reachable *only* through the gatekeeper's `workflow_dispatch` calls — never through pull requests, issues, or any event a stranger can cause. The full posture is [SECURITY.md](SECURITY.md).
 
 ### What Syncyard deliberately does not do
 
-- **It does not prevent a shutdown.** Syncyard's shutdown story (spec 011, in design) is *delay + drain + checkpoint + notify, never prevent*: it can hold a polite shutdown long enough for running work to checkpoint, write a going-down record, and tell the operator — it cannot stop a forced shutdown, a power loss, or a held power button, and it will not pretend otherwise.
-- **It does not fail over between hosts.** A job addressed to a lane runs on that lane's host or is refused — never silently rerouted to a different machine (spec 010 FR-004). If the host is down, the job waits or escalates; it does not land somewhere unexpected.
+- **It does not prevent a shutdown.** Syncyard's shutdown story (in design) is *delay + drain + checkpoint + notify, never prevent*: it can hold a polite shutdown long enough for running work to checkpoint, write a going-down record, and tell the operator — it cannot stop a forced shutdown, a power loss, or a held power button, and it will not pretend otherwise.
+- **It does not fail over between hosts.** A job addressed to a lane runs on that lane's host or is refused — never silently rerouted to a different machine. If the host is down, the job waits or escalates; it does not land somewhere unexpected.
 - **It is not a general CI system.** CI for this project runs on GitHub-hosted runners. Syncyard exists to run an owner's own work on an owner's own machines, under one person's rules — no multi-machine pooling, no runner autoscaling, no multi-tenancy.
 
 ## Architecture
@@ -83,7 +83,7 @@ A scheduled `gk.py sweep` (every 5 minutes) dispatches within budget, watches al
 
 Prefer the GitHub CLI? Syncyard ships as an extension: `gh extension install electrohire/gh-syncyard`, then `gh syncyard status` drives the same gatekeeper.
 
-Prefer a standalone install? Syncyard also ships as a Python package (spec 017): `pipx install syncyard` (or `pip install syncyard` in a venv), then the `syncyard` command drives the same gatekeeper — the packaged code is the checkout code, byte for byte, with zero runtime dependencies. An installed gatekeeper keeps its state beside the installed package and takes its fleet config from `SYNCYARD_CONFIG` or a `syncyard.yaml` beside the code; see the documentation's installation page for the details and the trade-offs.
+Prefer a standalone install? Syncyard also ships as a Python package: `pipx install syncyard` (or `pip install syncyard` in a venv), then the `syncyard` command drives the same gatekeeper — the packaged code is the checkout code, byte for byte, with zero runtime dependencies. An installed gatekeeper keeps its state beside the installed package and takes its fleet config from `SYNCYARD_CONFIG` or a `syncyard.yaml` beside the code; see the documentation's installation page for the details and the trade-offs.
 
 ### Windows host
 
@@ -98,7 +98,7 @@ gh api -X POST repos/<you>/<door-repo>/actions/runners/registration-token --jq .
 
 The full owner-session runbook — all four lanes, the tray supervisor install, and the per-lane identity proof — is [runner/SETUP.md](runner/SETUP.md). Supervise the runners windowlessly with the Syncyard Tray: download `SyncyardTray-Setup-0.1.0.exe` from [Releases](https://github.com/electrohire/syncyard/releases), run it (per-user, no admin), and the runners start hidden under a tray icon that shows per-lane state and restarts a dead runner.
 - **How a job reaches it:** a job submitted with `--workflow run.yml` and a lane whose config host is this Windows machine dispatches to the runner carrying that lane's label. Identity markers: `LID_HOST`, `LID_WINUSER`, `LID_OS`.
-- **Honest limits:** runners started by the tray start at logon, not at boot — a rebooted machine serves no jobs until its user signs in (closing that gap is spec 011's work, not a shipped feature). The runner process is not elevated; work that needs administrator rights is work the owner runs by hand from a prepared script.
+- **Honest limits:** runners started by the tray start at logon, not at boot — a rebooted machine serves no jobs until its user signs in (closing that gap is planned work, not a shipped feature). The runner process is not elevated; work that needs administrator rights is work the owner runs by hand from a prepared script.
 
 ### WSL2 (via a Windows host)
 
@@ -171,9 +171,9 @@ Driving Syncyard from the GitHub CLI instead: `gh extension install electrohire/
 | `config/` | The checked-in example configuration expressing the founding fleet |
 | `skills/` | The per-agent skill editions and their shared source |
 | `clients/` | Convenience shell clients for interactive one-offs (gatekeeper submission is the preferred route) |
-| `docs/` | The fleet standard, the migration/cutover plan, and the documentation site source (MkDocs; spec 017) |
-| `packaging/` | The standalone-distribution battery (spec 017): builds, byte-identity, and clean-install smokes |
-| `pyproject.toml` | The standalone package definition (spec 017): distribution `syncyard`, version from `VERSION` |
+| `docs/` | The fleet standard, the migration/cutover plan, and the documentation site source (MkDocs) |
+| `packaging/` | The standalone-distribution battery: builds, byte-identity, and clean-install smokes |
+| `pyproject.toml` | The standalone package definition: distribution `syncyard`, version from `VERSION` |
 | `specs/` | The numbered specifications every behavior traces to |
 | `assets/` | Logo |
 

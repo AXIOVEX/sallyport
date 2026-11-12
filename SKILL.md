@@ -20,16 +20,14 @@ operator's control machine and tracks this repository's releases.
 
 **This file is updated in the same change as any change to behavior,
 commands, lanes, workflows, or operations.** A change that leaves
-this skill stale is incomplete. The project is governed by spec-kit
-+ AEE: a constitution (`.specify/memory/constitution.md`) and
-numbered specs under `specs/`, each requirement a claim with
-evidence and a falsification test. Changes cite the spec they
-implement; behavior with no spec gets a spec in the same change.
+this skill stale is incomplete. Every behavior change lands with
+its tests and its evidence in the same change, and this file is
+updated to match.
 
 ## Commands
 
 ```bash
-GK="python3 gatekeeper/gk.py"   # or: gh syncyard   # or: syncyard (standalone package, spec 017)
+GK="python3 gatekeeper/gk.py"   # or: gh syncyard   # or: syncyard (standalone package)
 
 # Submit a Windows PowerShell job
 $GK submit --program <your-program> --workflow run.yml \
@@ -64,7 +62,7 @@ $GK status --repo
 $GK pause --reason "WSL cleanup + compact"
 $GK resume
 
-# Focus (spec 013): pause everything EXCEPT the selected jobs.
+# Focus: pause everything EXCEPT the selected jobs.
 # Selectors are repeatable and combinable; a key selector matches
 # the key or any key under it as a prefix. While focused, only
 # matching jobs (plus maintenance) dispatch. `gk resume` clears
@@ -72,20 +70,20 @@ $GK resume
 $GK focus --except-program gpu-unlock --reason "only the GPU work runs"
 $GK focus --except-key probe- --except-chat <chat-id>
 
-# Drain (spec 013): stop starting new work and let what is
+# Drain: stop starting new work and let what is
 # executing finish; when the last non-admitted job completes the
 # pause settles itself (DRAINING shows in status meanwhile).
 # Composes with focus: the pipeline drains toward the focus set.
 $GK pause --drain --reason "wind down after this batch"
 $GK focus --except-program gpu-unlock --drain
 
-# Priorities (spec 013): higher dispatches first within the
+# Priorities: higher dispatches first within the
 # waiting set. Set one at submit, or change it live while the
 # job is still waiting (a dispatched or finished job refuses).
 $GK submit ... --priority 10 --key <unique-key>
 $GK priority <job-id-or-key> 10
 
-# Checkpoint hold (spec 013): ask a job to stop itself at its
+# Checkpoint hold: ask a job to stop itself at its
 # next checkpoint. The gatekeeper writes a hold-signal file on
 # the job's venue; a job that polls $SYNCYARD_HOLD_FILE, prints
 # CHECKPOINT_PAUSED and exits 86 is harvested as
@@ -94,7 +92,7 @@ $GK priority <job-id-or-key> 10
 $GK hold <job-id-or-key>
 $GK resume --job <job-id-or-key>
 
-# Lane priority lock (spec 015): one program holds a lane so
+# Lane priority lock: one program holds a lane so
 # no other program's jobs can dispatch on it — priority can
 # never trump a lock (a non-holder's priority-200 job waits;
 # the holder's priority-0 job dispatches). Non-holder jobs are
@@ -112,7 +110,7 @@ $GK lock --lane gpu --program <your-program> --resume
 $GK unlock --lane gpu --program <your-program>
 $GK lock --list
 
-# Lane profiles (spec 016): lanes live in named profiles in
+# Lane profiles: lanes live in named profiles in
 # config (lanes.profiles.<name>); exactly one is active.
 # fleet-default is today's four lanes unchanged; a profile may
 # also define lanes from scratch (host, resource class
@@ -122,7 +120,7 @@ $GK lock --list
 $GK profile --list
 $GK profile --show [name]
 
-# Auto routing (spec 016): let the sweep pick the lane. Declare
+# Auto routing: let the sweep pick the lane. Declare
 # what the job needs; the sweep scores the active profile's
 # lanes from your hints, your program's recorded history
 # (median actual duration of its last ten completed jobs),
@@ -133,7 +131,7 @@ $GK profile --show [name]
 $GK submit ... --lane auto --needs-gpu 8192 --key <unique-key>
 $GK submit ... --lane auto --needs-ram-mb 16384 --venue docker --image <img> --key <unique-key>
 
-# Host capability (spec 016): record what a machine actually
+# Host capability: record what a machine actually
 # has (CPUs, RAM, storage, GPUs, venues) for auto routing.
 # Dispatched through the door where a transport exists
 # (Windows, WSL2); for macOS/Linux hosts run
@@ -164,7 +162,7 @@ $GK purge --older-than-days 7 --yes
 $GK outbox
 $GK outbox --ack
 
-# Host liveness (spec 011): status shows each host UP/DOWN with
+# Host liveness: status shows each host UP/DOWN with
 # its heartbeat age (the sweep keeps the gatekeeper's own
 # last-seen record). When a host reports it is going down, the
 # gatekeeper holds dispatch to that host; once the host is back
@@ -172,7 +170,7 @@ $GK outbox --ack
 # recovery handshake):
 $GK host-resume <host>
 
-# Controlled reboot (spec 011 FR-015): refuses while jobs are
+# Controlled reboot: refuses while jobs are
 # active on the host unless --force (the polite path is the
 # drain or waiting); on acceptance the going-down record is
 # written first, then the host is signaled — via the
@@ -184,9 +182,9 @@ $GK host-resume <host>
 # dispatch until it returns and the hold is cleared.
 $GK reboot --host <host> [--force] [--delay <seconds>] [--requested-by <chat-id>]
 
-# Host drain (spec 011 FR-007, Phase 2): the polite prelude to
+# Host drain: the polite prelude to
 # restarting or shutting down one host. Signals every running
-# checkpoint-capable job on the host (spec 013 holds), sets the
+# checkpoint-capable job on the host (holds), sets the
 # host's drain hold — a hold distinct from the going-down hold;
 # `gk host-resume <host>` clears BOTH — then waits out each
 # lane's checkpoint window (config `drain.window_s`, default
@@ -194,7 +192,7 @@ $GK reboot --host <host> [--force] [--delay <seconds>] [--requested-by <chat-id>
 # prints a per-job verdict. Exit 0 = DRAIN CLEAN (every job
 # checkpointed, finished, or ended), 1 = INTERRUPTING (jobs
 # named uncheckpointed, with the reason), 2 = unknown host.
-# This is NOT spec 013's `pause --drain`: that one is global
+# This is NOT `pause --drain`: that one is global
 # and passive (it waits for the pipeline to empty); this one is
 # per-host and active, and neither clears the other's state.
 $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
@@ -206,7 +204,7 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   the key for the same work; check `gk status` instead.
 - `--expected-min` matters for `long` and `gpu` jobs: health watermarks
   are judged against the declared expectation before lane defaults.
-- **Priorities auto-optimize by default (spec 013).** A job with no
+- **Priorities auto-optimize by default.** A job with no
   explicit priority is ordered by the sweep's optimizer: shorter
   declared expectations first, a small bonus for fitting the lane,
   and steady aging (+1 per 10 minutes waited) so nothing starves —
@@ -220,11 +218,11 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   overridable. Pause, focus, drain, and host holds are admission
   decisions and outrank the optimizer absolutely: a held job never
   dispatches, whatever its effective priority.
-- **Checkpoint holds are cooperative (spec 013).** The gatekeeper
+- **Checkpoint holds are cooperative.** The gatekeeper
   cannot pause an arbitrary running script mid-flight. The signal
   file can be raised by the gatekeeper (`gk hold`), by the job
   itself, or directly by a host-local actor (for example the
-  spec 011 host guard when a shutdown is imminent) creating the
+  host guard when a shutdown is imminent) creating the
   file at the same per-job path — no gatekeeper round-trip — and
   the harvest is identical whichever side raised it. A job that
   wants to be holdable polls the file named by `$SYNCYARD_HOLD_FILE`
@@ -236,7 +234,7 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   before the job starts); otherwise the hold takes effect for the
   job's next dispatch. Continuation is a fresh submission by the
   owning chat under a new key, resuming from its own checkpoints.
-- **Lane locks are claims, not priorities (spec 015).** A lock is
+- **Lane locks are claims, not priorities.** A lock is
   per lane and per program, held in `LOCKS.json` beside the pause
   record. While your lock is ACTIVE, only your program's jobs
   dispatch on that lane; while another program's lock is ACTIVE,
@@ -257,7 +255,7 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   and waiting jobs held by a lock are marked
   `[lock-held by <program>]`.
 - **Auto routing is a placement convenience, never an override
-  (spec 016).** `--lane auto` asks the sweep to choose among the
+  .** `--lane auto` asks the sweep to choose among the
   active profile's lanes; an explicitly named lane is never
   re-routed, and auto composes with every gate — a locked lane
   is a candidate only for the holder's jobs, focus and host
@@ -282,11 +280,10 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   completions with no marker verdict. Read it before concluding the
   fleet is healthy.
 - **Logging is two-layered**: `ledger.jsonl` (append-only JSON, one
-- Every gatekeeper state write is write-verify-retry (spec 001
-  FR-012): verified on read-back or it fails loudly; never trust
+- Every gatekeeper state write is write-verify-retry: verified on read-back or it fails loudly; never trust
   an unverified write, and never treat a 0-byte state file as real. A failed update leaves the last valid
   record standing; only true husks are removed. Record updates are
-  atomic swaps (FR-013): a record's file is only ever replaced by
+  atomic swaps: a record's file is only ever replaced by
   renaming a fully verified temp file over it — the final path is
   never opened for writing, so a failed save cannot destroy the
   standing record; inside a sweep, a failed per-record save is
@@ -329,7 +326,7 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   and the cursor advances (`outbox --ack`) only after the
   coordinator has delivered them into the named chats. Pushes ride
   the existing sweep cadence; there is no server to run.
-- **Host liveness and going-down** (spec 011 FR-001/FR-006): the
+- **Host liveness and going-down**: the
   sweep reads the backchannel heartbeat once per pass and keeps a
   per-host last-seen record; `gk status` renders each host **UP**
   or **DOWN** (heartbeat older than `liveness.down_after_s`,
@@ -341,8 +338,7 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   the gatekeeper never cancels or re-dispatches). The hold clears
   with `gk host-resume <host>` once the host is back — the Phase-1
   stand-in for the recovery handshake.
-- **The host guard and the drain** (spec 011 Phases 2–3,
-  Amendment 2): the guard (`runner/guard/`, a windowless sibling
+- **The host guard and the drain**: the guard (`runner/guard/`, a windowless sibling
   of the tray with no UI and no exit command) watches the
   running-job registry the transport workflows maintain. While
   checkpoint-capable jobs run it pre-registers the OS shutdown
@@ -362,7 +358,7 @@ $GK drain --host <host> [--window <seconds>] [--requested-by <chat-id>]
   --host` is the operator-invoked twin of the guard's drain:
   same signals, same harvest, a printed verdict.
 
-## Periodic status-check duty (spec 009 FR-005)
+## Periodic status-check duty 
 
 **Every agent that uses Syncyard checks Syncyard status before
 submitting desktop work, and at least once per hour during an
@@ -397,7 +393,7 @@ Every dispatch declares a lane. **No lane declared = not dispatched.**
 - Jobs expected to exceed 60 minutes are announced to the coordination
   point before dispatch, with their expected duration.
 
-## Windowless supervision (spec 007)
+## Windowless supervision 
 
 The runners run under the **Syncyard Tray** supervisor
 (`runner/tray/`), never as hand-started console windows:
@@ -411,24 +407,24 @@ The runners run under the **Syncyard Tray** supervisor
   when every runner is up, amber slash when some are down,
   grayscale with a red slash when none are up or one has faulted.
 - The tray's own behavior is managed in its Settings dialog
-  (spec 014): supervision on/off, the restart cap, the refresh
+: supervision on/off, the restart cap, the refresh
   cadence, stray-console hiding, autostart (read live from the
   HKCU Run key; written only from the dialog), and per-lane
   supervision toggles — persisted to `tray-settings.json` beside
   the tray exe and applied on save, no reinstall. Per-lane
   Start / Stop / Restart buttons in the dialog act immediately.
-- The tray also displays fleet state read-only (spec 014): the
-  gatekeeper's mode (spec 013: RUNNING / PAUSED / FOCUSED /
+- The tray also displays fleet state read-only: the
+  gatekeeper's mode (RUNNING / PAUSED / FOCUSED /
   DRAINING), the waiting queue in dispatch order with each
   job's priority and its human/auto source, and the focus
   selectors — in the menu header, the tooltip, and the
   dialog's fleet section — from a snapshot file at
   `C:\Users\you\Development\Syncyard\status\fleet-status.json`
-  when a publisher writes one. No publisher exists yet
-  (spec 014 FR-009), so the section normally reads
+  when a publisher writes one. No publisher exists yet,
+  so the section normally reads
   unavailable with its reason; the tray never edits fleet
   state and never invokes the gatekeeper.
-- The tray icon also answers "are we connected?" (spec 018):
+- The tray icon also answers "are we connected?":
   a link mark in the icon's corner — solid when connected,
   hollow amber when stale, broken with the mark desaturated
   when disconnected — judged only from signals already on
@@ -445,7 +441,7 @@ The runners run under the **Syncyard Tray** supervisor
   `tray.log` with the signal age that caused it. The
   indicator is display-only: it never probes the network,
   never writes the signal files, and never gates
-  supervision. Until the FR-009 publisher ships, the signal
+  supervision. Until the publisher ships, the signal
   set is the backchannel heartbeat only, and the menu and
   dialog say exactly that.
 - Runners stay in the owner's interactive session on purpose: jobs
@@ -564,7 +560,7 @@ genuinely needed (the gatekeeper cannot dispatch and the runners cannot
 be reached), stop, say exactly that, and let the owner decide. Do not
 improvise alternate routes to the machines.
 
-## Failsafe Backchannel (spec 009)
+## Failsafe Backchannel 
 
 Syncyard has a failsafe backchannel for the case where Syncyard
 itself — the runners, the tray, or gatekeeper dispatch — is down
@@ -606,7 +602,7 @@ or blocked. It is deliberately narrow:
   `--force`, stamps a unique id + the sha256 of the body, and
   verifies by reading `cmd.json` back.
 - **Your part**: read-only. Use `bc.py heartbeat` / `status` for
-  the FR-005 status check when the gatekeeper is unreachable,
+  the status check when the gatekeeper is unreachable,
   and report a stale heartbeat (>5 min) or a down tray/runner to
   the Desktop Access chat. Operator doc: `backchannel/README.md`.
 
@@ -621,25 +617,24 @@ or blocked. It is deliberately narrow:
   Registration tokens are fetched at setup time and used once.
 - Runners register to this repository only, never organization-wide.
 
-## Spec 010 — public release program (specified 2026-10-30)
+## Public release program (2026-10-30)
 
 Owner direction: make Syncyard a general open-source project —
 a real configuration system (lane count/names and adopter knobs
-as config, spec 010 FR-001/002/007), a tested host matrix
-(Windows, WSL2, macOS, Linux, Docker; FR-003/004), the
-backchannel kept permanently robust (FR-005), an agent skills
-pack with Meta Muse as the primary vehicle (FR-006), tests for
-all of it (FR-008), the security posture shipped as a document
-(FR-009), and release 0.3.0 when green (FR-010). A GitHub
-`gh`-adoption pitch brief is prepared under FR-011 and is
+as config), a tested host matrix
+(Windows, WSL2, macOS, Linux, Docker), the
+backchannel kept permanently robust, an agent skills
+pack with Meta Muse as the primary vehicle, tests for
+all of it, the security posture shipped as a document
+, and release 0.3.0 when green. A GitHub
+`gh`-adoption pitch brief is prepared and is
 **not sent** without the owner's explicit word. The Phase 1
 config cutover LANDED 2026-10-31: the fleet gatekeeper binds
 its constants from the effective config (fleet
 `syncyard.yaml` beside gk.py, values identical to the
-constants it replaced — golden-proven); spec text lives at
-`specs/010-public-release/`.
+constants it replaced — golden-proven).
 
-Amendment 1 (2026-10-30): **FR-012** — Syncyard also ships as
+(2026-10-30): Syncyard also ships as
 a GitHub CLI extension from `electrohire/gh-syncyard` (`gh syncyard
 ...`); a thin Go dispatcher over the Python gatekeeper,
 cross-compiled release binaries via GitHub's official
@@ -648,7 +643,7 @@ and install-proven** (`gh extension install
 electrohire/gh-syncyard`; `gh syncyard status` served the live
 fleet gatekeeper). Gatekeeper lookup: $SYNCYARD_GK,
 $SYNCYARD_HOME, ~/syncyard, ~/.syncyard, beside the binary,
-./gatekeeper. **FR-006 editions are ranked by agent
+./gatekeeper. **editions are ranked by agent
 market share:** Meta Muse primary, then Claude Code, GitHub
 Copilot, OpenAI Codex/ChatGPT, Cursor, Gemini/Antigravity,
 generic + CLI-only. Phase 1 slice 1 has landed additively:
@@ -657,18 +652,18 @@ generic + CLI-only. Phase 1 slice 1 has landed additively:
 constants by `gatekeeper/test_config.py`); `gk.py` does not
 read config yet.
 
-Phase 4 (FR-006) has landed: the adopter-facing skills pack
+Phase 4 has landed: the adopter-facing skills pack
 lives under `skills/` — eight editions (Meta Muse primary,
 then Claude Code, GitHub Copilot, OpenAI Codex/ChatGPT,
 Cursor, Google Gemini/Antigravity, generic-agent, CLI-only)
 generated from the single shared source
 `skills/_source/contract.md` by `skills/build_skills.py`, with
-the T016 currency battery (`skills/test_skills.py`) in CI.
+the currency battery (`skills/test_skills.py`) in CI.
 This fleet SKILL.md remains the operator's own copy; adopter
 editions derive from the shared contract, and behavior changes
 update both in the same change.
 
-## Spec 011 — shutdown protection and recovery (specified 2026-10-31, draft)
+## Shutdown protection and recovery (2026-10-31)
 
 Owner direction: when a host machine shuts down, Syncyard
 must handle outstanding work — delay the shutdown while a
@@ -679,27 +674,25 @@ logon, relaunch supervised campaigns from their checkpoints,
 reconcile every interrupted run against GitHub's truth, and
 issue a recovery report that states any loss plainly. The
 protection level is **delay + drain + checkpoint + notify —
-never prevent**: nothing in the spec vetoes a forced
+never prevent**: nothing in the design vetoes a forced
 shutdown, a power loss, or an insisting administrator, and
-its text says so in those words. The spec also generalizes
+its text says so in those words. The design also generalizes
 the proven scheduled-task anchor (supervisor + ensure +
 heartbeat) into a first-class supervised-work vehicle, and
-names its tension with spec 007 FR-003 (runners are not
-Windows services) as an owner-gated evaluation, not a
-presumption. Spec text lives at
-`specs/011-shutdown-protection-recovery/`; Phase 1 (host
-liveness + going-down ingest, T001–T003) shipped 2026-10-31.
-**Amendment 1 (2026-10-31)** records the owner's
+names its tension with runners not being
+Windows services as an owner-gated evaluation, not a
+presumption. The first phase (host liveness + going-down
+ingest) shipped 2026-10-31.
+A same-day amendment records the owner's
 boot-autonomy ruling: Syncyard starts automatically on boot
-with no interactive logon (the FR-009 gate, answered by
+with no interactive logon (the gate, answered by
 directive; autologon excluded), service-mode runners running
 as the owner account are the selected shape with per-lane
 `boot-runnable` / `logon-bound` labels, the backchannel
-agent joins the boot set, and new **FR-015** adds `gk
-reboot` — a controlled, drain-aware host reboot that writes
+agent joins the boot set, and a new `gk
+reboot` verb — a controlled, drain-aware host reboot that writes
 the going-down record before it signals anything.
-Implementation follows in Phase 5 as amended. **T021
-shipped (2026-11-01)**: `gk reboot` is implemented in the
+Implementation follows in Phase 5 as amended. **Shipped (2026-11-01)**: `gk reboot` is implemented in the
 gatekeeper (refusal / backchannel / maintenance / unreachable
 pinned by golden scenario 7); the live fire drill on the
 production host is T022, still open. **Amendment 2
@@ -707,14 +700,14 @@ production host is T022, still open. **Amendment 2
 pause all jobs, wait for checkpoints — as fast as we can"):
 **Phases 2–3 built repo-side** — `gk drain --host` (T004–
 T005: host-scoped, active, per-job verdicts; distinct from
-spec 013's global passive `pause --drain`, and from the
-FR-006 hold) and the host guard + going-down writer
+global passive `pause --drain`, and from the
+hold) and the host guard + going-down writer
 (T006–T007: `runner/guard/`, the agent merge, guard-beat
 staleness). T008 (the production deploy) and T005's owner
 oracle pass remain field steps; nothing in Phases 2–3 is
 fleet-deployed by this change.
 
-## Spec 017 — standalone distribution (specified + implemented 2026-11-02)
+## — standalone distribution (specified + implemented 2026-11-02)
 
 Owner direction: keep the skill pack current, and keep a
 **standalone Syncyard alongside the extension**, with PyPI
@@ -723,7 +716,7 @@ and Read the Docs. The repo root now carries a
 `syncyard`: version read dynamically from the repo `VERSION`
 file, zero runtime dependencies, and a `syncyard` console
 command that is a direct entry point to the gatekeeper's own
-`main()` — the full verb surface, nothing re-implemented.
+`main` — the full verb surface, nothing re-implemented.
 The package-dir mapping installs the literal `gatekeeper/`
 and `backchannel/` files as the `syncyard` and
 `syncyard.backchannel` namespace packages, so the packaged

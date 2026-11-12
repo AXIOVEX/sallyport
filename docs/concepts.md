@@ -123,15 +123,15 @@ These exist as numbered specifications in the repository
 are **not** part of the currently released behavior, and the
 rest of this site does not describe them as if they were:
 
-- **Priorities and focus mode** (spec 013): per-job priority
+- **Priorities and focus mode**: per-job priority
   values with an automatic optimizer under human override,
   and a focus mode that admits only a chosen program's,
   key's, or chat's jobs while the rest wait.
-- **Lane locks** (spec 015): an agent holding a priority can
+- **Lane locks**: an agent holding a priority can
   lock a lane so other programs' jobs cannot take it, with
   graceful release, suspension alongside the fleet pause,
   and expiry.
-- **Adaptive lanes** (spec 016): customizable lane profiles
+- **Adaptive lanes**: customizable lane profiles
   and an automatic mode that balances jobs across CPU, GPU,
   RAM, and storage, with Docker and WSL as venues, from
   cross-platform host capability probes.

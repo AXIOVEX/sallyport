@@ -49,7 +49,7 @@ itself. Every layer below therefore fails closed and says so.
    (resolved on the owner's PATH, which covers both the MSI and
    the Store/MSIX install flavors).
 4. **Backchannel examples** (README and RUNBOOK) call the
-   PowerShell 7 path under `/mnt/c/`. Spec 009's text still names
+   PowerShell 7 path under `/mnt/c/`. text still names
    `powershell.exe`; that spec is ratified history, and these
    living documents govern current practice.
 5. **A source test** (`runner/test_powershell7_policy.py`, run in
@@ -63,7 +63,7 @@ itself. Every layer below therefore fails closed and says so.
 
 `runner/ensure-powershell7.cmd` is the bootstrap. It is a cmd
 script on purpose: it runs before PowerShell 7 exists, so it
-cannot be a .ps1, and it never invokes 5.1 either.
+cannot be a.ps1, and it never invokes 5.1 either.
 
 - No arguments: check; if missing, ask (default yes), install,
   re-check.

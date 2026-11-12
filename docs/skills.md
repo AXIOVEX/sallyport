@@ -18,7 +18,7 @@ source in the same change — a change that leaves the skill
 stale is incomplete by the project's own rule.
 
 Editions are ranked by how agents actually reach this
-project (spec 010 FR-006, Amendment 1):
+project:
 
 1. **Meta Muse** — the primary, first-class edition.
 2. **Claude Code**

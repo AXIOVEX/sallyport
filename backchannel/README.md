@@ -36,7 +36,7 @@ poster to `cmd.json` and the owner of the channel.
   speed, not because the queue is long. Programs use the
   gatekeeper in all circumstances.
 - Other agents may read the heartbeat / status (that is part of
-  their FR-005 duty, below) and must report problems to the
+  their status-check duty, below) and must report problems to the
   Desktop Access chat. They never post commands.
 
 ## How the Desktop Access chat sends and checks
@@ -68,7 +68,7 @@ Rules that `bc.py` enforces for you:
   before, and only when the body's sha256 matches the packed
   hash. Re-pushing an old `cmd.json` re-runs nothing.
 
-## Periodic status-check duty (FR-005 — every agent)
+## Periodic status-check duty (every agent)
 
 Every agent that uses Syncyard:
 
@@ -80,7 +80,7 @@ Every agent that uses Syncyard:
    or a down runner **to the Desktop Access chat** — and never
    works around it or improvises another route to the machine.
 
-## Recovery use cases (FR-007)
+## Recovery use cases
 
 Pre-written command shapes; adapt paths/ids, keep them read-only
 unless the recovery itself is the act ordered.
@@ -137,7 +137,7 @@ so you can tell a halted agent from a dead one. Remove the file
 to resume execution. Stopping the service itself is a desktop
 act: `systemctl --user stop syncyard-backchannel.service`.
 
-## Job protection (FR-006)
+## Job protection
 
 Any Syncyard change — deploying this backchannel included —
 starts with a gatekeeper queue snapshot (record count, aggregate

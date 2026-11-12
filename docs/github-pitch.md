@@ -1,7 +1,7 @@
 # Pitch brief: Syncyard as a `gh` extension
 
 **Status: PREPARED ONLY — NOT SENT.** This brief was written
-under spec 010 FR-011. It is sent to GitHub (or anyone else)
+under the governing design. It is sent to GitHub (or anyone else)
 only on the owner's explicit word, which has not been given.
 Everything below is the draft text and the reasoning behind
 it, kept in the repo so the send, when authorized, is a
@@ -97,8 +97,7 @@ down:
   GitHub-hosted runners; self-hosted machines never execute
   untrusted event payloads.
 - **Honest limits.** The design states what it cannot do
-  (it cannot prevent a forced shutdown — spec 011's
-  protection level is "delay + drain + checkpoint + notify,
+  (it cannot prevent a forced shutdown — protection level is "delay + drain + checkpoint + notify,
   never prevent"; it does not fail jobs over between hosts)
   in the README itself. No marketing claim in the repo lacks
   a test or a field record behind it.
@@ -146,6 +145,6 @@ gaps are presentational and procedural, listed honestly:
 
 ---
 
-*Prepared 2026-10-31 under spec 010 FR-011 / T021. Not
+*Prepared 2026-10-31 under the governing design. Not
 sent. The owner's explicit word is required before any part
 of this brief leaves the repo.*

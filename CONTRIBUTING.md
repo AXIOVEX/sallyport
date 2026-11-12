@@ -22,17 +22,12 @@ how to propose changes so they can be reviewed and landed quickly.
 - **Keep changes focused.** One topic per pull request; unrelated cleanups
   go in separate pull requests.
 
-## Specs first
+## Tests and documentation first
 
-Syncyard is governed by spec-kit + AEE. The constitution lives at
-`.specify/memory/constitution.md`; numbered specs live under `specs/`,
-each with an `aee-claims.json` holding every requirement as a claim with
-its evidence and a falsification test.
+Every behavior change lands with its tests and its evidence in the
+same pull request: a change with no test that would fail without it
+is not ready to merge.
 
-- A change that implements a spec cites it (for example, "implements
-  spec 003 FR-005").
-- A change to behavior with no spec gets a spec — or a spec update — in
-  the same pull request.
 - **SKILL.md is updated in the same change as any change to behavior,
   commands, lanes, workflows, or operations.** A pull request that
   leaves SKILL.md stale is incomplete.

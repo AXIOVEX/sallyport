@@ -98,14 +98,14 @@ systemctl --user enable --now syncyard-backchannel.service
    then `bc.py --channel <channel> wait <id>` returns exit 0 with
    the host's name in the output.
 4. The STOP switch: the agent honors `channels/<channel>/STOP`
-   exactly like the desktop channel (spec 009 FR-004).
+   exactly like the desktop channel.
 
 ## 5. Optional: the tray fleet panel
 
 A Syncyard tray on the same machine can read
 `fleetStatusPath = \\wsl.localhost\<distro>\home\<user>\syncyard-backchannel\repo\channels\<channel>\fleet-status.json`
 provided the fleet-status publisher writes `fleet-status.json` into
-that channel as well as `syncyard-dev`. Since spec 024 that is a
+that channel as well as `syncyard-dev`. That is a
 real setting of the packaged publisher install: the publisher is
 installed by `gatekeeper/install-publisher.sh` (units and
 installer ship in this repo), and its `--channels` option lists

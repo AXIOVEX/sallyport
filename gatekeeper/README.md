@@ -17,21 +17,21 @@ with a version bump and a changelog entry.
 ```text
 gatekeeper/
   gk.py               the CLI (Python 3, standard library only)
-  config.py           the configuration loader (spec 010/016)
-  fleet_status.py     the fleet-status publisher (spec 014 FR-009):
+  config.py           the configuration loader
+  fleet_status.py     the fleet-status publisher:
                       builds the tray's fleet snapshot from the
                       state files here and publishes it into the
                       backchannel repo, one copy per machine
-                      channel (spec 024)
+                      channel
   install-publisher.sh
-                      the packaged publisher installer (spec 024):
+                      the packaged publisher installer:
                       preflight, env capture, root-owned copy,
                       units, timer, first-publish gate
   systemd/            the publisher's units as repo files
                       (fleet-status-publish.service, a template
                       the installer renders, and .timer)
-  probes/             host capability probe scripts (spec 016:
-                      probe-windows.ps1, probe-linux.sh,
+  probes/             host capability probe scripts
+                      (probe-windows.ps1, probe-linux.sh,
                       probe-darwin.sh — same bytes as the
                       constants in gk.py, drift-pinned by
                       test_spec016.py)
@@ -45,7 +45,7 @@ gatekeeper/
 `queue/`, `ledger.jsonl`, and `sweep.log` are operator state and are
 git-ignored; they exist only in a live copy.
 
-All state writes are durable by construction (spec 001 FR-012):
+All state writes are durable by construction:
 written unbuffered, read back and byte-verified, retried with
 backoff, and loud when they cannot be verified — the host VM
 intermittently refuses writes and can silently drop a buffered
@@ -82,28 +82,28 @@ python3 gk.py status
 python3 gk.py cancel <job-id-or-key>     # local only, pre-dispatch jobs
 python3 gk.py pause [--reason TEXT] [--drain]  # hold program dispatch; watch continues
 python3 gk.py focus --except-key K|--except-program P|--except-chat C [--drain]
-                               # spec 013: dispatch only the selected jobs
+                               # dispatch only the selected jobs
 python3 gk.py resume [--job ID]        # clear a pause/focus, or release one job's hold
-python3 gk.py priority <job-id-or-key> N   # spec 013: live priority (waiting jobs)
-python3 gk.py hold <job-id-or-key>     # spec 013: request a checkpoint hold
+python3 gk.py priority <job-id-or-key> N   # live priority (waiting jobs)
+python3 gk.py hold <job-id-or-key>     # request a checkpoint hold
 python3 gk.py lock --lane LANE --program P [--ttl-min N] [--reason T]
-                               # spec 015: acquire/renew a lane lock (--suspend/--resume, --list)
+                               # acquire/renew a lane lock (--suspend/--resume, --list)
 python3 gk.py unlock --lane LANE [--program P] [--force]
-                               # spec 015: release a lane lock (holder, or operator override)
+                               # release a lane lock (holder, or operator override)
 python3 gk.py profile --list|--show [NAME]
-                               # spec 016: render the lane profiles (switching = config edit)
+                               # render the lane profiles (switching = config edit)
 python3 gk.py profile suggest [--host H] [--name P] [--out FILE]
-                               # spec 016 follow-on: draft a lane profile for one host from its
+                               # follow-on: draft a lane profile for one host from its
                                # capability snapshot, reasoning printed as comments; applies nothing
 python3 gk.py probe-host --host H [--ingest REPORT]
-                               # spec 016: record a host capability snapshot for auto routing
+                               # record a host capability snapshot for auto routing
 python3 gk.py stop [--reason TEXT]     # hard halt: sweeps no-op until start
 python3 gk.py start                    # clear stop + pause: fully running
 python3 gk.py purge [--older-than-days N] [--ledger] [--yes]  # dry-run default
 python3 gk.py outbox [--ack]           # pushes owed to registered chats
-python3 gk.py drain --host H [--window S]  # spec 011: signal + hold + wait on one host
-python3 gk.py host-resume <host>       # spec 011: clear a host's holds (both kinds)
-python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host reboot
+python3 gk.py drain --host H [--window S]  # signal + hold + wait on one host
+python3 gk.py host-resume <host>       # clear a host's holds (both kinds)
+python3 gk.py reboot --host H [--force]    # controlled host reboot
 ```
 
 - **submit** writes a job file in state `submitted` and records the
@@ -111,7 +111,7 @@ python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host re
   dispatched / watching) already carries the same `--key`, submit
   refuses and prints the existing job id (exit 3). This is the local
   half of the duplicate-dispatch pre-check.
-- **Lane profiles + auto routing (spec 016).** Lanes are defined
+- **Lane profiles + auto routing.** Lanes are defined
   by the active profile in config (`lanes.profiles.<name>`, one
   `lanes.active_profile`); `fleet-default` reproduces the pre-016
   table exactly, and profiles may define lanes from scratch
@@ -141,7 +141,7 @@ python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host re
      list call. **Below 500**: record `budget_critical` and exit — no
      list call at all.
   2. Dispatch pass over `submitted` jobs in effective dispatch
-     order (spec 013: human-set priorities pinned first by value,
+     order (human-set priorities pinned first by value,
      auto jobs ordered by the optimizer, arrival order as the
      final tiebreak). Gates:
      same-lane serialization (one live gatekeeper job per lane), an
@@ -198,7 +198,7 @@ python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host re
   pause. `stop` is the hard halt: a sweep returns immediately — no
   budget spent, no watch, no dispatch — until `start` clears both
   stop and pause. `status` shows the control state in a banner.
-- **Focus, drain, priorities, checkpoint holds (spec 013)** —
+- **Focus, drain, priorities, checkpoint holds** —
   `focus` generalizes the pause: while a focus record stands, only
   jobs matching a selector (job key or key prefix, program, or
   notify chat; selectors repeat and combine) dispatch, plus
@@ -227,13 +227,12 @@ python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host re
   continuation submission. `gk resume --job` clears the request
   and withdraws the signal. The signal file may also be
   created directly by a host-local actor at the same per-job
-  path (the spec 011 host guard does exactly this when a
+  path (the host guard does exactly this when a
   shutdown is imminent — no gatekeeper round-trip), and the
   harvest does not distinguish which side raised it; the
   gatekeeper cannot pause an arbitrary running script
-  mid-flight, so the hold is cooperative by design (spec 013
-  states the limits in full).
-- **Lane priority locks (spec 015)** — `gk lock --lane
+  mid-flight, so the hold is cooperative by design (states the limits in full).
+- **Lane priority locks ** — `gk lock --lane
   <lane> --program <program>` gives one program exclusive
   dispatch on a lane: while the lock is ACTIVE, only the
   holder's submitted jobs are dispatch-eligible there.
@@ -242,7 +241,7 @@ python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host re
   trumps the lock: a non-holder's human priority of 200
   waits while the holder's auto priority 0 dispatches. Lock
   state lives in `LOCKS.json` beside `PAUSED.json`, written
-  only through the FR-013 verified-write path; no file means
+  only through the verified-write path; no file means
   no locks and pre-015 behavior exactly. One holder per
   lane: a second acquire is refused (exit 3) naming the
   holder, its state, and its expiry, in both the ACTIVE and
@@ -285,18 +284,16 @@ python3 gk.py reboot --host H [--force]    # spec 011 FR-015: controlled host re
   `outbox --ack` then advances the cursor. Programs register once
   and stop polling.
 
-- **Host drain, the guard, guard staleness (spec 011
-  Phases 2–3)** — `gk drain --host` is the host-scoped,
+- **Host drain, the guard, guard staleness (Phases 2–3)** — `gk drain --host` is the host-scoped,
   active drain: it signals the host's running
   checkpoint-capable jobs through the same hold machinery,
   sets the host's **drain hold** (a per-host field distinct
-  from the FR-006 going-down hold; `gk host-resume` clears
+  from the going-down hold; `gk host-resume` clears
   both), waits out each lane's window (`drain.window_s`,
   default 120, `drain.per_lane_window_s` overrides), driving
   the same `watch_pass` a sweep runs so the harvest is
   identical, and prints CLEAN (exit 0) or INTERRUPTING
-  (exit 1) with every job classified. Spec 013's
-  `pause --drain` stays what it was — global and passive;
+  (exit 1) with every job classified. `pause --drain` stays what it was — global and passive;
   admission is the conjunction of both layers and neither
   verb clears the other's state. The host guard
   (`runner/guard/`) runs the same drain on the machine when
@@ -319,8 +316,8 @@ API state and the log disagree, believe the log.
 
 | Workflow | Inputs | Notes |
 |---|---|---|
-| `run.yml` | `cmd_b64` (required), `cwd`, `hold_file` | PowerShell, base64 of the script; `hold_file` (spec 013) is the job's checkpoint hold-signal path, exposed as `$env:SYNCYARD_HOLD_FILE` |
-| `wsl.yml` | `cmd_b64` (required), `cwd`, `hold_file` | bash in WSL2, base64 of the script; `hold_file` (spec 013) exposed as `$SYNCYARD_HOLD_FILE` |
+| `run.yml` | `cmd_b64` (required), `cwd`, `hold_file` | PowerShell, base64 of the script; `hold_file` is the job's checkpoint hold-signal path, exposed as `$env:SYNCYARD_HOLD_FILE` |
+| `wsl.yml` | `cmd_b64` (required), `cwd`, `hold_file` | bash in WSL2, base64 of the script; `hold_file` exposed as `$SYNCYARD_HOLD_FILE` |
 | `grab.yml` | **`path` only** | Uploads one file from the machine as artifact `grabbed-file`. **No `cmd_b64`, no `cwd`, no script.** |
 
 The grab difference matters: a grab job is submitted with
@@ -337,7 +334,7 @@ harvests their markers, but does not chain grabs automatically.
 Every 5 minutes matches the fleet poll floor; the sweep self-locks, so
 an overlapping invocation is a no-op.
 
-## The fleet-status publisher (spec 014 FR-009, spec 024)
+## The fleet-status publisher 
 
 The publisher is part of the install, not a loose add-on: its
 units and installer live in this directory and ship with the
@@ -346,7 +343,7 @@ product. It runs from a root-owned copy under
 checkout), on a 2-minute systemd timer, and publishes the
 snapshot every tray's fleet panel reads into the backchannel
 repo — one copy per machine channel, so each host's tray reads
-its own channel's file (spec 024 FR-007).
+its own channel's file.
 
 Install or repair (idempotent; run from a shell that carries
 the egress proxy and a token source — the preflight refuses by
@@ -378,7 +375,7 @@ and the named refusals.
 Everything the operator-side install (gatekeeper + publisher)
 needs, and where each dependency is declared or enforced. A
 dependency no installer preflights is marked as such, never
-omitted (spec 024 FR-009).
+omitted.
 
 | Dependency | Needed by | Declared / preflighted by |
 |---|---|---|
@@ -390,9 +387,9 @@ omitted (spec 024 FR-009).
 | cron daemon | gatekeeper sweep cadence | the Cron section above — declared, not preflighted by any installer |
 | git | checkout and updates of this repo | this table |
 | The backchannel repo, with a deploy key per machine | publisher transport; agent sync | `backchannel/INSTALL.md` section 1 |
-| WSL2 with systemd user services + linger; `git`, `python3`, `curl` in WSL | backchannel agent (per fleet host) | `backchannel/INSTALL.md` prerequisites; spec 022 host setup |
+| WSL2 with systemd user services + linger; `git`, `python3`, `curl` in WSL | backchannel agent (per fleet host) | `backchannel/INSTALL.md` prerequisites; host setup |
 
-Before spec 024, the proxy, token-source, and systemd
+Originally, the proxy, token-source, and systemd
 dependencies of the publisher were declared nowhere in this
 repository — they existed only in a loose local installer —
 and the per-channel publish setting the backchannel install
