@@ -45,7 +45,7 @@ def check(name, ok, detail=""):
 def main():
     version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
     slugs = [e["slug"] for e in build_skills.EDITIONS]
-    check("edition order matches FR-006 Amendment 1 ranking",
+    check("edition order matches the support ranking",
           slugs == EXPECTED_ORDER, f"got {slugs}")
 
     for edition in build_skills.EDITIONS:
@@ -57,10 +57,10 @@ def main():
         text = path.read_text(encoding="utf-8")
         check(f"{slug}: version matches VERSION ({version})",
               f"\nversion: {version}\n" in text)
-        check(f"{slug}: FR-009 invariant verbatim", INVARIANT in text)
+        check(f"{slug}: security invariant verbatim", INVARIANT in text)
         check(f"{slug}: teaches marker verdicts",
               "never from the GitHub Actions success color" in text)
-        check(f"{slug}: teaches the FR-005 status duty",
+        check(f"{slug}: teaches the status duty",
               "Periodic status-check duty" in text)
 
     r = subprocess.run(
