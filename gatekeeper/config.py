@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Syncyard configuration loader (spec 010 FR-001/FR-002/FR-007).
+"""Syncyard configuration loader.
 
 Stdlib only, like the rest of the gatekeeper. Reads
 `syncyard.yaml` (or a path given by the caller / SYNCARD_CONFIG)
@@ -24,18 +24,18 @@ Validation (load time, all named errors):
     (needs floor)
   - budget critical < standdown
   - transport ceiling positive
-  - liveness threshold (spec 011 FR-001) a positive number
-  - reboot grace (spec 011 FR-015) a positive number
-  - checkpoint contract (spec 013 FR-007): exit code an integer
+  - liveness threshold a positive number
+  - reboot grace a positive number
+  - checkpoint contract: exit code an integer
     in 1..255, marker a valid marker token, env var a valid
     name, holds_dir a mapping of declared workflows to either
     a non-empty venue directory (valid on every host) or a
     per-host mapping of host name to non-empty venue directory
-  - drain (spec 011 FR-005/FR-007): the host drain window a
+  - drain: the host drain window a
     positive number of seconds, per-lane overrides keyed by
     declared lanes with positive values, and the guard
     staleness bound a positive number of seconds
-  - lane lock TTLs (spec 015 FR-011): default and maximum TTL
+  - lane lock TTLs: default and maximum TTL
     integers, positive, with default <= maximum
 """
 import os
@@ -71,7 +71,7 @@ DEFAULTS = {
         "lock_stale_min": 10,
         "duplicate_policy": "refuse",
         "soft_cap_min": 30,
-        # Priority optimizer (spec 013 FR-012): auto-assigned
+        # Priority optimizer: auto-assigned
         # effective priorities never exceed this ceiling (a
         # human-set priority above it is unreachable by any
         # auto job), and an auto job gains +1 per this many
@@ -81,22 +81,22 @@ DEFAULTS = {
     },
     "transport": {"max_script_bytes": 49152},
     "markers": {"pattern": r"^[A-Z][A-Z0-9_]{2,}([ :]|$)"},
-    # Host liveness (spec 011 FR-001): the gatekeeper reads each
+    # Host liveness: the gatekeeper reads each
     # host's heartbeat on its sweep cadence and keeps its own
     # last-seen record; a host whose heartbeat is older than this
     # many seconds is shown DOWN.
-    # tray_stale_after_s (spec 025): the tray on each host beats
+    # tray_stale_after_s: the tray on each host beats
     # into a file the backchannel agent merges into its
     # heartbeat; a tray beat older than this (relative to the
     # heartbeat carrying it — both stamps are the host's own
     # clock) means the agent is alive and the tray is dead.
     "liveness": {"down_after_s": 900, "tray_stale_after_s": 300},
-    # Controlled reboot (spec 011 FR-015): `gk reboot` signals
+    # Controlled reboot: `gk reboot` signals
     # the host OS with this grace delay in seconds unless
     # --delay overrides it, so in-flight uploads and log
     # writes finish before the host goes down.
     "reboot": {"grace_s": 60},
-    # Checkpoint hold (spec 013 FR-007): the cooperative
+    # Checkpoint hold: the cooperative
     # job-level pause contract. A dispatch passes each script
     # job the venue path of its per-job hold file (holds_dir
     # per workflow + "<job-id>.hold"); the transport workflow
@@ -122,7 +122,7 @@ DEFAULTS = {
             "wsl.yml": "/home/you/.syncyard/holds",
         },
     },
-    # Host drain (spec 011 FR-005/FR-007): `gk drain --host`
+    # Host drain: `gk drain --host`
     # holds dispatch to one host, signals its running
     # checkpoint-capable jobs, and waits out the window —
     # per lane when a lane overrides — before printing its
@@ -130,14 +130,14 @@ DEFAULTS = {
     # the guard heartbeat the backchannel agent merges into
     # its heartbeat payload: a guard beat older than this
     # (relative to the heartbeat carrying it) is stale and is
-    # ledgered + shown in status (spec 011 T007: a stopped
+    # ledgered + shown in status (a stopped
     # guard is never a silent loss of protection).
     "drain": {
         "window_s": 120,
         "per_lane_window_s": {},
         "guard_stale_after_s": 180,
     },
-    # Lane priority lock (spec 015 FR-007/FR-011): every lane
+    # Lane priority lock: every lane
     # lock carries a TTL so a forgotten claim cannot squat a
     # lane forever. A lock taken without --ttl-min gets the
     # default; no lock may exceed the maximum.
@@ -163,7 +163,7 @@ DEFAULTS = {
         },
     },
     "workflows": ["run.yml", "wsl.yml", "grab.yml"],
-    # Spec 016: lanes live in named profiles; exactly one is
+    # lanes live in named profiles; exactly one is
     # active. load_config() resolves the active profile's
     # enabled lanes into cfg["lanes"] (the flat mapping every
     # consumer has always read) and exposes the table as
@@ -239,7 +239,7 @@ DEFAULTS = {
 
 HOST_TYPES = ("windows", "wsl2", "macos", "linux", "docker")
 
-# The identity-marker contract per host type (FR-003): the markers a
+# The identity-marker contract per host type: the markers a
 # venue of this type proves itself with. A host may name its own
 # `identity` list; it must be non-empty.
 IDENTITY_BY_TYPE = {
@@ -252,7 +252,7 @@ IDENTITY_BY_TYPE = {
 
 WORKFLOW_KINDS = ("execute", "grab")
 
-# Spec 016: the resource class a lane declares for auto routing.
+# the resource class a lane declares for auto routing.
 RESOURCE_CLASSES = ("cpu", "gpu", "any")
 
 
@@ -553,7 +553,7 @@ def validate(cfg):
     for wname in declared:
         if wname not in served:
             raise ConfigError(f"workflows: {wname!r} is served by no host")
-    # Spec 016: lanes live in named profiles (FR-001/FR-002).
+    # lanes live in named profiles.
     # Validation is fail-closed over the whole table — every
     # profile, active or not — and the pre-016 flat shape
     # (lane names directly under `lanes`) fails here with the
@@ -565,7 +565,7 @@ def validate(cfg):
         if key not in ("active_profile", "auto_default",
                        "capability_max_age_min", "profiles"):
             raise ConfigError(
-                f"lanes.{key}: unknown lanes key — spec 016 moved "
+                f"lanes.{key}: unknown lanes key — moved "
                 f"lanes into named profiles; use lanes.profiles."
                 f"<name>.<lane> (see config/syncyard.example.yaml)")
     if not isinstance(lanes.get("auto_default", False), bool):
@@ -648,9 +648,9 @@ def validate(cfg):
         if enabled == 0:
             raise ConfigError(
                 f"{where}: profile has no enabled lanes")
-    # Host drain (spec 011 phases 2–3): the drain windows are
+    # Host drain: the drain windows are
     # validated here; a per-lane window must name a lane of the
-    # ACTIVE profile (spec 016: those are the lanes that exist
+    # ACTIVE profile (: those are the lanes that exist
     # at runtime).
     dr = cfg.get("drain") or {}
     win = dr.get("window_s")
@@ -721,7 +721,7 @@ def load_config(path=None):
 
 
 def _resolve_profiles(cfg):
-    """Spec 016 (FR-001): cfg["lanes"] becomes the ACTIVE
+    """cfg["lanes"] becomes the ACTIVE
     profile's enabled lanes — the flat mapping every consumer
     has always read — with the profile table and the routing
     knobs exposed alongside it. Disabled lanes are excluded

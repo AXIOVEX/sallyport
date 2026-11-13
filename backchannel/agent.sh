@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent.sh - Syncyard failsafe backchannel agent (spec 009 FR-002/FR-004).
+# agent.sh - Syncyard failsafe backchannel agent.
 #
 # Runs as a WSL systemd user service (syncyard-backchannel.service)
 # under the WSL user on the Windows host. Independent of the Actions
@@ -42,7 +42,7 @@
 #
 # The agent NEVER writes gatekeeper queue records. Queue access from
 # here is read-only status unless a command explicitly directs
-# otherwise (spec 009 FR-004).
+# otherwise.
 #
 # Layout:
 #   ~/syncyard-backchannel/agent.sh    this file (installed copy)
@@ -68,7 +68,7 @@ KILL_AFTER_S="${SYNCBC_KILL_AFTER_S:-10}"
 GIT_TIMEOUT_S="${SYNCBC_GIT_TIMEOUT_S:-45}"
 SELFTEST_EVERY="${SYNCBC_SELFTEST_EVERY:-15}"
 TAIL_BYTES="${SYNCBC_TAIL_BYTES:-8000}"
-# Spec 011 Phase 3 (the going-down writer's transport): the host
+# The going-down writer's transport (Phase 3): the host
 # guard writes its going-down record and its guard heartbeat as
 # files on the Windows side; write_heartbeat merges both into
 # the heartbeat payload verbatim (as `going_down` / `guard`)
@@ -81,7 +81,7 @@ TAIL_BYTES="${SYNCBC_TAIL_BYTES:-8000}"
 # itself, so a stale file is harmless here.
 GOING_DOWN_FILE="${SYNCBC_GOING_DOWN_FILE:-/mnt/c/Users/you/Development/Syncyard/going-down.json}"
 GUARD_FILE="${SYNCBC_GUARD_FILE:-/mnt/c/Users/you/Development/Syncyard/guard-heartbeat.json}"
-# Spec 025 (tray liveness): the tray writes its heartbeat file
+# Tray liveness: the tray writes its heartbeat file
 # beside its log; write_heartbeat merges it into the heartbeat
 # payload verbatim (as `tray`) every cycle, exactly like the
 # guard's records. The gatekeeper judges tray staleness from
@@ -144,12 +144,12 @@ try:
         data["sync"] = json.load(fh)
 except Exception:
     pass
-# Spec 011 Phase 3: merge the guard's records verbatim. A
+# Phase 3: merge the guard's records verbatim. A
 # missing, unreadable, or non-object file is skipped — the
 # heartbeat never fails because a guard file is absent or
 # mid-write (the guard writes with temp + rename, so a read
 # here sees either the old record or the new one, whole).
-# Spec 025: the tray's heartbeat file rides the same merge
+# the tray's heartbeat file rides the same merge
 # under `tray` (the tray also writes with temp + replace).
 for key, src in (("going_down", going_down_path),
                  ("guard", guard_path),
@@ -170,7 +170,7 @@ PY
 }
 
 run_self_test() {
-    # Self-test (spec 010 T010): tools present, base and log
+    # Self-test: tools present, base and log
     # writable, channel repo reachable, channel dir writable. Runs
     # at start-up and again every SELFTEST_EVERY cycles, so a
     # transient failure read during a chaotic boot (2026-11-03:
@@ -491,7 +491,7 @@ main_loop() {
                 # still carries the last result: seed the guard
                 # from out.json, whose id only ever names a
                 # command that already ran or was refused, so
-                # FR-004(b) - a re-pushed old command never
+                # a re-pushed old command never
                 # re-runs - survives the guard file's loss.
                 # Restoring the file makes the repair durable.
                 last_id="$(json_get "$REPO_DIR/$CHANNEL_REL/out.json" id)"

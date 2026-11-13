@@ -1,4 +1,4 @@
-# sdist contents beyond the package sources (spec 017).
+# sdist contents beyond the package sources.
 # VERSION is load-bearing: the package version is read from it
 # dynamically at build time, including when building from the
 # sdist itself.

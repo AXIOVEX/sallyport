@@ -1,8 +1,7 @@
 // SyncyardTray.cs - windowless supervisor for the Syncyard runners.
 //
-// Spec: electrohire/syncyard spec 007 (windowless supervision),
-// spec 014 (tray settings UI and dynamic fleet display), and
-// spec 018 (tray connection indicator).
+// Covers windowless supervision, the tray settings UI and
+// dynamic fleet display, and the tray connection indicator.
 // Claim: the desktop runners run with NO console window created and
 // none left open in the owner's interactive session, while staying in
 // that session so jobs keep access to the owner's WSL distro, audio
@@ -11,10 +10,10 @@
 // each runner hidden, restarts it if it dies (capped, then it asks
 // for the owner), and hides any stray runner console window.
 //
-// Spec 014: the tray's own behavior (supervision, restart cap,
+// the tray's own behavior (supervision, restart cap,
 // refresh cadence, autostart, per-lane supervision) is managed from
 // a settings dialog and persisted to tray-settings.json beside the
-// exe; fleet state (the gatekeeper's mode and queue, spec 013) is
+// exe; fleet state (the gatekeeper's mode and queue, ) is
 // displayed read-only from a published snapshot file when one
 // exists, and shown as unavailable, with the reason, when none
 // does. The tray never edits fleet state and never creates a
@@ -22,12 +21,12 @@
 // read-only consoles viewer) open only when the owner asks
 // from the menu.
 //
-// Spec 021: the tray carries a build stamp and can update itself
+// the tray carries a build stamp and can update itself
 // to the latest published build. An owner-clicked menu check
 // reads a small JSON manifest from the project's GitHub
 // releases; a newer build is downloaded, verified against the
 // manifest's SHA-256, and swapped in by a UI-free helper mode
-// of this same exe, which relaunches the tray. The spec 018
+// of this same exe, which relaunches the tray. The
 // connection indicator stays signal-file only; an update is
 // installed only on the owner's explicit click - 0.4.3.0 adds
 // an automatic check a few seconds after startup, and a check
@@ -45,7 +44,7 @@
 // item, which hunted session windows by title and could
 // never show a healthy runner.
 //
-// Spec 028: settings resilience, per-machine lane sets, and
+// settings resilience, per-machine lane sets, and
 // multi-instance supervision. The settings save is atomic
 // (temp + replace, the previous file kept as .bak) and the
 // load falls back live file -> .bak -> the machine profile
@@ -65,7 +64,7 @@
 // says "supervising nothing" in its menu header and its
 // heartbeat instead of presenting a normal state.
 //
-// Spec 025 (0.4.4.0): the tray beats. Every ~30 s and once at
+// Since 0.4.4.0 the tray beats. Every ~30 s and once at
 // startup the tray writes tray-heartbeat.json beside its log
 // (host, build, pid, session, started_at, ts, tick, and the
 // per-lane running/faulted state), atomically. The backchannel
@@ -120,7 +119,7 @@ namespace SyncyardTray
     internal sealed class RunnerDef
     {
         public string Lane;
-        // Spec 028: a lane may carry several instance
+        // a lane may carry several instance
         // directories (the desktop's normal lane: normal,
         // normal2, normal3). Instance is the directory's leaf
         // name; supervision, restart accounting, and listener
@@ -145,7 +144,7 @@ namespace SyncyardTray
         }
     }
 
-    // The per-machine profile (spec 028 FR-002): installed
+    // The per-machine profile: installed
     // data beside the exe (tray-profile.json), written by the
     // installer for THIS machine - its runner root, fleet
     // path, heartbeat path, host name, stale bounds, and lane
@@ -233,8 +232,8 @@ namespace SyncyardTray
     }
 
     // Minimal, tolerant JSON reading for the two flat shapes this
-    // program consumes (its own settings file, spec 014 FR-001, and
-    // the fleet snapshot, FR-008), plus the escaping its one writer
+    // program consumes (its own settings file and
+    // the fleet snapshot), plus the escaping its one writer
     // needs. Hand-rolled on purpose: the tray compiles with the
     // in-box csc and only the WinForms + Drawing references, and
     // that route does not change. Tolerance rules: an unknown key
@@ -524,11 +523,11 @@ namespace SyncyardTray
         }
     }
 
-    // The tray's own settings (spec 014 Part A): flat JSON in
+    // The tray's own settings: flat JSON in
     // tray-settings.json beside the tray exe, loaded at startup,
     // saved only from the settings dialog. The writer emits exactly
     // the keys the reader consumes - the source battery proves the
-    // parity. Spec 028: the save is atomic with a .bak, and the
+    // parity. the save is atomic with a .bak, and the
     // load falls back live file -> .bak -> machine profile ->
     // compiled defaults. The fleet and connection staleness
     // defaults match the shipped machine profiles (900 s and
@@ -545,14 +544,14 @@ namespace SyncyardTray
         public string FleetStatusPath =
             @"C:\Users\you\Development\Syncyard\status\fleet-status.json";
         public int FleetStaleSeconds = 900;
-        // Spec 021 FR-007: the runner root is per-machine. The
+        // the runner root is per-machine. The
         // default is the original desktop layout; a machine
         // whose lanes live elsewhere (the laptop) sets
         // runnerRoot in tray-settings.json and the lane dirs
         // are built from it. Nothing else about a lane changes.
         public string RunnerRoot =
             @"C:\Users\you\Development\Syncyard\runners";
-        // Spec 018: the backchannel agent's heartbeat file on this
+        // the backchannel agent's heartbeat file on this
         // host. The deployed agent (backchannel/agent.sh) writes
         // it at ~/syncyard-backchannel/repo/channels/syncyard-dev/
         // heartbeat.json inside the owner's WSL distro; the tray
@@ -561,7 +560,7 @@ namespace SyncyardTray
             @"\\wsl.localhost\Ubuntu-24.04\home\you\syncyard-backchannel\repo\channels\syncyard-dev\heartbeat.json";
         public int ConnectionStaleSeconds = 600;
         public int ConnectionDownSeconds = 900;
-        // Spec 025: the gatekeeper host name this tray's
+        // the gatekeeper host name this tray's
         // heartbeat claims. The host guard's convention
         // (a settings key, the desktop as the compiled
         // default); the laptop's settings file names its
@@ -572,7 +571,7 @@ namespace SyncyardTray
             new Dictionary<string, bool>();
 
         // The compiled lane floor: the four lanes of the
-        // original desktop layout. Spec 028: lane existence is
+        // original desktop layout. lane existence is
         // a property of the machine, not of the build, so this
         // is only the no-profile-anywhere floor - Load
         // replaces it with the machine profile's lane set, or
@@ -590,8 +589,8 @@ namespace SyncyardTray
 
         public string[] Lanes { get { return _lanes; } }
 
-        // Lane -> instance directory leaf names (spec 028
-        // FR-005), resolved with the lane set; a lane with no
+        // Lane -> instance directory leaf names,
+        // resolved with the lane set; a lane with no
         // entry has the single instance named after it.
         private readonly Dictionary<string, List<string>>
             _laneInstances = new Dictionary<string, List<string>>();
@@ -652,7 +651,7 @@ namespace SyncyardTray
             return s;
         }
 
-        // The base a load starts from (spec 028): the machine
+        // The base a load starts from: the machine
         // profile applied over the compiled defaults when a
         // profile is installed, the compiled defaults alone
         // when none is. The settings file (or its .bak) then
@@ -718,7 +717,7 @@ namespace SyncyardTray
         }
 
         // Derive the lane set from the directories actually
-        // present under the runner root (spec 028 FR-004's
+        // present under the runner root (the
         // fallback when no profile names a set): a directory
         // is an instance; its lane is its name with trailing
         // digits stripped (normal2 belongs to lane normal).
@@ -771,14 +770,14 @@ namespace SyncyardTray
             if (ConnectionStaleSeconds >= ConnectionDownSeconds)
             {
                 // An inverted pair cannot be evaluated; fall
-                // back to the FR-001 defaults rather than
+                // back to the defaults rather than
                 // guess which bound the owner meant.
                 ConnectionStaleSeconds = 600;
                 ConnectionDownSeconds = 900;
             }
         }
 
-        // The load fallback chain (spec 028 FR-001): the live
+        // The load fallback chain: the live
         // file, then its .bak, then the machine profile, then
         // compiled defaults. Whichever source wins is named in
         // LastNote whenever it is not the live file, so a
@@ -858,7 +857,7 @@ namespace SyncyardTray
             if (s.ConnectionStaleSeconds >= s.ConnectionDownSeconds)
             {
                 // An inverted pair cannot be evaluated; fall
-                // back to the FR-001 defaults rather than
+                // back to the defaults rather than
                 // guess which bound the owner meant.
                 s.ConnectionStaleSeconds = 600;
                 s.ConnectionDownSeconds = 900;
@@ -869,7 +868,7 @@ namespace SyncyardTray
             s.FixConnectionPair();
         }
 
-        // The atomic save (spec 028 FR-001): the new content
+        // The atomic save: the new content
         // lands in a temp file beside the settings file and
         // replaces it, the replaced file kept as .bak - so a
         // save interrupted mid-write (kill, power, full disk)
@@ -953,11 +952,11 @@ namespace SyncyardTray
 
         // --- autostart (HKCU Run) -----------------------------------
         // The Run value is the machine's actual autostart state:
-        // installers set it, the spec 011 conversion retires it,
+        // installers set it, the conversion retires it,
         // and this class is the only tray code that touches it -
         // read to tell the truth in the dialog and in the load
         // default, written only by ApplyAutostart from the
-        // dialog's save path (spec 014 FR-005). The tray never
+        // dialog's save path. The tray never
         // registers itself at startup.
 
         private const string RunKeyPath =
@@ -1029,7 +1028,7 @@ namespace SyncyardTray
     }
 
     // A read-only view of the gatekeeper's published status
-    // (spec 014 Part C, contract in FR-008). The tray reads the
+    //. The tray reads the
     // snapshot file at most once per tick and never writes it.
     // The mode string is carried verbatim - a mode this build
     // does not know is displayed as read, never dropped.
@@ -1213,13 +1212,13 @@ namespace SyncyardTray
         }
     }
 
-    // The tray's connection state (spec 018): whether this host
+    // The tray's connection state: whether this host
     // is in contact with the fleet, judged ONLY from signals
     // already present on the host - the backchannel agent's
     // heartbeat file (primary) and, when a publisher exists, the
     // fleet-status snapshot (secondary). The tray makes no
     // network calls of its own and never becomes a second
-    // watcher; the indicator is display only (FR-007): this
+    // watcher; the indicator is display only: this
     // section reads the signal files and nothing else - it
     // starts nothing, stops nothing, and writes nothing.
     internal sealed class ConnectionStatus
@@ -1235,7 +1234,7 @@ namespace SyncyardTray
         public bool HeartbeatSeen;
         public bool SnapshotSeen;
 
-        // The pure state function (FR-001): no signal ever seen
+        // The pure state function: no signal ever seen
         // is DISCONNECTED - a fresh install must not claim a
         // connection it has never observed.
         public static int StateForAge(bool hasSignal, double ageSeconds,
@@ -1259,7 +1258,7 @@ namespace SyncyardTray
             return ((int)(seconds / 60)) + " min";
         }
 
-        // The menu/tooltip wording (FR-003). The no-signal case
+        // The menu/tooltip wording. The no-signal case
         // reads "unknown" in words even though the icon state
         // is DISCONNECTED: the words report what the tray knows,
         // the icon reports the state it must assume.
@@ -1277,7 +1276,7 @@ namespace SyncyardTray
                 " for " + FormatAgeShort(AgeSeconds) + ")";
         }
 
-        // Signal honesty (FR-004): name exactly the signals the
+        // Signal honesty: name exactly the signals the
         // judgement could rest on - never imply a fleet-side
         // confirmation the tray does not have.
         public string SignalDetail()
@@ -1377,7 +1376,7 @@ namespace SyncyardTray
 
     internal static class Program
     {
-        // The apply half of self-update (spec 021): the running
+        // The apply half of self-update: the running
         // tray starts a detached copy of this same exe with the
         // verified download's path as its argument, then exits.
         // The helper waits for that old process to be gone,
@@ -1509,7 +1508,7 @@ namespace SyncyardTray
         [STAThread]
         private static void Main(string[] args)
         {
-            // Self-update helper mode (spec 021) runs before
+            // Self-update helper mode runs before
             // the singleton mutex and before any UI exists:
             // the helper must be able to replace the exe while
             // no tray instance holds it, and it shows nothing.
@@ -1629,14 +1628,14 @@ namespace SyncyardTray
         private bool _menuDirty;
         private int _tick;
         private TraySettings _settings;
-        // Tray liveness heartbeat (spec 025): the file beside
+        // Tray liveness heartbeat: the file beside
         // the log the backchannel agent merges into its
         // heartbeat, the process start it reports, and the
         // write state (cadence clock + a failure latch so a
         // broken write logs once, not every beat).
         private readonly string _heartbeatPath;
         private readonly string _stoppedMarkerPath;
-        // Persisted restart state (spec 028 FR-006): restart
+        // Persisted restart state: restart
         // history and Faulted per runner instance, beside the
         // log, so a tray restart does not zero a crash-looping
         // instance's cap accounting.
@@ -1652,7 +1651,7 @@ namespace SyncyardTray
         private ConsolesForm _consolesForm;
         private System.Windows.Forms.Timer _launchTimer;
 
-        // Self-update state (spec 021). The build stamp is the
+        // Self-update state. The build stamp is the
         // value the menu header and the startup log line carry;
         // keep it in step with the assembly version attributes
         // at the top of this file and the repo VERSION file
@@ -1708,7 +1707,7 @@ namespace SyncyardTray
                 "tray-restart-state.json");
 
             // The project mark is embedded in this program as the
-            // SyncyardLogo.png resource (spec 007 FR-007); a logo.png
+            // SyncyardLogo.png resource; a logo.png
             // next to the exe is only a fallback. The tray icon IS
             // the mark, with a slash overlay when runners are down.
             try
@@ -1737,10 +1736,10 @@ namespace SyncyardTray
 
             // Settings load before the runner table exists:
             // the lane dirs are built from the per-machine
-            // runner root the settings carry (spec 021 FR-007),
+            // runner root the settings carry,
             // and the table itself from the machine's lane set
             // with every instance directory of each lane
-            // (spec 028 FR-004/FR-005) - a machine's tray
+            // - a machine's tray
             // supervises exactly its own lanes and instances,
             // never another machine's shape.
             _settings = TraySettings.Load();
@@ -1781,7 +1780,7 @@ namespace SyncyardTray
             Log("tray build " + BuildId);
             RefreshStates();
             StartMissing(false);
-            // Spec 025: a start is the owner (or the watchdog
+            // a start is the owner (or the watchdog
             // acting for them) wanting a tray — clear any
             // stopped-by-user marker a previous Exit left, and
             // lay down the first beat now, not 30 s from now.
@@ -1790,7 +1789,7 @@ namespace SyncyardTray
             if (_settings.HideStrayConsoles) HideStrayConsoles();
             _fleet = FleetStatus.Load(_settings.FleetStatusPath,
                 _settings.FleetStaleSeconds);
-            // The connection baseline (spec 018): evaluated
+            // The connection baseline: evaluated
             // once here so the first tick's compare-and-log has
             // a prior state; the startup state itself is not a
             // transition and is not logged as one.
@@ -1832,7 +1831,7 @@ namespace SyncyardTray
 
         // --- supervision ------------------------------------------------
 
-        // A tray supervising nothing says so (spec 028 FR-003):
+        // A tray supervising nothing says so:
         // the runner root missing, or no enabled lane instance
         // directory under it, means this tray watches nothing -
         // the note rides the menu header and the heartbeat in
@@ -1850,7 +1849,7 @@ namespace SyncyardTray
                 "under the runner root";
         }
 
-        // Persisted restart state (spec 028 FR-006): restart
+        // Persisted restart state: restart
         // history and Faulted per instance directory, in a
         // small file beside the log (the runner-watchdog.ps1
         // restarts.json pattern). Restored at startup, saved
@@ -1940,7 +1939,7 @@ namespace SyncyardTray
         private void TickCore()
         {
             _tick++;
-            // Self-update plumbing on the UI thread (spec 021):
+            // Self-update plumbing on the UI thread:
             // capture the context the worker completions post
             // to, and act as the backstop launcher if a verified
             // download completed with no context captured.
@@ -1962,14 +1961,14 @@ namespace SyncyardTray
                     "It will not be restarted again - open the tray menu.",
                     ToolTipIcon.Error);
             }
-            // Tray liveness beat (spec 025): a 30 s wall-clock
+            // Tray liveness beat: a 30 s wall-clock
             // cadence off the tick, so the beat's rate does not
             // depend on the tick setting.
             if ((DateTime.UtcNow - _lastHeartbeatUtc).TotalSeconds >= 30)
                 WriteTrayHeartbeat();
             // One fleet read per tick, after supervision, so the
             // menu, tooltip, and any open dialog all render the
-            // same snapshot (spec 014 FR-008/FR-010).
+            // same snapshot.
             ReloadSignals();
             MaybeShowUpdateBalloon();
             RebuildMenu();
@@ -1977,7 +1976,7 @@ namespace SyncyardTray
             RefreshStatusDialog();
         }
 
-        // The tray liveness beat (spec 025): a small record
+        // The tray liveness beat: a small record
         // beside the log — host, build, pid, session, start,
         // tick, and each lane's running/faulted state at write
         // time — written atomically (temp file + replace, the
@@ -2007,7 +2006,7 @@ namespace SyncyardTray
                 sb.Append("  \"ts\": \"").Append(IsoUtc(now)).Append("\",\n");
                 sb.Append("  \"tick\": ").Append(_tick.ToString(
                     CultureInfo.InvariantCulture)).Append(",\n");
-                // Spec 028 FR-003/FR-005: the beat states what
+                // the beat states what
                 // this tray supervises - the supervising-nothing
                 // note when it watches nothing, and one entry
                 // per runner INSTANCE (a multi-instance lane
@@ -2063,10 +2062,10 @@ namespace SyncyardTray
                 CultureInfo.InvariantCulture);
         }
 
-        // The stopped-by-user marker (spec 025): the owner's
+        // The stopped-by-user marker: the owner's
         // Exit writes it beside the log and the packaged tray
         // watchdog stands down while it stands, so Exit means
-        // exit (closing the spec 023 FR-007 gap). Any tray
+        // exit (closing the gap). Any tray
         // start clears it. Best-effort both ways: a marker
         // that cannot be written or cleared never blocks the
         // tray itself.
@@ -2093,13 +2092,13 @@ namespace SyncyardTray
         }
 
         // The one fleet read plus the connection judgement
-        // (spec 018 FR-001): shared by the tick and by the
+        //: shared by the tick and by the
         // status window's own refresh, so both surfaces
         // render the same snapshot and a transition is
         // logged exactly once, by whichever surface reads
         // first. A transition is logged with the signal
         // age that caused it, and only a transition
-        // (FR-006) - steady-state reads write nothing.
+        // - steady-state reads write nothing.
         internal void ReloadSignals()
         {
             _fleet = FleetStatus.Load(_settings.FleetStatusPath,
@@ -2148,7 +2147,7 @@ namespace SyncyardTray
         }
 
         // Listener identity is the exact runner directory
-        // (spec 028 FR-007, red team H14): the listener exe's
+        //: the listener exe's
         // own directory must EQUAL the instance dir - never a
         // path-prefix match, under which the listener of a
         // longer sibling dir (normal2) also counted as the
@@ -2173,7 +2172,7 @@ namespace SyncyardTray
         // act (Start all, dialog buttons): it bypasses the master
         // supervision toggle but never a lane's own toggle -
         // an unsupervised lane is started only from its own
-        // per-lane Start control (spec 014 FR-004/FR-006).
+        // per-lane Start control.
         private void StartMissing(bool manual)
         {
             if (!manual && !_settings.SupervisionEnabled) return;
@@ -2264,7 +2263,7 @@ namespace SyncyardTray
         private void RestartRunner(RunnerDef r)
         {
             // One act composed of the existing acts, each of which
-            // logs itself: stop, fault-clear, start (spec 014 FR-006).
+            // logs itself: stop, fault-clear, start.
             StopRunner(r);
             r.Faulted = false;
             r.RestartTimes.Clear();
@@ -2274,7 +2273,7 @@ namespace SyncyardTray
             RefreshStates();
         }
 
-        // --- settings surface (spec 014) ----------------------------
+        // --- settings surface ----------------------------
 
         internal IList<RunnerDef> Runners { get { return _runners; } }
         internal TraySettings Settings { get { return _settings; } }
@@ -2292,7 +2291,7 @@ namespace SyncyardTray
         }
 
         // The lane-aggregated state the settings dialog shows
-        // (spec 028 FR-005): a lane's row summarizes its
+        //: a lane's row summarizes its
         // instances - any faulted instance faults the row, and
         // the running count is over the lane's instances.
         internal string LaneStateText(string lane)
@@ -2332,7 +2331,7 @@ namespace SyncyardTray
         internal void ApplySettings(TraySettings s)
         {
             // The dialog's draft carries the live settings'
-            // machine-derived lane shape (spec 028): the save
+            // machine-derived lane shape: the save
             // writes the machine's lanes, never the compiled
             // floor a fresh draft starts from.
             s.AdoptLaneShape(_settings);
@@ -2361,7 +2360,7 @@ namespace SyncyardTray
             _fleet = FleetStatus.Load(_settings.FleetStatusPath,
                 _settings.FleetStaleSeconds);
             // A settings save can move the thresholds or the
-            // heartbeat path (spec 018 FR-005): re-evaluate and
+            // heartbeat path: re-evaluate and
             // re-baseline silently - a change the owner just
             // made in the dialog is not a fleet transition and
             // must not log as one.
@@ -2499,7 +2498,7 @@ namespace SyncyardTray
             RebuildMenu();
         }
 
-        // --- self-update (spec 021) --------------------------------
+        // --- self-update --------------------------------
         // The tray's only network traffic, and only ever on the
         // owner's explicit menu click: a check reads the update
         // manifest published with the project's GitHub releases,
@@ -2996,7 +2995,7 @@ namespace SyncyardTray
 
         // --- tray UI ------------------------------------------------------
 
-        // The menu's fleet header (spec 014 FR-007): the
+        // The menu's fleet header: the
         // gatekeeper's mode and queue at a glance, rendered from
         // the last snapshot read - text only, rebuilt with the
         // menu on the existing tick cadence, never an icon render.
@@ -3013,7 +3012,7 @@ namespace SyncyardTray
             return s;
         }
 
-        // The menu's connection line (spec 018 FR-003): the state
+        // The menu's connection line: the state
         // in words. The settings dialog keeps the signal detail;
         // the menu header does not (owner trim, 2026-11-04: the
         // header is the build line, the fleet summary, and this
@@ -3117,7 +3116,7 @@ namespace SyncyardTray
             connLine.Enabled = false;
             menu.Items.Add(connLine);
             // A tray supervising nothing says so in the header
-            // (spec 028 FR-003), ahead of every lane row: no
+            //, ahead of every lane row: no
             // normal presentation may stand in for it.
             string supNote = SupervisionNote();
             if (supNote != null)
@@ -3158,7 +3157,7 @@ namespace SyncyardTray
                 if (r.Running) running++;
                 string state = r.Faulted ? "FAULTED - owner needed"
                              : r.Running ? "running" : "stopped";
-                // One row per instance (spec 028 FR-005): a
+                // One row per instance: a
                 // multi-instance lane's rows name the instance
                 // beside the lane, so normal, normal2, and
                 // normal3 read as three rows, not one.
@@ -3291,14 +3290,14 @@ namespace SyncyardTray
             return s;
         }
 
-        // Icon states (FR-007): 0 = all runners up, clean color
+        // Icon states: 0 = all runners up, clean color
         // mark; 1 = some down, color mark with amber slash; 2 = none
         // up or faulted, GRAYSCALE mark with red slash. The slash is drawn with a white halo so it reads on
         // light and dark taskbars. The dot exists only if the mark
         // itself failed to load, which the embedded resource makes a
         // should-never-happen path.
         //
-        // Spec 018 adds the second dimension WITHOUT touching the
+        // The connection indicator adds the second dimension WITHOUT touching the
         // runner semantics above: the slash stays runner-only, and
         // the connection state is drawn as a link mark in the
         // icon's bottom-right corner (DrawLinkMark) - solid when
@@ -3401,7 +3400,7 @@ namespace SyncyardTray
             bmp.Dispose();
         }
 
-        // The connection link mark (spec 018 FR-002), drawn in
+        // The connection link mark, drawn in
         // the icon's bottom-right corner - the corner the runner
         // slash's diagonal (bottom-left to top-right) leaves
         // clear. Two interlocking rings: thick-walled (solid)
@@ -4126,7 +4125,7 @@ namespace SyncyardTray
         }
     }
 
-    // The settings dialog (spec 014 Part B): the tray's settings
+    // The settings dialog: the tray's settings
     // window, opened only from the tray menu, one instance
     // at a time. Checkboxes and fields are saved settings (applied
     // by Save through TrayApp.ApplySettings; Cancel discards them);
@@ -4140,7 +4139,7 @@ namespace SyncyardTray
     internal sealed class SettingsForm : Form
     {
         private readonly TrayApp _app;
-        // The machine's lane set (spec 028 FR-004): the dialog
+        // The machine's lane set: the dialog
         // draws exactly the lanes this machine carries, taken
         // from the live settings at open - never the compiled
         // four-lane floor.
@@ -4315,7 +4314,7 @@ namespace SyncyardTray
                 btnStart.Click += delegate
                 {
                     // A lane's buttons act on every instance
-                    // of the lane (spec 028 FR-005).
+                    // of the lane.
                     foreach (var r in RunnersOf(captured))
                         _app.LaneStart(r);
                     RefreshDynamic();
@@ -4409,7 +4408,7 @@ namespace SyncyardTray
             grpFleet.Controls.Add(_queue);
 
             // The connection judgement's signal set, stated in
-            // the fleet section too (spec 018 FR-004).
+            // the fleet section too.
             _fleetSignal = new Label();
             _fleetSignal.Location = new Point(16, 186);
             _fleetSignal.Size = new Size(544, 16);
@@ -4418,7 +4417,7 @@ namespace SyncyardTray
             var note = new Label();
             note.Text = "Published by the gatekeeper and shown " +
                 "read-only. Change fleet state with the gk commands " +
-                "(spec 013), not from the tray.";
+                ", not from the tray.";
             note.Location = new Point(16, 206);
             note.Size = new Size(544, 28);
             grpFleet.Controls.Add(note);
@@ -4441,7 +4440,7 @@ namespace SyncyardTray
             _chkSupervision.Checked = s.SupervisionEnabled;
             _chkHide.Checked = s.HideStrayConsoles;
             // The checkbox tells the machine's actual truth at
-            // open time (spec 014 FR-005), whatever set it last.
+            // open time, whatever set it last.
             _chkAutostart.Checked = TraySettings.AutostartIsRegistered();
             _numCap.Value = s.MaxRestartsPerHour;
             _numTick.Value = s.TickSeconds;
@@ -4465,7 +4464,7 @@ namespace SyncyardTray
             return null;
         }
 
-        // Every instance of a lane (spec 028 FR-005): the
+        // Every instance of a lane: the
         // dialog's per-lane buttons act on all of them.
         private List<RunnerDef> RunnersOf(string lane)
         {
@@ -4480,7 +4479,7 @@ namespace SyncyardTray
         private void OnSave()
         {
             var cur = _app.Settings;
-            // Spec 018 FR-005: the connection thresholds must
+            // the connection thresholds must
             // satisfy stale < down. An invalid pair is refused
             // here, with the fields named, and nothing is saved
             // - the prior values stay in force.
@@ -4521,12 +4520,12 @@ namespace SyncyardTray
         // Called from the tray tick (and after this dialog's own
         // actions): re-set text on the existing controls only;
         // rebuild the queue list only when the snapshot's stamp
-        // changed (spec 014 FR-010).
+        // changed.
         public void RefreshDynamic()
         {
             for (int i = 0; i < _lanes.Length; i++)
                 _laneState[i].Text = _app.LaneStateText(_lanes[i]);
-            // The connection section (spec 018): the state in
+            // The connection section: the state in
             // words plus the signal set it rests on, refreshed
             // from the tray tick like the lane states.
             var c = _app.Connection;
@@ -4551,7 +4550,7 @@ namespace SyncyardTray
                     "Fleet: unavailable (" + f.Problem + ")";
                 _fleetDetail.Text = "No snapshot at the path below. " +
                     "The section lights up when a publisher writes " +
-                    "one (spec 014 FR-009).";
+                    "one.";
                 if (_queueStamp != null)
                 {
                     _queue.Items.Clear();

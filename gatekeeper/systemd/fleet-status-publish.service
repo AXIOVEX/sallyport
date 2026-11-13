@@ -1,5 +1,5 @@
 [Unit]
-Description=Syncyard fleet-status publisher (spec 014 FR-009)
+Description=Syncyard fleet-status publisher
 After=network-online.target
 Wants=network-online.target
 

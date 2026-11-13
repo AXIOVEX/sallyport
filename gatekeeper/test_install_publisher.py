@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Sandbox install battery for the packaged fleet-status
-publisher installer (spec 024 FR-008).
+publisher installer.
 
 Runs the REAL gatekeeper/install-publisher.sh in temp-dir
 sandboxes where every path it can touch is redirected

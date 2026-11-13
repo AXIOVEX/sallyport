@@ -4,7 +4,7 @@
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.
 #
-# Host contract (spec 010 FR-003): the native macOS transport. The
+# Host contract: the native macOS transport. The
 # `lane` input addresses the runner; any macOS host whose runner
 # carries that lane label can serve it. The gatekeeper passes cwd
 # explicitly (the host's config cwd map); empty means the runner

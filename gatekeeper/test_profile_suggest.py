@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Battery for `gk profile suggest` (spec 016 follow-on).
+"""Battery for `gk profile suggest`.
 
 The command drafts a lane profile for one host from its
 recorded capability snapshot, with the reasoning printed as

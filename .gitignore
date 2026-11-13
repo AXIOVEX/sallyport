@@ -11,7 +11,7 @@ gatekeeper/.sweep.lock/
 # gatekeeper test scratch
 gatekeeper/test-tmp/
 
-# Standalone packaging + docs build output (spec 017)
+# Standalone packaging + docs build output
 dist/
 build/
 *.egg-info/

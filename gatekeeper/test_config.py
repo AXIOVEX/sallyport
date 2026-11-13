@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Config loader battery (spec 010 FR-001/FR-002, T005 slice).
+"""Config loader battery.
 
 Run: python3 test_config.py [example.yaml]
 Asserts:
@@ -57,14 +57,14 @@ check("golden budget", (cfg["budget"]["standdown_remaining"],
                         cfg["budget"]["critical_remaining"]) == (1000, 500))
 check("golden marker pattern",
       cfg["markers"]["pattern"] == r"^[A-Z][A-Z0-9_]{2,}([ :]|$)")
-check("golden liveness threshold (spec 011 FR-001)",
+check("golden liveness threshold",
       cfg["liveness"]["down_after_s"] == 900)
-check("golden reboot grace (spec 011 FR-015)",
+check("golden reboot grace",
       cfg["reboot"]["grace_s"] == 60)
-check("golden optimizer knobs (spec 013 FR-012)",
+check("golden optimizer knobs",
       cfg["dispatch"]["optimizer_ceiling"] == 100
       and cfg["dispatch"]["optimizer_aging_step_min"] == 10)
-check("golden checkpoint contract (spec 013 FR-007)",
+check("golden checkpoint contract",
       cfg["checkpoint"]["exit_code"] == 86
       and cfg["checkpoint"]["marker"] == "CHECKPOINT_PAUSED"
       and cfg["checkpoint"]["env_var"] == "SYNCYARD_HOLD_FILE"
@@ -73,11 +73,11 @@ check("golden checkpoint contract (spec 013 FR-007)",
               "desktop": r"C:\Users\you\Development\Syncyard\holds",
               "laptop": r"C:\Users\you\Development\Syncyard\holds"},
           "wsl.yml": "/home/you/.syncyard/holds"})
-check("golden drain (spec 011 FR-005/FR-007)",
+check("golden drain",
       cfg["drain"]["window_s"] == 120
       and cfg["drain"]["per_lane_window_s"] == {}
       and cfg["drain"]["guard_stale_after_s"] == 180)
-check("golden lock TTLs (spec 015 FR-011)",
+check("golden lock TTLs",
       cfg["lock"]["default_ttl_min"] == 240
       and cfg["lock"]["max_ttl_min"] == 1440)
 check("golden log cap", cfg["retention"]["human_log_max_bytes"] == 1000000)
@@ -98,10 +98,10 @@ for lane, (q, mode, vals) in {
           tuple(L["queued"]) == q and L["executing"]["mode"] == mode
           and tuple(L["executing"][key]) == vals
           and L["runner_label"] == f"lane-{lane}" and L["host"] == "desktop")
-# Spec 016: the resolved table IS the fleet-default profile, and
+# the resolved table IS the fleet-default profile, and
 # the profile surface carries today's semantics plus the new
 # routing fields pinned here.
-check("golden profile surface (spec 016 FR-001)",
+check("golden profile surface",
       cfg["active_lane_profile"] == "fleet-default"
       and set(cfg["lane_profiles"]) == {
           "fleet-default", "single-host-light", "gpu-farm"}
@@ -115,7 +115,7 @@ for lane, (rclass, band) in {
     "gpu": ("gpu", [0, None]),
 }.items():
     L = cfg["lanes"][lane]
-    check(f"golden lane {lane} routing fields (spec 016 FR-002)",
+    check(f"golden lane {lane} routing fields",
           L["resource_class"] == rclass and L["duration_band"] == band
           and L["concurrency"] == 1)
 
@@ -139,7 +139,7 @@ check("defaults == example fleet surface",
       and dflt["checkpoint"] == cfg["checkpoint"]
       and dflt["lock"] == cfg["lock"])
 
-# 4: partial override merges (spec 016: the lanes path is the
+# 4: partial override merges (: the lanes path is the
 # active profile's table now — profiles.fleet-default.quick).
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
     f.write("budget:\n  standdown_remaining: 2000\nlanes:\n  profiles:\n    fleet-default:\n      quick:\n        queued: [5, 15]\n")
@@ -287,7 +287,7 @@ check("drain override loads",
       over["drain"]["window_s"] == 45
       and over["drain"]["per_lane_window_s"] == {"gpu": 300}
       and over["drain"]["guard_stale_after_s"] == 180)
-# 9: a valid lock TTL override loads and lands (spec 015 FR-011).
+# 9: a valid lock TTL override loads and lands.
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
     f.write("lock:\n  default_ttl_min: 60\n  max_ttl_min: 720\n")
     path = f.name
@@ -297,21 +297,21 @@ check("lock TTL override loads",
       over["lock"]["default_ttl_min"] == 60
       and over["lock"]["max_ttl_min"] == 720)
 
-# 10: spec 016 profile overrides load and land.
+# 10: profile overrides load and land.
 with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
     f.write("lanes:\n  active_profile: single-host-light\n  auto_default: true\n  capability_max_age_min: 30\n")
     path = f.name
 over = cfgmod.load_config(path)
 os.unlink(path)
-check("profile switch override loads (spec 016 FR-001)",
+check("profile switch override loads",
       over["active_lane_profile"] == "single-host-light"
       and set(over["lanes"]) == {"quick", "long"}
       and over["lanes"]["long"]["resource_class"] == "any"
       and over["lanes_auto_default"] is True
       and over["lanes_capability_max_age_min"] == 30)
-expect_error("reject pre-016 flat lanes shape (spec 016 FR-002)",
+expect_error("reject pre-016 flat lanes shape",
              "lanes:\n  quick:\n    host: desktop\n    queued: [10, 30]\n    executing:\n      mode: fixed\n      values: [5, 15]\n")
-expect_error("reject unknown active profile (spec 016 FR-002)",
+expect_error("reject unknown active profile",
              "lanes:\n  active_profile: nowhere\n")
 
 print()

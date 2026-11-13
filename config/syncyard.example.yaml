@@ -1,6 +1,6 @@
 # Syncyard configuration — a FICTIONAL example fleet (one
 # Windows host, user "you", and its WSL2 distro). It doubles
-# as the spec 010 FR-001 golden fixture: the built-in defaults
+# as the golden fixture: the built-in defaults
 # in gatekeeper/config.py carry these same fictional values,
 # and test_config.py proves the two agree. Real deployments
 # copy this to `syncyard.yaml` beside the gatekeeper and put
@@ -12,7 +12,7 @@
 # named error — the gatekeeper never guesses.
 #
 # Types: hosts are windows | wsl2 | macos | linux | docker
-# (spec 010 FR-003). This fleet has one Windows host and its
+#. This fleet has one Windows host and its
 # WSL2 distro.
 
 version: 1
@@ -36,8 +36,8 @@ dispatch:
   lock_stale_min: 10
   duplicate_policy: refuse    # refuse | allow (same --key while active)
   soft_cap_min: 30            # jobs expected longer are announced first
-  optimizer_ceiling: 100      # spec 013 FR-012: auto priorities cap here
-  optimizer_aging_step_min: 10  # spec 013 FR-012: +1 auto priority per 10 min waited
+  optimizer_ceiling: 100      # auto priorities cap here
+  optimizer_aging_step_min: 10  # +1 auto priority per 10 min waited
 
 # Script transport. Workflow inputs have a practical size
 # ceiling (~54 KB observed); larger scripts must use the
@@ -51,7 +51,7 @@ transport:
 markers:
   pattern: "^[A-Z][A-Z0-9_]{2,}([ :]|$)"
 
-# Host liveness (spec 011 FR-001). The gatekeeper reads each
+# Host liveness. The gatekeeper reads each
 # host's heartbeat (the backchannel heartbeat is the transport)
 # on its sweep cadence and keeps its own last-seen record per
 # host; `gk status` shows each host UP or DOWN with its
@@ -63,7 +63,7 @@ markers:
 liveness:
   down_after_s: 900
 
-# Controlled reboot (spec 011 FR-015). `gk reboot --host <host>`
+# Controlled reboot. `gk reboot --host <host>`
 # signals the host OS with this grace delay in seconds unless
 # --delay overrides it, so in-flight uploads and log writes
 # finish before the host goes down. The going-down record is
@@ -72,7 +72,7 @@ liveness:
 reboot:
   grace_s: 60
 
-# Checkpoint hold (spec 013 FR-007). The cooperative job-level
+# Checkpoint hold. The cooperative job-level
 # pause contract: at dispatch each script job is passed the
 # venue path of its own hold file (holds_dir for its workflow
 # + "<job-id>.hold"), and the transport workflow exports that
@@ -102,16 +102,16 @@ checkpoint:
       laptop: "C:\\Users\\you\\Development\\Syncyard\\holds"
     wsl.yml: /home/you/.syncyard/holds
 
-# Host drain (spec 011 FR-005/FR-007). `gk drain --host <host>`
+# Host drain. `gk drain --host <host>`
 # holds dispatch to that one host, signals its running
-# checkpoint-capable jobs (the spec 013 hold contract), waits
+# checkpoint-capable jobs (the hold contract), waits
 # out the window below (per lane when a lane overrides it),
 # and prints a plain CLEAN / INTERRUPTING verdict. The drain
 # hold then stands until `gk host-resume <host>` — it is
 # host-scoped and separate from the pipeline pause/focus/drain
-# of spec 013, which `gk resume` clears; neither clears the
+# which `gk resume` clears; neither clears the
 # other. guard_stale_after_s bounds the host guard's heartbeat
-# (spec 011 Phase 3): the guard beats into a host file the
+#: the guard beats into a host file the
 # backchannel agent merges into its heartbeat payload, and a
 # beat older than this relative to the carrying heartbeat is
 # stale — ledgered once per transition and shown in status, so
@@ -123,7 +123,7 @@ drain:
   window_s: 120
   per_lane_window_s: {}
   guard_stale_after_s: 180
-# Lane priority lock (spec 015 FR-007). `gk lock --lane
+# Lane priority lock. `gk lock --lane
 # <lane> --program <program>` gives one program exclusive
 # dispatch on a lane until it releases, the operator
 # overrides, or the lock expires. Every lock carries a TTL
@@ -143,7 +143,7 @@ lock:
 # fleet's Windows host; `desktop-wsl` is its WSL2 distro,
 # reached through it (its workflows ride the via host's
 # runner). A job addressed to a lane runs on that lane's host
-# or is refused — never silently rerouted (FR-004).
+# or is refused — never silently rerouted.
 hosts:
   desktop:
     type: windows
@@ -208,7 +208,7 @@ workflows:
 #     cwd:
 #       docker.yml: /
 
-# Lanes (spec 010 FR-002; spec 016 FR-001/FR-002). Lanes live
+# Lanes. Lanes live
 # in named PROFILES; exactly one profile is active. A profile
 # is a lane table: each lane names its host, runner label,
 # concurrency (1 = serial unless a lane says otherwise),
@@ -322,7 +322,7 @@ lanes:
           mode: expectation
           floor: [240, 360]
 
-# Notification endpoints (spec 010 FR-007). Programs register
+# Notification endpoints. Programs register
 # an endpoint name on submit; the outbox delivers per type.
 # type chat = a Muse chat id (this fleet's vehicle);
 # other types: webhook (URL), file (append path),

@@ -4,7 +4,7 @@
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.
 #
-# Host contract (spec 010 FR-003/FR-004): a WSL2 venue rides its
+# Host contract: a WSL2 venue rides its
 # Windows host's runner — this workflow runs on the Windows runner
 # addressed by the `lane` input and hops into the host's default
 # WSL2 distro. The gatekeeper always passes cwd explicitly (from
@@ -27,7 +27,7 @@ on:
         required: false
         default: '/home/you'
       hold_file:
-        description: "Checkpoint hold-signal path inside the distro (spec 013 FR-007); the job reads it via $SYNCYARD_HOLD_FILE"
+        description: "Checkpoint hold-signal path inside the distro; the job reads it via $SYNCYARD_HOLD_FILE"
         required: false
 
 jobs:
@@ -72,7 +72,7 @@ jobs:
           if ($env:HOLD_FILE) {
             $holdDir = $env:HOLD_FILE.Substring(0, $env:HOLD_FILE.LastIndexOf('/'))
             $inner = "mkdir -p '$holdDir' && SYNCYARD_HOLD_FILE='$env:HOLD_FILE' $inner"
-            # Running-job registry (spec 011 Phase 3): same
+            # Running-job registry: same
             # contract as run.yml — an entry in the `running`
             # dir beside the holds dir while the job runs, so
             # the host guard can find this job and its hold

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install-publisher.sh - install the Syncyard fleet-status
-# publisher (gatekeeper/fleet_status.py, spec 014 FR-009) as a
-# systemd system timer, from this checkout (spec 024).
+# publisher (gatekeeper/fleet_status.py) as a
+# systemd system timer, from this checkout.
 #
 # Two strict phases:
 #   1. preflight - every declared dependency is checked and a

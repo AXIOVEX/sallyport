@@ -1,4 +1,4 @@
-# Syncyard standalone distribution (spec 017).
+# Syncyard standalone distribution.
 #
 # The package and the checkout are the same code: the
 # [tool.setuptools] package-dir mapping below installs the
@@ -6,7 +6,7 @@
 # `syncyard` and `syncyard.backchannel` namespace packages.
 # Nothing is copied, generated, or transformed at build time,
 # and gatekeeper/gk.py + gatekeeper/config.py are never
-# edited for packaging (spec 017 FR-003 / FR-010).
+# edited for packaging.
 #
 # The version is read from the repo VERSION file at build
 # time (see [tool.setuptools.dynamic]); VERSION is the
@@ -49,7 +49,7 @@ Issues = "https://github.com/electrohire/syncyard/issues"
 
 [project.scripts]
 # The console command IS the gatekeeper: this entry point is a
-# reference to gk.py's own main(), not a wrapper (spec 017 FR-002).
+# reference to gk.py's own main(), not a wrapper.
 syncyard = "syncyard.gk:main"
 
 [tool.setuptools.dynamic]
@@ -59,6 +59,6 @@ version = { file = "VERSION" }
 # PEP 420 namespace packages over the existing directories.
 # gk.py loads config.py by file path from its own directory,
 # so the sibling relationship this mapping preserves is the
-# only layout requirement (spec 017 plan.md section 1-2).
+# only layout requirement.
 package-dir = { syncyard = "gatekeeper", "syncyard.backchannel" = "backchannel" }
 packages = ["syncyard", "syncyard.backchannel"]

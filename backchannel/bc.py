@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """bc.py - VM-side client for the Syncyard failsafe backchannel.
 
-Spec: specs/009-failsafe-backchannel/spec.md (FR-003).
-
 Talks to one machine's channel in the PRIVATE repo
 tbitcs/syncyard-backchannel (default `syncyard-dev` for
 TRISTEN-DESKTOP; `--channel` or SYNCBC_CHANNEL selects another
@@ -66,7 +64,7 @@ def set_channel(name):
     STOP_PATH = CHANNEL + "/STOP"
 
 API_BASE = "https://api.github.com"
-STALE_HEARTBEAT_S = 300  # FR-005: >5 min is stale
+STALE_HEARTBEAT_S = 300  # >5 min is stale
 SKEW_TOLERANCE_S = 30  # a heartbeat ts this far in the FUTURE is
 # clock skew, not freshness: the host's WSL clock and the VM clock
 # are different clocks, and WSL clocks are known to drift across
@@ -121,7 +119,7 @@ def is_acknowledged(cmd, out):
 
 
 def should_refuse_overwrite(existing_cmd, existing_out, force):
-    """FR-003 refusal rule. Pure."""
+    """Refusal rule. Pure."""
     if force:
         return False
     if not existing_cmd:
@@ -257,7 +255,7 @@ def cmd_heartbeat(api, args):
             ",".join("%s=%d" % (k, 1 if v else 0)
                      for k, v in sorted(checks.items()))))
     else:
-        print("BC_SELFTEST ABSENT (agent predates the self-test, spec 010 T010)")
+        print("BC_SELFTEST ABSENT (agent predates the self-test)")
     if age is None:
         print("BC_HEARTBEAT_AGE UNKNOWN (unparseable ts)")
         return 2
@@ -265,11 +263,11 @@ def cmd_heartbeat(api, args):
     if age < -SKEW_TOLERANCE_S:
         print("BC_HEARTBEAT_SKEW age_s=%d - the host clock is ahead "
               "of this clock; freshness cannot be judged from this "
-              "heartbeat (spec 009 FR-005)" % age)
+              "heartbeat" % age)
         return 2
     if age > STALE_HEARTBEAT_S:
         print("BC_HEARTBEAT_STALE age_s=%d limit_s=%d - report to the "
-              "Desktop Access chat (spec 009 FR-005)" % (
+              "Desktop Access chat" % (
                   age, STALE_HEARTBEAT_S))
         return 3
     print("BC_HEARTBEAT_FRESH 1")

@@ -1,4 +1,4 @@
-# Syncyard documentation site (spec 017 FR-006).
+# Syncyard documentation site.
 # Built with MkDocs only - the stock theme, no plugins - so the
 # same build runs locally, in CI (`mkdocs build --strict`), and
 # on Read the Docs (.readthedocs.yaml).
@@ -14,7 +14,7 @@ theme:
 strict: true
 
 # docs/github-pitch.md is a prepared, unsent pitch brief
-# (spec 010 FR-011), not documentation; it never joins the site.
+#, not documentation; it never joins the site.
 exclude_docs: |
   github-pitch.md
 

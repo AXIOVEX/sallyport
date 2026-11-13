@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Transport contract battery for runner/workflows (spec 010 FR-003).
+"""Transport contract battery for runner/workflows.
 
 Text-level checks (stdlib only, no YAML dependency) pinning the
 invariants every Syncyard transport workflow must keep:
@@ -16,8 +16,8 @@ invariants every Syncyard transport workflow must keep:
   - Linux door parity: runner/workflows/linux.yml and the
     vendored production-door fixture must both carry the
     production-critical Linux properties (timeout of at least
-    1440 minutes, isolated checkout git config, spec 013 hold
-    file, spec 011 running-job registry, and GNU base64 decode).
+    1440 minutes, isolated checkout git config, hold
+    file, running-job registry, and GNU base64 decode).
     linux.yml and macos.yml share the dispatch/lane/input
     contract only; their script bodies are intentionally OS
     specific and are not asserted identical.
@@ -75,43 +75,43 @@ for fname in EXECUTE + GRAB:
     else:
         check(f"{fname}: takes path", "\n      path:" in text)
 
-# The checkpoint hold signal (spec 013 FR-007): the venue
+# The checkpoint hold signal: the venue
 # workflows that carry a holds_dir declare the hold_file input
 # and pass it to the job as SYNCYARD_HOLD_FILE.
 for fname in ("run.yml", "wsl.yml", "linux.yml"):
     text = open(os.path.join(WF_DIR, fname)).read()
-    check(f"{fname}: takes hold_file (spec 013)", "hold_file:" in text)
-    check(f"{fname}: exposes SYNCYARD_HOLD_FILE (spec 013)",
+    check(f"{fname}: takes hold_file", "hold_file:" in text)
+    check(f"{fname}: exposes SYNCYARD_HOLD_FILE",
           "SYNCYARD_HOLD_FILE" in text)
 
-# The running-job registry (spec 011 Phase 3): while a job
+# The running-job registry: while a job
 # with a hold venue runs, its workflow keeps an entry file in
 # the `running` dir beside the holds dir — the host guard's
 # local discovery of live checkpoint-capable jobs. The entry
 # is written before the job starts and removed when it ends.
 rtext = open(os.path.join(WF_DIR, "run.yml")).read()
-check("run.yml: registers the running job (spec 011)",
+check("run.yml: registers the running job",
       "$regFile" in rtext and ".entry" in rtext
       and "job_id=" in rtext and "'running'" in rtext)
-check("run.yml: unregisters at job end (spec 011)",
+check("run.yml: unregisters at job end",
       "Remove-Item -Force -ErrorAction SilentlyContinue $regFile"
       in rtext)
 wtext = open(os.path.join(WF_DIR, "wsl.yml")).read()
 check("wsl.yml: registers the running job over the UNC path "
-      "(spec 011)",
+      "",
       "$regFileWsl" in wtext and "wsl.localhost" in wtext
       and ".entry" in wtext and "hold_file_win=" in wtext)
-check("wsl.yml: unregisters at job end (spec 011)",
+check("wsl.yml: unregisters at job end",
       "Remove-Item -Force -ErrorAction SilentlyContinue $regFileWsl"
       in wtext)
 check("grab.yml: no registry (no hold venue, not "
       "checkpoint-capable)",
       ".entry" not in open(os.path.join(WF_DIR, "grab.yml")).read())
 ltext = open(os.path.join(WF_DIR, "linux.yml")).read()
-check("linux.yml: registers the running job (spec 011)",
+check("linux.yml: registers the running job",
       "reg_file" in ltext and ".entry" in ltext
       and "job_id=" in ltext and "/running" in ltext)
-check("linux.yml: unregisters at job end (spec 011)",
+check("linux.yml: unregisters at job end",
       'rm -f "$reg_file"' in ltext)
 
 # The docker transport declares its venue inputs and runs docker.

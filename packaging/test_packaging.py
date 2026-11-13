@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone-distribution battery (spec 017).
+"""Standalone-distribution battery.
 
 Proves, from a clean copy of the tree (never in the checkout):
 
@@ -12,7 +12,7 @@ Proves, from a clean copy of the tree (never in the checkout):
      proven, not assumed) whose version equals VERSION.
   3. The wheel carries syncyard/gk.py, syncyard/config.py
      and syncyard/backchannel/bc.py BYTE-IDENTICAL to the
-     checkout files (spec 017 FR-003: the packaged code is
+     checkout files (the packaged code is
      the checkout code).
   4. The wheel installs into a fresh venv with no network
      and no dependencies, and the installed command surface
@@ -22,7 +22,7 @@ Proves, from a clean copy of the tree (never in the checkout):
   5. docs/changelog.md is byte-identical to CHANGELOG.md
      (the docs site can never carry a different history).
   6. The release workflow keeps its structural invariants
-     (spec 017 FR-004): v* tag trigger plus a manual dry
+    : v* tag trigger plus a manual dry
      run, twine check, OIDC trusted publishing scoped by
      id-token: write, and no stored-credential fields.
 

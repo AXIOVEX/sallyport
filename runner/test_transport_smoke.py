@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Hosted smoke battery for the POSIX + Docker transports
-(spec 010 T008/T009, FR-003/FR-004).
+.
 
 Extracts the Execute step's script body from the shipped
 workflow files and runs it the way a runner would (same env

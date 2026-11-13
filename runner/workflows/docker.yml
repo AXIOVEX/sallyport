@@ -4,7 +4,7 @@
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.
 #
-# Host contract (spec 010 FR-003/FR-004): a docker venue is a named
+# Host contract: a docker venue is a named
 # image run on the host addressed by the `lane` input. The caller
 # specifies the image and any mounts (comma-separated
 # host:container pairs); the job script runs inside the container

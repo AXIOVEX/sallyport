@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Fleet-status snapshot publisher (spec 014 FR-009, task T010).
+"""Fleet-status snapshot publisher.
 
 Builds the snapshot the Syncyard tray's fleet section reads
-(spec 014 FR-008 contract) from the gatekeeper's own state
+ from the gatekeeper's own state
 files and publishes it into the backchannel repo, whose desktop
 agent pulls it every cycle; the tray reads it from the agent's
 clone through its `fleetStatusPath` setting. Owner gate opened
-2026-11-03; transport = backchannel, as FR-009 anticipated.
+2026-11-03; transport = backchannel, as anticipated.
 
-Snapshot shape (mirrors spec 013's status vocabulary; the tray
+Snapshot shape (mirrors 's status vocabulary; the tray
 shows an unrecognized mode verbatim, never blank):
 
     {
@@ -35,10 +35,10 @@ not it carries them, and consumers must tolerate their
 absence (the tray labels running as unknown rather than
 inventing it).
 
-Publisher v2 (the spec 013 fleet deploy): the primary source
+Publisher v2 (the fleet deploy): the primary source
 is the gatekeeper's own emission — `gk snapshot`, which
 derives this shape from the gatekeeper's own normalized
-pause record, its FR-012 dispatch ordering, its admission
+pause record, its dispatch ordering, its admission
 marks, and the host-state file. One derivation, two surfaces
 (terminal status and tray panel), permanently. This module
 is then a thin transporter: it runs the snapshot command,
@@ -54,18 +54,18 @@ the gk.py beside this file; the fleet unit points the
 variable at the fleet gatekeeper.
 
 Mode, focus, and draining mirror the gatekeeper's own
-derivations — spec 013 FR-001's pause-record normalization
+derivations — the pause-record normalization
 (selector lists with the legacy singular `except_key` merged
 in; mode is "focused" when any selector is present) and the
 two drain records the system actually keeps:
 
 - the pipeline drain flag, `drain: true` on the pause record
-  (spec 013 FR-005, `gk pause --drain`), and
-- a host dispatch hold in the host-state file (spec 011
-  FR-006: a host that is going down takes no dispatches
+  (`gk pause --drain`), and
+- a host dispatch hold in the host-state file
+  (a host that is going down takes no dispatches
   until its hold clears).
 
-`held` is computed per waiting job with spec 013's admission
+`held` is computed per waiting job with the gatekeeper's admission
 rule: under a stop every waiting job is held; under a
 pause/focus a job is held when no selector admits it (key
 equality-or-prefix, program, chat) — except maintenance
@@ -82,7 +82,7 @@ Fallback-path divergences from the gatekeeper's own
 derivation, kept knowingly: waiting order is an approximation
 of the sweep's effective dispatch order (jobs whose lane has
 no active run first, then jobs behind a busy lane, submission
-order inside each group — not the FR-012 effective-priority
+order inside each group — not the effective-priority
 order); `held` does not mark lane-host-held jobs (the
 lane-to-host map lives in the gatekeeper config, and this
 fallback stays dependency-free; draining=true carries that
@@ -98,7 +98,7 @@ Publishing goes through the GitHub contents API, the same
 channel bc.py uses: one GET for the current sha plus one PUT
 per cycle.
 
-Multi-channel (spec 024): --path is repeatable; one snapshot
+Multi-channel: --path is repeatable; one snapshot
 is built once and published byte-identically to every
 configured path, one per machine channel
 (channels/<channel>/fleet-status.json), so every host's tray
@@ -146,7 +146,7 @@ def _read_json(path):
 
 
 def _normalize_pause(raw):
-    """Spec 013 FR-001's normalization of a stored pause
+    """Normalization of a stored pause
     record: selector lists as strings, the legacy singular
     `except_key` merged into the key list, drain as a bool.
     `raw` is the parsed record dict ({} when the file exists
@@ -166,7 +166,7 @@ def _normalize_pause(raw):
 
 
 def _focus_admits(job, focus):
-    """Spec 013 FR-002's selector match: key on equality or
+    """Selector match: key on equality or
     prefix, program and chat (the job's notify_chat) on
     equality."""
     key = str(job.get("key") or "")
@@ -184,7 +184,7 @@ def _focus_admits(job, focus):
 
 def _host_draining(gk_dir):
     """True when any host in the host-state file carries a
-    dispatch hold (spec 011 FR-006). The file's `going_down`
+    dispatch hold. The file's `going_down`
     field is the last ingested record and can outlive its
     hold as history, so the live signal is `hold` alone."""
     hosts = _read_json(os.path.join(gk_dir, "hosts.json")) or {}
@@ -228,7 +228,7 @@ def _lane_state(cap, running, waiting):
 
 
 def build_snapshot(gk_dir):
-    """The FR-008 snapshot dict from the gatekeeper state in
+    """The snapshot dict from the gatekeeper state in
     gk_dir (PAUSED.json / STOPPED.json / hosts.json /
     queue/*.json). This is publisher v2's FALLBACK derivation,
     used only when the gatekeeper's own emission is
@@ -392,7 +392,7 @@ def snapshot_command():
 
 def _valid_snapshot(obj):
     """Structural check of a gatekeeper-emitted snapshot
-    against the FR-008 contract: the required keys with the
+    against the contract: the required keys with the
     required types. Anything less is not transported — the
     fallback derivation serves instead, labeled."""
     if not isinstance(obj, dict):

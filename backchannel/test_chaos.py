@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Chaos battery for the backchannel agent (spec 010 T012).
+"""Chaos battery for the backchannel agent.
 
 Runs the REAL backchannel/agent.sh against a local file://
 channel repo and subjects it to the failure cases:
@@ -53,7 +53,7 @@ channel repo and subjects it to the failure cases:
  17. replay-guard loss: with .last_executed_id deleted and
      the same cmd.json re-pushed, the guard is re-seeded
      from out.json and the command is NOT replayed
-     (FR-004(b) survives the guard file's loss)
+     (survives the guard file's loss)
  18. kill during execution: the interrupted command is
      re-run from the top after the restart (at-least-once
      semantics, pinned deliberately), and its result lands
@@ -759,7 +759,7 @@ def main():
              "file://" + rig.remote], env=rig.env)
         rig.agent_env["SYNCBC_SELFTEST_EVERY"] = "15"
 
-        # 17: replay-guard loss (FR-004(b)). The guard file is
+        # 17: replay-guard loss. The guard file is
         # local state outside the repo; lose it (a wiped base,
         # a reinstall that kept the clone) and re-push the very
         # cmd.json that already executed. The guard must be
@@ -830,7 +830,7 @@ def main():
               f"out={out} runs={counter_runs()}")
 
         # 19: STOP arriving mid-execution. The spec's kill
-        # switch gates NEW commands (FR-004(c) acceptance);
+        # switch gates NEW commands;
         # the running body is not interrupted - it finishes
         # and reports honestly - and the next command is the
         # one that halts.

@@ -16,7 +16,7 @@
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.
 #
-# Host contract (spec 010 FR-003): the `lane` input addresses the
+# Host contract: the `lane` input addresses the
 # runner; any native Linux host whose runner carries that lane label
 # can serve this transport. This is the bash counterpart of wsl.yml
 # for hosts with no Windows parent (tower-offsite is the first).
@@ -28,7 +28,7 @@
 # timeout-minutes is 1440, deliberately above the Windows
 # transports' 360: long Linux lanes carry expectation-mode jobs
 # whose declared expectation exceeds six hours (first case: the
-# RCPH spec 049 config 034 diagnostic, expected 780 minutes,
+# RCPH config 034 diagnostic, expected 780 minutes,
 # submitted 2026-11-07 against wsl.yml's 360 cap on the old venue).
 name: linux
 
@@ -47,7 +47,7 @@ on:
         required: false
         default: '/var/lib/runner'
       hold_file:
-        description: "Checkpoint hold-signal path on this host (spec 013 FR-007); the job reads it via $SYNCYARD_HOLD_FILE"
+        description: "Checkpoint hold-signal path on this host; the job reads it via $SYNCYARD_HOLD_FILE"
         required: false
 
 jobs:
@@ -72,7 +72,7 @@ jobs:
           SYNCYARD_HOLD_FILE: ${{ inputs.hold_file }}
         run: |
           script="$(printf '%s' "$CMD_B64" | base64 -d)"
-          # Running-job registry (spec 011 Phase 3): same contract
+          # Running-job registry: same contract
           # as run.yml / wsl.yml - while this job runs, an entry
           # file in the `running` dir beside the holds dir names
           # it, so the host guard learns locally which

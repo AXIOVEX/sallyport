@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Install and start the Syncyard host shutdown guard (spec 011 Phase 3).
+  Install and start the Syncyard host shutdown guard.
 
 .DESCRIPTION
   Downloads SyncyardGuard.cs from the Syncyard repo, compiles it with
@@ -14,7 +14,7 @@
   shown) and has no user interface and no exit command.
 
   This script is the owner's install step, run at the machine
-  (the spec 011 T006/T008 field sequence): pause the fleet first,
+  (the field sequence): pause the fleet first,
   install, then let the gatekeeper's `guard beat` line in
   `gk status` prove the guard is alive. Nothing here needs admin.
 

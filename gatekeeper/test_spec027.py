@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Scenario battery for spec 027 (version drift detection, H3):
+"""Scenario battery for (version drift detection, H3):
 the gatekeeper drift judge.
 
 Golden style: temp dir, copied gk.py + config.py, subprocess
 drivers, the backchannel heartbeat and the release-manifest
-read stubbed at the module seams (the spec 025 battery's
+read stubbed at the module seams (the battery's
 pattern).
 
 Covers:
@@ -24,7 +24,7 @@ Covers:
     the claim rather than coasting on it, and the status line
     renders the word unknown;
   - a host with no tray beat is never judged and costs no
-    manifest read (FR-005: the read rides the sweep and only
+    manifest read (the read rides the sweep and only
     fires when there is something to judge).
 
 Run: python3 gatekeeper/test_spec027.py
@@ -147,11 +147,11 @@ check("current: tray_current ledgered exactly once across "
       res["current_events"] == 1 and res["drift_events"] == 0,
       str(res))
 check("current: one manifest read per sweep, cached at "
-      "sweep cadence (FR-005)",
+      "sweep cadence",
       res["fetch_calls"] == 2 and res["cache_version"] == "0.4.4.0",
       str(res))
 check("current: the status line shows the build and its "
-      "drift state (FR-003)",
+      "drift state",
       len(res["line"]) == 1 and "build 0.4.4.0" in res["line"][0]
       and "tray drift current" in res["line"][0], str(res))
 
@@ -173,7 +173,7 @@ check("behind: an old build is judged behind within one "
       "sweep of its beat arriving",
       (res["drift"] or {}).get("state") == "behind", str(res))
 check("behind: tray_drift ledgered exactly once across "
-      "repeat sweeps, carrying BOTH versions (FR-001)",
+      "repeat sweeps, carrying BOTH versions",
       len(res["drift_events"]) == 1
       and res["drift_events"][0]["kw"].get("build") == "0.4.2.0"
       and res["drift_events"][0]["kw"].get("release") == "0.4.4.0"
@@ -222,7 +222,7 @@ print(json.dumps({
 }))
 """ % (HB % tray("0.4.4.0")))
 check("unknown: a failed manifest read revokes a previous "
-      "current — the state is unknown, never current (FR-002)",
+      "current — the state is unknown, never current",
       res["state1"] == "current" and res["state2"] == "unknown",
       str(res))
 check("unknown: the failed read ledgers no second "
@@ -246,7 +246,7 @@ print(json.dumps({
 }))
 """)
 check("no beat: no drift record, no events, and no manifest "
-      "read spent (FR-005)",
+      "read spent",
       res["drift"] is None and res["fetch_calls"] == 0
       and res["events"] == 0, str(res))
 

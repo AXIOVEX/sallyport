@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""FR-013 test battery for gk.py (spec 001): atomic-swap save_job +
+"""test battery for gk.py: atomic-swap save_job +
 sweep resilience. Runs against a throwaway queue dir; the live
 gatekeeper is never touched. Fault injection: os.replace forced to
-fail — the pre-FR-013 code destroyed the standing record in exactly
+fail — the pre-code destroyed the standing record in exactly
 this situation (direct-write fallback truncating the final path)."""
 import json
 import os
@@ -81,7 +81,7 @@ disk2 = open(path, "rb").read()
 check("update lands byte-exact",
       disk2 == json.dumps(job, indent=2, sort_keys=True).encode())
 
-# 2. the FR-013 claim: with every rename refused, the update fails
+# 2. the claim: with every rename refused, the update fails
 #    loudly and the STANDING record is untouched, byte for byte
 real_replace = os.replace
 os.replace = lambda a, b: (_ for _ in ()).throw(OSError("EPERM (injected)"))
