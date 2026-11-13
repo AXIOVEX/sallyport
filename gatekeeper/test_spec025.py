@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Scenario battery for spec 025 (tray liveness heartbeat, H1):
+"""Scenario battery for (tray liveness heartbeat, H1):
 the gatekeeper judge.
 
 Golden style: temp dir, copied gk.py + config.py, subprocess
 drivers, the backchannel heartbeat stubbed at the module seam
-(the spec 011 battery's pattern).
+(the battery's pattern).
 
 Covers:
   - a tray beat riding the agent heartbeat is stored on the

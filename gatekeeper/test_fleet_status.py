@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Tests for the fleet-status publisher (spec 014 FR-009/T010).
+"""Tests for the fleet-status publisher.
 
-Pins the FR-008 feed contract the tray parses in
+Pins the feed contract the tray parses in
 runner/tray/SyncyardTray.cs (FleetStatus.Load): the top-level
 key set, the waiting-entry key set, and the unavailability the
 tray shows when no snapshot exists (publisher absent = the
-pre-FR-009 state, exercised by simply not running this).
+pre-state, exercised by simply not running this).
 """
 import json
 import os
@@ -249,7 +249,7 @@ class SnapshotShape(unittest.TestCase):
 
     def test_paused_with_reason_and_focus(self):
         # A pause record carrying an exception selector is a
-        # FOCUS under spec 013 FR-001, not a plain pause; the
+        # FOCUS, not a plain pause; the
         # legacy singular except_key merges into the key list.
         write(os.path.join(self.dir, "PAUSED.json"),
               {"ts": "2026-11-03T00:00:00Z", "reason": "owner hold",
@@ -457,7 +457,7 @@ class Transporter(unittest.TestCase):
 
 
 def load_gk_module(dirpath):
-    """The spec013 battery's pattern: gk.py + config.py copied
+    """The golden battery's pattern: gk.py + config.py copied
     into a temp state dir and loaded as a module from there,
     so every state path the module reads is the fixture's."""
     import importlib.util
@@ -481,9 +481,9 @@ GK_NOW = datetime(2026, 11, 3, 12, 0, 0,
 
 
 class GatekeeperSnapshot(unittest.TestCase):
-    """`gk snapshot`: the FR-008 shape derived by the
-    gatekeeper's own code paths — FR-001 normalization,
-    FR-012 ordering (asserted against dispatch_sort_key
+    """`gk snapshot`: the shape derived by the
+    gatekeeper's own code paths — normalization,
+    ordering (asserted against dispatch_sort_key
     itself), and the sweep's admission marks."""
 
     def setUp(self):
@@ -602,7 +602,7 @@ class GatekeeperSnapshot(unittest.TestCase):
         held = {w["key"]: w["held"] for w in snap["waiting"]}
         # Every default lane routes to host "desktop": its
         # hold holds them all — except the gatekeeper's own
-        # signal jobs (FR-015), which are the drain mechanism.
+        # signal jobs, which are the drain mechanism.
         self.assertEqual(held, {"plain": True, "maint-plain": True,
                                 "gk-reboot-desktop-1": False})
 
@@ -716,7 +716,7 @@ class GatekeeperSnapshot(unittest.TestCase):
         self.assertEqual(snap["waiting"][0]["key"], "plain")
         self.assertEqual(snap["waiting"][0]["held"], True)
 class MultiPathPublish(unittest.TestCase):
-    """Spec 024 FR-007: one snapshot, byte-identical bodies at
+    """one snapshot, byte-identical bodies at
     every configured channel path."""
 
     def test_publish_multiple_paths_identical_bodies(self):
@@ -744,7 +744,7 @@ class MultiPathPublish(unittest.TestCase):
 
 
 class ApiBase(unittest.TestCase):
-    """Spec 024: FLEET_STATUS_API_BASE overrides the API base;
+    """FLEET_STATUS_API_BASE overrides the API base;
     unset it is exactly the historical default."""
 
     def test_api_base_default(self):

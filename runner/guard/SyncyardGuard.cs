@@ -1,28 +1,28 @@
-// SyncyardGuard.cs - host shutdown guard for Syncyard (spec 011).
+// SyncyardGuard.cs - host shutdown guard for Syncyard.
 //
-// Spec: electrohire/syncyard spec 011 (shutdown protection and
-// recovery), Phase 3 - the guard component and the going-down
+// Covers shutdown protection and
+// recovery, Phase 3 - the guard component and the going-down
 // WRITER. The gatekeeper side of this contract (ingest,
-// exactly-once per (host, ts), the FR-006 dispatch hold)
+// exactly-once per (host, ts), the dispatch hold)
 // shipped in Phase 1; this component is the host end of it.
 //
 // Claim: when the host is told to shut down, restart, or log
 // off while checkpoint-capable gatekeeper jobs are running,
 // the guard (a) registers the OS shutdown block with a
 // reason string immediately, (b) raises the running jobs'
-// checkpoint hold files LOCALLY - at the spec 013 paths, in
+// checkpoint hold files LOCALLY - at the paths, in
 // seconds, with no gatekeeper round-trip - (c) writes the
 // going-down record FIRST (verified write, the exact Phase 1
 // record shape) where the backchannel agent merges it into
 // the heartbeat payload the sweep already reads, and
 // (d) releases the block when every running job has
 // checkpointed or ended, or when the configured checkpoint
-// window expires (FR-005, default 120 s), then re-issues the
+// window expires (default 120 s), then re-issues the
 // pending action. It delays a shutdown; it never prevents
 // one.
 //
-// Form: a sibling of the tray, not part of it (spec 011
-// FR-002 sanctions "the tray or a sibling"). The guard has NO
+// Form: a sibling of the tray, not part of it (
+// sanctions "the tray or a sibling"). The guard has NO
 // user interface at all: no tray icon, no menu, no exit
 // command - deliberately harder to exit than the tray (whose
 // Exit item is a feature), so the protection is not
@@ -33,7 +33,7 @@
 // guard beats into guard-heartbeat.json every ~10 s, the
 // agent merges the beat into the fleet heartbeat, and the
 // gatekeeper ledgers `guard_stale` when the beat goes old
-// (spec 011 Phase 3, T007: a stopped guard is a host-health
+// (Phase 3: a stopped guard is a host-health
 // entry, never silent).
 //
 // Compile (no SDK install needed - csc ships with Windows):
@@ -64,7 +64,7 @@ namespace SyncyardGuard
         // the ingest matches a going-down record to a host's
         // lanes by this string.
         public string Host = "desktop";
-        // Checkpoint window (FR-005). Ships equal to the
+        // Checkpoint window. Ships equal to the
         // gatekeeper's drain.window_s default (120 s); the
         // two are set independently because the guard must
         // act even when the gatekeeper is unreachable.
@@ -566,7 +566,7 @@ namespace SyncyardGuard
             catch { /* best effort; dedupe is the backstop */ }
         }
 
-        // Verified write, the FR-013 discipline in miniature:
+        // Verified write, the discipline in miniature:
         // write a temp file in the same directory, read it
         // back and byte-compare, then move it over the
         // target. The reader (the backchannel agent) therefore
@@ -653,7 +653,7 @@ namespace SyncyardGuard
                     if (!string.IsNullOrEmpty(dir))
                         Directory.CreateDirectory(dir);
                     // The file's EXISTENCE is the signal
-                    // (spec 013 FR-008); the content names
+                    //; the content names
                     // who raised it and when.
                     File.WriteAllText(j.HoldFileWin,
                         "held by SyncyardGuard " + UtcNow() +
@@ -747,7 +747,7 @@ namespace SyncyardGuard
                 // Restart, deliberately: WM_QUERYENDSESSION
                 // cannot distinguish the vetoed action
                 // (restart vs poweroff), and a restart returns
-                // the host to service under spec 011 Part C,
+                // the host to service under Part C,
                 // where logon brings the fleet back; a
                 // poweroff leaves it dark until someone is at
                 // the machine. Named for the owner's review

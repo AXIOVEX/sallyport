@@ -8,7 +8,7 @@ Dispose releases nothing). Roughly 7,500 ticks exhausted the
 per-process GDI quota, and the tray died with a System.Drawing
 OutOfMemoryException while constructing its own error dialog.
 
-The spec 014 section guards the settings UI and fleet display built
+The section guards the settings UI and fleet display built
 on top of that discipline: the settings writer must emit exactly
 the keys its reader consumes (the persistence round-trip, proven at
 source level — CI has no .NET Framework compiler, so this parity
@@ -21,27 +21,27 @@ stopped-by-user marker, are the only writes in the whole
 source: three WriteAllText sites, battery-pinned) with
 mode strings carried verbatim, never whitelisted.
 
-The spec 018 section guards the connection indicator: the state
-function's bounds and missing-signal case, the FR-003 wording, the
-FR-004 signal honesty, the icon consuming BOTH states while the
+The section guards the connection indicator: the state
+function's bounds and missing-signal case, the wording, the
+signal honesty, the icon consuming BOTH states while the
 runner slash geometry stays untouched, and the connection path
-performing no writes and no process acts (display only, FR-007).
-Two spec 014 checks were widened, not weakened, when the icon
+performing no writes and no process acts (display only).
+Two checks were widened, not weakened, when the icon
 gained its second dimension: the render cache key is now the
 (runner, connection) pair, and the SetIcon call site passes both
 states - the runner-state value it always carried is unchanged.
 
-The spec 021 section guards the self-update: the build stamp, the
+The section guards the self-update: the build stamp, the
 manifest check, the hash verified before the swap is armed, and
 the helper mode running before the singleton mutex with no UI in
 its code path.
 
-The spec 027 section pins one version truth at the source: the
+The section pins one version truth at the source: the
 .nsi VERSION define, both assembly version attributes, and the
 BuildId string are extracted and asserted equal, so the stamps
 the gatekeeper's drift judge compares can only move together.
 
-The spec 028 section pins settings resilience: the save is
+The section pins settings resilience: the save is
 atomic with a .bak and the load falls back live file -> .bak
 -> machine profile -> compiled defaults, logging the source
 that won; the profile is read as installed data beside the
@@ -132,7 +132,7 @@ def profile_lanes(profile):
 
 def region_of(class_marker, start_marker, end_marker=None):
     """A slice of SRC inside one class: from start_marker at or
-    after class_marker to end_marker (the spec 028 regions must
+    after class_marker to end_marker (the regions must
     not leak across class boundaries - the heartbeat writer and
     the restart-state writer share the TrayApp class body, so
     their regions are cut inside it)."""
@@ -197,7 +197,7 @@ def main():
                        "// The one fleet read plus")
     tickcore = region("private void TickCore()",
                       "// The one fleet read plus")
-    # Spec 028 regions, cut inside their owning classes.
+    # Regions, cut inside their owning classes.
     save028 = region_of("internal sealed class TraySettings",
                         "public void Save()",
                         "public string Serialize()")
@@ -223,14 +223,14 @@ def main():
                     "private void HideStrayConsoles()")
     dupmain = region("private static void Main",
                      "private static void ProgramLog")
-    # Spec 027 (H3) FR-004: the tray's version truths, EXTRACTED
+    # The tray's version truths (H3), EXTRACTED
     # rather than literal-pinned — the drift judge compares the
     # beat's build against the published release, so the stamps
     # it reads meaning from can only be trusted if they cannot
     # move apart. All five stamps must extract and must be one
     # value; any one moving alone fails, all moving together
     # passes (the literal build-value pins above stay as the
-    # spec 021 record of the current build).
+    # record of the current build).
     def _grab(pattern, text):
         m = re.search(pattern, text)
         return m.group(1) if m else None
@@ -247,11 +247,11 @@ def main():
         "BuildId": _grab(r'BuildId = "([^"]+)"', SRC),
     }
     results = [
-        # ---- spec 007: the GDI leak and exception guards ----------
+        # ---- the GDI leak and exception guards ----------
         check("SetIcon exists", bool(body)),
         # The icon renders only when a state it displays changes:
         # the cache key is the (runner, connection) pair since
-        # spec 018 - a connection-only change re-renders, and a
+        # - a connection-only change re-renders, and a
         # tick where neither changed renders nothing.
         check("SetIcon caches by runner and connection state",
               "if (state == _iconState && conn == _iconConnState "
@@ -286,7 +286,7 @@ def main():
               "UnhandledExceptionMode.CatchException" in SRC
               and "Application.ThreadException +=" in SRC),
 
-        # ---- spec 014 FR-001: settings persistence ----------------
+        # ---- settings persistence ----------------
         check("TraySettings class exists", bool(settings)),
         check("settings file is tray-settings.json beside the exe",
               '"tray-settings.json"' in settings
@@ -308,12 +308,12 @@ def main():
               ", 1, 20)" in settings and ", 2, 60)" in settings
               and ", 30, 3600)" in settings),
         # The settings save, the tray heartbeat, the
-        # stopped-by-user marker (spec 025), and the persisted
-        # restart state (spec 028) are the ONLY WriteAllText
+        # stopped-by-user marker, and the persisted
+        # restart state are the ONLY WriteAllText
         # sites in the tray: the fleet snapshot and everything
-        # else stay read-only. Spec 028 widened the count from
+        # else stay read-only. A later change widened the count from
         # three to four for the restart-state store, the same
-        # way spec 025 widened it for the marker.
+        # way widened it for the marker.
         check("four WriteAllText sites only: TraySettings.Save, "
               "the tray heartbeat writer, the stopped-by-user "
               "marker, the restart-state store",
@@ -322,7 +322,7 @@ def main():
               and "File.WriteAllText(" in heartbeat
               and "File.WriteAllText(" in restart028),
 
-        # ---- spec 014 FR-002/FR-004/FR-006: live application ------
+        # ---- live application ------
         check("timer interval comes from settings (ctor + apply)",
               SRC.count(
                   "_timer.Interval = _settings.TickSeconds * 1000;")
@@ -338,7 +338,7 @@ def main():
               "StopRunner(r);" in restart
               and "StartRunner(r);" in restart),
 
-        # ---- spec 014 FR-005: autostart confined to save ---------
+        # ---- autostart confined to save ---------
         check("Run key path is the tray's own value",
               "CurrentVersion\\Run" in settings
               and '"SyncyardTray"' in settings),
@@ -348,7 +348,7 @@ def main():
         check("startup path never writes the Run key",
               "SetValue(" not in ctor and "DeleteValue(" not in ctor),
 
-        # ---- spec 014 FR-003: the dialog --------------------------
+        # ---- the dialog --------------------------
         check("the tray has exactly three forms",
               "internal sealed class SettingsForm : Form" in SRC
               and "internal sealed class StatusForm : Form" in SRC
@@ -362,9 +362,9 @@ def main():
         check("open dialog refreshes from the tick",
               "_settingsForm.RefreshDynamic();" in SRC),
 
-        # ---- spec 014 FR-007/FR-008: the fleet display ------------
+        # ---- the fleet display ------------
         check("FleetStatus reader exists", bool(fleet)),
-        check("fleet parser covers the spec 013 status shape",
+        check("fleet parser covers the status shape",
               all(k in fleet for k in (
                   '"generated_at"', '"mode"', '"draining"',
                   '"reason"', '"focus"', '"keys"', '"programs"',
@@ -383,19 +383,19 @@ def main():
               "if (f.GeneratedAt != _queueStamp)" in form
               and "_queue.Items.Clear();" in form),
 
-        # ---- spec 014 FR-010/FR-011: no new churn, no console -----
+        # ---- no new churn, no console -----
         check("icon path is still the only handle/bitmap churn",
               SRC.count("GetHicon()") == 1
               and SRC.count("new Bitmap(") == 2
               and SRC.count("Graphics.FromImage(") == 1),
-        # Spec 018 widened this call: the runner-state value is
+        # The connection work widened this call: the runner-state value is
         # unchanged, the connection state rides beside it.
         check("SetIcon is called with runner and connection states",
               "SetIcon(iconState, _conn.State);" in SRC),
         check("no console use anywhere in the tray",
               "Console." not in SRC),
 
-        # ---- spec 018 FR-001: the connection state function -------
+        # ---- the connection state function -------
         check("ConnectionStatus class exists", bool(conn)),
         check("connection states are the three named states",
               '"CONNECTED"' in conn and '"STALE"' in conn
@@ -418,7 +418,7 @@ def main():
         check("signal read retries once, then treats as missing",
               "attempt < 2" in conn),
 
-        # ---- spec 018 FR-002: the icon's link mark ----------------
+        # ---- the icon's link mark ----------------
         check("link mark is drawn inside the icon render",
               "DrawLinkMark(g, conn);" in body),
         check("link mark is primitives only (arc + rings)",
@@ -432,12 +432,12 @@ def main():
         check("disconnected desaturates alongside runner state 2",
               "if (state == 2 || conn == ConnectionStatus.Disconnected)"
               in body),
-        check("runner slash geometry is untouched by spec 018",
+        check("runner slash geometry is untouched by ",
               "g.DrawLine(halo, 6, 26, 26, 6);" in body
               and "g.DrawLine(pen, 6, 26, 26, 6);" in body),
 
-        # ---- spec 018 FR-003/FR-004: words and honesty ------------
-        check("FR-003 wording: the four menu/tooltip lines",
+        # ---- words and honesty ------------
+        check("wording: the four menu/tooltip lines",
               '"Connection: connected ("' in conn
               and '"Connection: stale ("' in conn
               and '"Connection: disconnected (no "' in conn
@@ -445,7 +445,7 @@ def main():
               in conn),
         check("wording names the signal it rests on",
               '"heartbeat"' in conn and '"fleet snapshot"' in conn),
-        check("FR-004 signal honesty detail names the signal set",
+        check("signal honesty detail names the signal set",
               '"signal: backchannel heartbeat only"' in conn
               and '"signals: backchannel heartbeat + fleet snapshot"'
               in conn
@@ -476,8 +476,8 @@ def main():
               "_connDetail.Text = sig;" in form
               and "_fleetSignal.Text = sig;" in form),
 
-        # ---- spec 018 FR-005: thresholds are settings -------------
-        check("connection defaults are the FR-001 numbers",
+        # ---- thresholds are settings -------------
+        check("connection defaults are the numbers",
               "public int ConnectionStaleSeconds = 600;" in settings
               and "public int ConnectionDownSeconds = 900;" in settings),
         check("connection stale fallbacks use the aligned default",
@@ -508,7 +508,7 @@ def main():
               and onsave.find("must be less than the down threshold")
               < onsave.find("_app.ApplySettings(next);")),
 
-        # ---- spec 018 FR-006: transition logging ------------------
+        # ---- transition logging ------------------
         check("transitions are compare-and-logged on the tick",
               'Log("connection "' in SRC and '" -> "' in SRC
               and '" age "' in SRC
@@ -516,7 +516,7 @@ def main():
         check("startup state is a baseline, not a logged transition",
               "_lastConnState = _conn.State;" in SRC),
 
-        # ---- spec 018 FR-007: display only -------------------------
+        # ---- display only -------------------------
         check("connection path performs no writes or process acts",
               "Process." not in conn and "WriteAll" not in conn
               and ".Kill(" not in conn and "File.Write" not in conn
@@ -546,7 +546,7 @@ def main():
               'if (_tick % 12 == 0)' in SRC
               and 'Log("tray alive")' in SRC),
 
-        # ---- spec 021: build stamp and self-update ----------------
+        # ---- build stamp and self-update ----------------
         check("assembly version is the 0.4.4.0 build stamp",
               'AssemblyVersion("0.4.4.0")' in SRC
               and 'AssemblyFileVersion("0.4.4.0")' in SRC),
@@ -660,7 +660,7 @@ def main():
               '"Show runner consoles"' not in SRC
               and "SetStrayConsoles(SW_SHOW)" not in SRC
               and "SW_SHOW" not in SRC),
-        # ---- spec 021 FR-007: per-machine runner root ------------
+        # ---- per-machine runner root ------------
         # The lane dirs come from the settings runner root so a
         # second machine (the laptop) supervises its own lanes;
         # the hardcoded desktop lane paths must not come back.
@@ -669,11 +669,11 @@ def main():
               and '@"C:\\Users\\you\\Development\\Syncyard\\runners"'
               in SRC
               and '"runnerRoot"' in SRC),
-        # Spec 028 FR-004/FR-005 supersedes the four hardcoded
+        # Supersedes the four hardcoded
         # Combine calls this check used to pin: instance dirs
         # are built from the settings runner root and the
         # machine's instance names, in the runner-table loop
-        # (pinned in the spec 028 section below). The guard
+        # (pinned in the section below). The guard
         # that matters from the original check stands: no
         # hardcoded desktop lane path may come back.
         check("no hardcoded desktop lane paths remain",
@@ -685,7 +685,7 @@ def main():
               SRC.find("_settings = TraySettings.Load();") >= 0
               and SRC.find("_settings = TraySettings.Load();")
               < SRC.find("_runners.Add")),
-        # ---- spec 025: tray liveness heartbeat (H1) --------------
+        # ---- tray liveness heartbeat (H1) --------------
         # The tray beats beside its log; the backchannel agent
         # merges the file into its heartbeat as `tray`, and the
         # gatekeeper judges agent-alive/tray-dead from it. These
@@ -699,7 +699,7 @@ def main():
               "stopped-by-user marker is cleared there",
               "WriteTrayHeartbeat();" in ctor
               and "ClearStoppedByUserMarker();" in ctor),
-        check("the beat carries the spec 025 fields",
+        check("the beat carries the fields",
               all(k in heartbeat for k in (
                   '\\"host\\"', '\\"build\\"', '\\"pid\\"',
                   '\\"session\\"', '\\"started_at\\"', '\\"ts\\"',
@@ -735,7 +735,7 @@ def main():
               and 'BuildId = "0.4.4.0"' in SRC
               and '!define VERSION "0.4.4.0"' in NSI
               and 'VIProductVersion "0.4.4.0"' in NSI),
-        # ---- spec 027: one version truth, extracted (FR-004) --
+        # ---- one version truth, extracted --
         # The value-independent form of the pin above: extract
         # every stamp the fleet reads meaning from (the .nsi
         # VERSION define that becomes the installer's
@@ -743,10 +743,10 @@ def main():
         # the beats and update comparisons carry) and assert
         # they are ONE value. Fails when any one moves alone;
         # passes when all move together to a new build.
-        check("spec 027: every version stamp extracts (nsi "
+        check("every version stamp extracts (nsi "
               "define, assembly attributes, BuildId)",
               all(v is not None for v in version_truths.values())),
-        check("spec 027: all extracted version stamps are equal "
+        check("all extracted version stamps are equal "
               "(one version truth)",
               len(set(version_truths.values())) == 1),
         check("packaged watchdog: a missing exe is an "
@@ -773,39 +773,39 @@ def main():
               and "-WindowStyle Hidden" in TASKXML
               and "__USER_SID__" in TASKXML
               and "__TRAY_DIR__" in TASKXML),
-        # ---- spec 028: settings resilience, per-machine lane
+        # ---- settings resilience, per-machine lane
         # ---- sets, multi-instance supervision -----------------
-        # FR-001: the save is atomic (temp beside the live file,
+        # the save is atomic (temp beside the live file,
         # replace with the previous file kept as .bak), and the
         # live path itself is never written in place.
-        check("spec 028: settings save writes a temp file, "
+        check("settings save writes a temp file, "
               "never the live path in place",
               'string tmp = FilePath + ".tmp";' in save028
               and "File.WriteAllText(tmp, Serialize());" in save028
               and "File.WriteAllText(FilePath" not in SRC),
-        check("spec 028: settings save replaces, keeping the "
+        check("settings save replaces, keeping the "
               "previous file as .bak, and moves when absent",
               'File.Replace(tmp, FilePath, FilePath + ".bak");'
               in save028
               and "File.Move(tmp, FilePath);" in save028),
-        check("spec 028: load falls back live file -> .bak -> "
+        check("load falls back live file -> .bak -> "
               "machine profile -> compiled defaults",
               'string bak = FilePath + ".bak";' in load028
               and "ParseInto(b, File.ReadAllText(bak));" in load028
               and "BaseSettings()" in load028),
-        check("spec 028: the fallback source is logged whenever "
+        check("the fallback source is logged whenever "
               "it is not the live file",
               '"); last good .bak in use"' in load028
               and '"machine profile"' in load028
               and '"no settings file; "' in load028),
-        # FR-002: the profile is installed data beside the exe,
+        # the profile is installed data beside the exe,
         # read tolerantly; nothing compiled names another
         # machine's shape as the fallback.
-        check("spec 028: the profile file lives beside the exe",
+        check("the profile file lives beside the exe",
               "internal sealed class TrayProfile" in SRC
               and '"tray-profile.json"' in profile028
               and "BaseDirectory" in profile028),
-        check("spec 028: the profile carries the FR-002 fields",
+        check("the profile carries the fields",
               all(k in profile028 for k in (
                   '"runnerRoot"', '"fleetStatusPath"',
                   '"connectionHeartbeatPath"', '"heartbeatHost"',
@@ -813,107 +813,107 @@ def main():
                   '"connectionStaleSeconds"',
                   '"connectionDownSeconds"', '"lanes"',
                   '"instances"'))),
-        check("spec 028: the installer installs and removes "
+        check("the installer installs and removes "
               "the profile",
               'File "tray-profile.json"' in NSI
               and 'Delete "$INSTDIR\\tray-profile.json"' in NSI),
-        check("spec 028: the shipped profiles parse with the "
-              "FR-002 fields",
+        check("the shipped profiles parse with the "
+              "fields",
               all(k in PROFILE_DESKTOP and k in PROFILE_LAPTOP
                   for k in ("runnerRoot", "fleetStatusPath",
                             "connectionHeartbeatPath",
                             "heartbeatHost", "fleetStaleSeconds",
                             "connectionStaleSeconds",
                             "connectionDownSeconds", "lanes"))),
-        check("spec 028: the laptop profile names only its "
+        check("the laptop profile names only its "
               "own lanes (no normal, no gpu)",
               set(profile_lanes(PROFILE_LAPTOP))
               == {"long", "quick"}
               and PROFILE_LAPTOP["heartbeatHost"] == "laptop"),
-        check("spec 028: the desktop profile carries four "
+        check("the desktop profile carries four "
               "lanes and the three-instance normal lane",
               set(profile_lanes(PROFILE_DESKTOP))
               == {"long", "quick", "normal", "gpu"}
               and profile_lanes(PROFILE_DESKTOP)["normal"]
               == ["normal", "normal2", "normal3"]),
-        # FR-004/FR-005: the runner table comes from the
+        # The runner table comes from the
         # settings' lane set and instance map.
-        check("spec 028: the runner table is built from the "
+        check("the runner table is built from the "
               "machine lane set, per instance directory",
               "foreach (var lane in _settings.Lanes)" in ctor
               and "foreach (var inst in "
                   "_settings.LaneInstances(lane))" in ctor
               and "Dir = Path.Combine(_settings.RunnerRoot, inst)"
               in ctor),
-        check("spec 028: the compiled floor is the fallback "
+        check("the compiled floor is the fallback "
               "only, and directory derivation strips instance "
               "digits",
               "public static readonly string[] DefaultLanes ="
               in settings
               and "DeriveLaneSetFromDirs" in settings
               and "TrimEnd(" in settings),
-        check("spec 028: the settings dialog draws the "
+        check("the settings dialog draws the "
               "machine's lanes, not the compiled floor",
               "_lanes = app.Settings.Lanes;" in SRC
               and "TraySettings.Lanes" not in SRC),
-        # FR-003: supervising nothing is said, in the menu
+        # supervising nothing is said, in the menu
         # header and in the heartbeat, and the icon never
         # presents all-up under it.
-        check("spec 028: the supervising-nothing note names "
+        check("the supervising-nothing note names "
               "the missing runner root",
               '"supervising nothing: runner root missing"'
               in supervise028),
-        check("spec 028: the menu header carries the "
+        check("the menu header carries the "
               "supervising-nothing note",
               "var supLine = new ToolStripMenuItem(supNote);"
               in rebuild),
-        check("spec 028: the heartbeat carries the supervision "
+        check("the heartbeat carries the supervision "
               "state on every beat",
               '\\"supervision\\"' in beat028
               and "SupervisionNote()" in beat028),
-        check("spec 028: the icon never shows all-up while "
+        check("the icon never shows all-up while "
               "supervising nothing",
               "SupervisionNote() != null ? 2" in rebuild),
-        # FR-005: the heartbeat reports each instance, with
+        # the heartbeat reports each instance, with
         # its lane, instance name, and directory.
-        check("spec 028: the heartbeat reports per-instance "
+        check("the heartbeat reports per-instance "
               "state under its lane",
               '\\"instance\\"' in beat028
               and '\\"dir\\"' in beat028
               and "foreach (var r in _runners)" in beat028),
-        check("spec 028: the dialog lane buttons act on every "
+        check("the dialog lane buttons act on every "
               "instance of the lane",
               "foreach (var r in RunnersOf(captured))" in SRC
               and "_app.LaneStart(r);" in SRC
               and "_app.LaneStop(r);" in SRC
               and "_app.LaneRestart(r);" in SRC),
-        check("spec 028: the dialog lane state aggregates "
+        check("the dialog lane state aggregates "
               "the lane's instances",
               "_app.LaneStateText(_lanes[i])" in SRC
               and '" instances running"' in SRC),
-        # FR-006: restart history and Faulted persist beside
+        # restart history and Faulted persist beside
         # the log, restored at startup and saved on change.
-        check("spec 028: restart state lives beside the log",
+        check("restart state lives beside the log",
               '"tray-restart-state.json"' in ctor
               and "LoadRestartState();" in ctor),
-        check("spec 028: restart state restores history and "
+        check("restart state restores history and "
               "Faulted per instance directory",
               'MiniJson.GetObjects(text,' in restart028
               and '"faulted"' in restart028
               and "r.RestartTimes.Add(t);" in restart028
               and "r.Faulted = true;" in restart028),
-        check("spec 028: restart state is saved on start and "
+        check("restart state is saved on start and "
               "on fault",
               SRC.count("SaveRestartState();") >= 5),
-        # FR-007: listener identity is the exact directory,
+        # listener identity is the exact directory,
         # in the tray and in runner/runner-watchdog.ps1.
-        check("spec 028: tray listener identity is the exact "
+        check("tray listener identity is the exact "
               "runner directory, never a prefix",
               "Path.GetDirectoryName(path)" in refresh028
               and "string.Equals(parent, dir," in refresh028
               and "StartsWith(r.Dir" not in SRC
               and "ListenerInDir(p, r.Dir)" in SRC),
-        check("spec 028: runner watchdog listener identity "
+        check("runner watchdog listener identity "
               "is the exact directory too",
               "Split-Path -Parent $p.ExecutablePath"
               in RUNNER_WATCHDOG

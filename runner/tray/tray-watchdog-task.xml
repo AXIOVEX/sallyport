@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-16"?>
 <!--
-  SyncyardTrayWatchdog scheduled task (spec 025 mechanism,
-  spec 029 packaging). The tray installer renders this
+  SyncyardTrayWatchdog scheduled task (mechanism,
+  packaging). The tray installer renders this
   template: __USER_SID__ is the installing user's SID,
   __TRAY_DIR__ the tray install directory (where
   tray-watchdog.ps1 lands), __STATE_DIR__ the tray's
   %LOCALAPPDATA%\SyncyardTray directory. A rendered task with
   an unsubstituted __TOKEN__ left in it is an install failure
-  (spec 029 FR-006).
+ .
   One-minute repetition, the owner's own session, windowless:
   the action is pwsh.exe (PowerShell 7) with -WindowStyle Hidden, and
   the script it runs creates no window of its own.
 -->
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Syncyard tray watchdog: relaunch an absent tray within about a minute, honoring the stopped-by-user marker and a relaunch cap (spec 025).</Description>
+    <Description>Syncyard tray watchdog: relaunch an absent tray within about a minute, honoring the stopped-by-user marker and a relaunch cap.</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>

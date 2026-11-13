@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
+- Internal spec citations removed from the public tree (owner
+  order 2026-11-12): the documentation scrub (#104) is extended to
+  code comments, docstrings, descriptive strings and test names
+  across the gatekeeper, backchannel, runner and packaging trees.
+  Comment and label text only; no behavior changes, and every
+  battery that pins source text was updated in lockstep and passes.
 - Machine-specific configuration is local-only (#100): the
   gatekeeper's built-in defaults and the shipped example config
   now describe a FICTIONAL fleet (one Windows host, user "you",

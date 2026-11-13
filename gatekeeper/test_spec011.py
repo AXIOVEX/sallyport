@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scenario battery for spec 011 Phases 2-3 (host drain + the
+"""Scenario battery for Phases 2-3 (host drain + the
 going-down writer contract + guard beats).
 
 Golden style: temp dir, copied gk.py + config.py, subprocess
@@ -16,7 +16,7 @@ Covers:
   - the drain hold in dispatch: program jobs and plain
     maintenance wait, the gatekeeper's own gk-hold-* signal
     jobs flow (the drain can deliver its own signals);
-  - reconciliation with spec 013: the global pause record is
+  - reconciliation with the global pause record is
     untouched by a host drain, `gk resume` does not clear
     the host's drain hold, `gk host-resume` does (and clears
     a going-down hold in the same act);
@@ -265,7 +265,7 @@ check("drain: unknown host -> rc 2, nothing ledgered but the "
       "caller's own record", res["rc"] == 2 and res["events"] == [],
       str(res))
 
-# --- Reconciliation with the spec 013 operator drain ---------------------
+# --- Reconciliation with the operator drain ---------------------
 res = run_driver(r"""
 write_pause({"ts": "2026-11-02T11:00:00Z", "reason": "ops",
              "drain": True})

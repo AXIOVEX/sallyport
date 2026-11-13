@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Static battery for the backchannel agent (spec 011 Phase 3).
+"""Static battery for the backchannel agent.
 
 The agent runs on the host's WSL2 distro, which CI cannot
-reproduce, so — like the tray battery (spec 007) — these are
+reproduce, so — like the tray battery — these are
 source-shape checks. They pin the going-down writer's
 transport contract: write_heartbeat merges the host guard's
 two files into the heartbeat payload verbatim, under the
@@ -11,7 +11,7 @@ recorder read (`going_down`, `guard`), from the paths the
 guard writes, and a bad or absent file can never fail the
 heartbeat.
 
-The spec 025 section pins the tray liveness merge: the
+The section pins the tray liveness merge: the
 tray's heartbeat file rides the same verbatim merge under
 the key `tray`, from SYNCBC_TRAY_FILE (fleet default: the
 desktop's %LOCALAPPDATA% tray directory under /mnt/c), and
@@ -68,7 +68,7 @@ def main():
               '"$CHANNEL_REL/out.json" "$CHANNEL_REL/heartbeat.json"'
               in SRC),
         check("the agent still never writes queue records "
-              "(spec 009 FR-004 charter line intact)",
+              "",
               "The agent NEVER writes gatekeeper queue records."
               in SRC),
         check("envelope timeout: non-digit values fall back to "
@@ -86,7 +86,7 @@ def main():
               and 'timeout_s=0 is not a bound' in SRC),
         check("replay guard: a lost guard file is re-seeded from "
               "out.json before the execution gate compares ids "
-              "(FR-004(b) survives the guard file's loss)",
+              "(survives the guard file's loss)",
               'json_get "$REPO_DIR/$CHANNEL_REL/out.json" id'
               in SRC
               and "replay guard restored from out.json" in SRC),

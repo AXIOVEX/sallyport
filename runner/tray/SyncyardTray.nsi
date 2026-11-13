@@ -1,5 +1,5 @@
 ; SyncyardTray.nsi - NSIS installer for the Syncyard Tray supervisor.
-; Spec: electrohire/syncyard spec 007 (windowless supervision).
+; Windowless supervision of the Syncyard runners.
 ;
 ; Per-user install (no admin): files under
 ; %LOCALAPPDATA%\Programs\SyncyardTray, autostart via the HKCU Run
@@ -23,7 +23,7 @@ SetCompressor /SOLID lzma
 
 VIProductVersion "0.4.4.0"
 VIAddVersionKey "ProductName" "Syncyard Tray"
-VIAddVersionKey "FileDescription" "Syncyard runner tray supervisor (spec 007)"
+VIAddVersionKey "FileDescription" "Syncyard runner tray supervisor"
 VIAddVersionKey "FileVersion" "0.4.4.0"
 VIAddVersionKey "CompanyName" "ElectroHire"
 
@@ -48,7 +48,7 @@ Section "Syncyard Tray" SecMain
   File "logo.png"
   File "logo.ico"
 
-  ; The per-machine profile (spec 028 FR-002): this machine's
+  ; The per-machine profile: this machine's
   ; own paths, stale bounds, host name, and lane set, as data
   ; beside the exe. The build machine picks the profile for
   ; the machine being installed (profiles\<machine>\ in the

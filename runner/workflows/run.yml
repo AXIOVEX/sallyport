@@ -4,7 +4,7 @@
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.
 #
-# Host contract (spec 010 FR-003): the `lane` input addresses the
+# Host contract: the `lane` input addresses the
 # runner; any Windows host whose runner carries that lane label can
 # serve this transport. The gatekeeper always passes cwd explicitly
 # (from the host's config cwd map); the default below is only a
@@ -27,7 +27,7 @@ on:
         required: false
         default: 'C:\Users\you'
       hold_file:
-        description: "Checkpoint hold-signal path on this host (spec 013 FR-007); the job reads it via $env:SYNCYARD_HOLD_FILE"
+        description: "Checkpoint hold-signal path on this host; the job reads it via $env:SYNCYARD_HOLD_FILE"
         required: false
 
 jobs:
@@ -65,7 +65,7 @@ jobs:
           if ([int](& $pwsh7 -NoProfile -Command '$PSVersionTable.PSVersion.Major') -lt 7) { throw "SYNCYARD_PS7_REQUIRED: $pwsh7 is not PowerShell 7." }
           $script = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:CMD_B64))
           if ($env:SYNCYARD_HOLD_FILE) { New-Item -ItemType Directory -Force -Path (Split-Path $env:SYNCYARD_HOLD_FILE) | Out-Null }
-          # Running-job registry (spec 011 Phase 3): while this
+          # Running-job registry: while this
           # job runs, an entry file in the `running` dir beside
           # the holds dir names it — that registry is how the
           # host guard learns, locally and in seconds, which

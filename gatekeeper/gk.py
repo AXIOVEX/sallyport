@@ -39,7 +39,7 @@ QUEUE_DIR = os.path.join(BASE, "queue")
 LEDGER = os.path.join(BASE, "ledger.jsonl")
 LOCK_DIR = os.path.join(BASE, ".sweep.lock")
 PAUSE_FILE = os.path.join(BASE, "PAUSED.json")
-# Staged hold-signal writer scripts (spec 013 FR-009); durable
+# Staged hold-signal writer scripts; durable
 # under BASE like every other gatekeeper script (never /tmp).
 HOLDS_DIR = os.path.join(BASE, "holds")
 STOP_FILE = os.path.join(BASE, "STOPPED.json")
@@ -50,18 +50,18 @@ OUTBOX_CURSOR = os.path.join(BASE, "outbox-cursor.json")
 # end swallowed W37b's completion event (line 15248), which had landed
 # between the read and the ack, and the iSMART chat never got the push.
 OUTBOX_READ = os.path.join(BASE, "outbox-read.json")
-HOSTS_FILE = os.path.join(BASE, "hosts.json")   # host liveness (spec 011)
-# Tray release cache (spec 027): the sweep's last read of the
+HOSTS_FILE = os.path.join(BASE, "hosts.json")   # host liveness
+# Tray release cache: the sweep's last read of the
 # release manifest the tray updater itself consumes, cached at
 # sweep cadence beside the host records; `status` renders drift
 # from the host record and never reads the network for it.
 TRAY_RELEASE_FILE = os.path.join(BASE, "tray-release.json")
-LOCKS_FILE = os.path.join(BASE, "LOCKS.json")   # lane locks (spec 015)
+LOCKS_FILE = os.path.join(BASE, "LOCKS.json")   # lane locks
 LANES_LIVE_FILE = os.path.join(BASE, "LANES_LIVE")
 
 REPO = "electrohire/desktop-runner"
 PROJECT_REPO = "electrohire/syncyard"   # canonical project repo (status --repo)
-BC_REPO = "tbitcs/syncyard-backchannel"  # failsafe backchannel (spec 009)
+BC_REPO = "tbitcs/syncyard-backchannel"  # failsafe backchannel
 BC_HEARTBEAT_PATH = "channels/syncyard-dev/heartbeat.json"
 BC_STALE_S = 300                         # heartbeat older = stale alarm
 HLOG = os.path.join(BASE, "gatekeeper.log")   # human-readable rotating log
@@ -99,7 +99,7 @@ RUN_HOLDING_STATES = ("dispatching", "dispatched", "watching")
 
 MARKER_RE = re.compile(r"^[A-Z][A-Z0-9_]{2,}([ :]|$)")
 
-# --- Effective configuration (spec 010 FR-001/FR-002/FR-007) ---------------
+# --- Effective configuration ---------------
 # The literals above are the pre-config constants. config.py's built-in
 # defaults ARE those constants verbatim, so loading the effective config
 # (syncyard.yaml beside this file, or $SYNCYARD_CONFIG / $SYNCARD_CONFIG,
@@ -176,11 +176,11 @@ def default_cwd(lane, workflow):
     return DEFAULT_CWD.get(workflow)
 MARKER_RE = re.compile(_CFG["markers"]["pattern"])
 LIVENESS_DOWN_AFTER_S = _CFG["liveness"]["down_after_s"]
-# Tray liveness (spec 025): the staleness bound for the tray
+# Tray liveness: the staleness bound for the tray
 # beats the backchannel agent merges into its heartbeat.
 TRAY_STALE_AFTER_S = _CFG["liveness"]["tray_stale_after_s"]
 REBOOT_GRACE_S = _CFG["reboot"]["grace_s"]
-# Checkpoint hold (spec 013 FR-007): the cooperative job-level
+# Checkpoint hold: the cooperative job-level
 # pause contract — per-job venue hold file, the marker a held
 # job prints, the exit code it stops with, the env var the
 # transport workflows export the path under.
@@ -188,28 +188,28 @@ CHECKPOINT_EXIT_CODE = int(_CFG["checkpoint"]["exit_code"])
 CHECKPOINT_MARKER = _CFG["checkpoint"]["marker"]
 CHECKPOINT_ENV_VAR = _CFG["checkpoint"]["env_var"]
 CHECKPOINT_HOLDS_DIR = dict(_CFG["checkpoint"]["holds_dir"])
-# Host drain (spec 011 FR-005/FR-007): the checkpoint window a
+# Host drain: the checkpoint window a
 # deliberate host drain waits out (per lane when overridden),
 # and the staleness bound for the host guard's heartbeat beats.
 DRAIN_WINDOW_S = _CFG["drain"]["window_s"]
 DRAIN_PER_LANE_WINDOW_S = dict(_CFG["drain"]["per_lane_window_s"])
 DRAIN_GUARD_STALE_S = _CFG["drain"]["guard_stale_after_s"]
 DRAIN_POLL_S = 2  # drain wait-loop poll cadence (tests may lower)
-# Priority optimizer (spec 013 FR-012): auto-assigned effective
+# Priority optimizer: auto-assigned effective
 # priorities are capped at the ceiling (a human-set priority
 # above it is unreachable by any auto job) and age +1 per step.
 OPTIMIZER_CEILING = int(_CFG["dispatch"]["optimizer_ceiling"])
 OPTIMIZER_AGING_STEP_MIN = _CFG["dispatch"]["optimizer_aging_step_min"]
-# Lane priority lock (spec 015 FR-007/FR-011): a lock taken
+# Lane priority lock: a lock taken
 # without --ttl-min gets the default TTL; no lock may exceed
 # the maximum. Expiry is what keeps a forgotten claim from
 # squatting a lane forever.
 LOCK_DEFAULT_TTL_MIN = int(_CFG["lock"]["default_ttl_min"])
 LOCK_MAX_TTL_MIN = int(_CFG["lock"]["max_ttl_min"])
-# Adaptive lanes (spec 016): the resolved profile surface —
+# Adaptive lanes: the resolved profile surface —
 # per-lane resource class and duration band for auto routing,
 # and the routing knobs. _CFG["lanes"] is already the ACTIVE
-# profile's enabled lanes (config resolution, FR-001).
+# profile's enabled lanes (config resolution).
 LANE_CLASS = {n: l.get("resource_class", "any")
               for n, l in _CFG["lanes"].items()}
 LANE_BAND = {n: tuple(l.get("duration_band") or (None, None))
@@ -219,7 +219,7 @@ ACTIVE_PROFILE = _CFG.get("active_lane_profile", "fleet-default")
 LANES_AUTO_DEFAULT = bool(_CFG.get("lanes_auto_default", False))
 CAPABILITY_MAX_AGE_MIN = int(_CFG.get("lanes_capability_max_age_min", 60))
 
-# Host routing (spec 010 FR-003/FR-004): a job names a lane; the
+# Host routing: a job names a lane; the
 # lane's host is the venue. A workflow the host does not serve is
 # refused at submit/adopt — never silently rerouted to another
 # venue.
@@ -237,7 +237,7 @@ HOST_IMAGE = {n: h.get("image") for n, h in _CFG["hosts"].items()}
 def route_check(lane, workflow):
     """(host, kind) if the lane's host serves this workflow, else None.
 
-    Spec 016: a lane may pin itself to one workflow
+    a lane may pin itself to one workflow
     (lanes.profiles.<p>.<lane>.workflow); a pinned lane serves
     no other workflow, exactly like a host that does not serve
     it — the job is refused, never silently rerouted."""
@@ -294,7 +294,7 @@ def hlog(msg):
 
 
 def _write_verified_bytes(path, data, attempts=8):
-    """WRITE-VERIFY-RETRY (spec 001 FR-012): write data to path with
+    """WRITE-VERIFY-RETRY: write data to path with
     unbuffered syscalls, fsync, then READ BACK and byte-compare.
     Retries with backoff (0.25s doubling, capped at 8s). Returns True
     only when the bytes on disk are exactly the bytes given - the VM
@@ -396,7 +396,7 @@ def pause_state():
 
 
 def pause_record():
-    """The normalized pause/focus record (spec 013 FR-001), or
+    """The normalized pause/focus record, or
     None when not paused. Every field of the stored record is
     preserved; the normalized view adds the superset-schema
     fields with defaults. A legacy record carrying a single
@@ -425,7 +425,7 @@ def pause_record():
 
 def focus_match(job, rec):
     """The selector admitting this job under a pause/focus
-    record (spec 013 FR-002), or None. A key selector matches
+    record, or None. A key selector matches
     on equality or prefix, so a chat can focus a whole job
     family with one selector."""
     if rec is None:
@@ -453,11 +453,11 @@ def selectors_text(rec):
     return ", ".join(parts) if parts else "(none)"
 
 
-# --- Live priority + the optimizer (spec 013 FR-003/FR-004/FR-012)
+# --- Live priority + the optimizer
 
 def _prio(job):
     """The record's nominal priority as an int (absent or
-    malformed reads as 0 — pre-spec-013 records carry none)."""
+    malformed reads as 0 — pre-records carry none)."""
     try:
         return int(job.get("priority") or 0)
     except (TypeError, ValueError):
@@ -465,7 +465,7 @@ def _prio(job):
 
 
 def _auto_base(job):
-    """Optimizer base from the declared expectation (FR-012):
+    """Optimizer base from the declared expectation:
     short jobs first; an undeclared expectation counts as the
     conservative 180 minutes."""
     exp = job.get("expected_min")
@@ -483,7 +483,7 @@ def _auto_base(job):
 
 def auto_priority(job, now):
     """The optimizer's effective priority for an auto job
-    (FR-012): base + lane-fit bonus + aging, capped at the
+   : base + lane-fit bonus + aging, capped at the
     ceiling. A pure function of the record and the evaluation
     instant — it writes nothing, so it can never go stale and
     never overrides a human value (it is not applied to
@@ -510,7 +510,7 @@ def effective_priority(job, now):
 
 
 def dispatch_sort_key(job, now):
-    """The unified dispatch order (FR-012): effective priority
+    """The unified dispatch order: effective priority
     descending, then human before auto at equal value, then
     created_at. Admission (pause/focus/drain, host holds) is
     decided before ordering and is never overridden by it."""
@@ -521,7 +521,7 @@ def dispatch_sort_key(job, now):
 
 def _write_text_file(path, text):
     """Write a small text file through the write-verify-retry path
-    (spec 001 FR-012), landed by atomic swap (FR-013): the payload
+    landed by atomic swap: the payload
     is verified in a temp file in the same directory and renamed
     over the target, so the target is never opened for writing and
     a failed write leaves the prior content standing. Raises
@@ -569,7 +569,7 @@ def cmd_pause(args):
     drain = bool(getattr(args, "drain", False))
     if cur is not None:
         if drain and not cur.get("drain"):
-            # Spec 013 FR-005: an immediate pause becomes a
+            # an immediate pause becomes a
             # draining one in place; every other field of the
             # record (focus selectors included) is preserved.
             cur["drain"] = True
@@ -641,14 +641,14 @@ def cmd_focus(args):
     return 0
 
 
-# --- Lane priority lock (spec 015) -------------------------------------------
+# --- Lane priority lock -------------------------------------------
 #
 # LOCKS.json beside PAUSED.json: a flat mapping of lane ->
 # {program, state, acquired_at, expires_at, ttl_min, reason,
 # notify_chat}. One record per lane makes "one holder per lane"
 # structural. Stored states are lowercase ("active" /
 # "suspended"); status renders them uppercase. Every mutation
-# goes through the FR-013 verified write; a failed write leaves
+# goes through the verified write; a failed write leaves
 # the prior file byte-identical and nothing is ledgered as done.
 #
 # Actor discipline is uniform across the lock verbs: --program
@@ -661,7 +661,7 @@ LOCK_STATES = ("active", "suspended")
 
 
 def load_locks():
-    """The lane-lock state (spec 015 FR-001/FR-010). A missing
+    """The lane-lock state. A missing
     file means no locks — the pre-015 world, behaviorally
     identical. A corrupt file also reads as no locks rather
     than crashing every command (the load_hosts_state
@@ -705,7 +705,7 @@ def _holder_chat(program, jobs=None):
     """The notify chat a program most recently registered on
     one of its jobs, or None — the address lock notices
     (expiry, override release, override suspend/resume) are
-    owed to (spec 015 FR-009)."""
+    owed to."""
     if jobs is None:
         jobs = load_jobs()
     best = None
@@ -737,7 +737,7 @@ def _lock_refusal(lane, rec):
 
 
 def expire_locks(jobs=None):
-    """Remove past-due locks (spec 015 FR-007) and return the
+    """Remove past-due locks and return the
     effective lock map. Evaluated at the head of the dispatch
     pass and on entry to the lock/unlock commands — never by
     a separate timer. SUSPENDED locks expire on the same
@@ -776,7 +776,7 @@ def expire_locks(jobs=None):
 
 
 def locks_section_lines(locks=None):
-    """The LOCKS section (spec 015 FR-009): one line per lock
+    """The LOCKS section: one line per lock
     — lane, holder, state, acquired, expires, reason — or
     `none`. Shared by `gk status` (all modes) and
     `gk lock --list`."""
@@ -800,7 +800,7 @@ def locks_section_lines(locks=None):
 
 
 def _lock_set_state(lane, locks, existing, actor, target, force):
-    """Suspend/resume one lock (spec 015 FR-005) under the
+    """Suspend/resume one lock under the
     uniform actor discipline."""
     verb = "suspend" if target == "suspended" else "resume"
     if existing is None:
@@ -842,7 +842,7 @@ def _lock_set_state(lane, locks, existing, actor, target, force):
 
 def cmd_lock(args):
     """Acquire, renew, suspend, resume, or list lane locks
-    (spec 015 FR-001/FR-005/FR-009)."""
+   ."""
     if getattr(args, "list", False):
         for line in locks_section_lines(expire_locks()):
             print(line)
@@ -888,7 +888,7 @@ def cmd_lock(args):
         return 3
     chat = _holder_chat(actor)
     if existing is not None:
-        # Same-holder re-acquire = renewal (FR-001): the TTL
+        # Same-holder re-acquire = renewal: the TTL
         # extends from now, the state is preserved (a
         # suspended lock stays suspended), the reason is
         # replaced only when a new one is given.
@@ -936,7 +936,7 @@ def cmd_lock(args):
 
 
 def cmd_unlock(args):
-    """Release a lane lock (spec 015 FR-003): the holder
+    """Release a lane lock: the holder
     releases; anyone else needs --force (the operator
     override, ledgered distinctly and noticed to the
     holder). Effective at the next dispatch decision; a
@@ -978,7 +978,7 @@ def cmd_unlock(args):
 
 def _find_job(jobs, ref):
     """Any job (any state) by id or key — the cmd_cancel lookup
-    shape, shared by the spec 013 record-targeting commands."""
+    shape, shared by the record-targeting commands."""
     for j in jobs:
         if j["id"] == ref or j.get("key") == ref:
             return j
@@ -986,11 +986,11 @@ def _find_job(jobs, ref):
 
 
 def _resume_job(jobref):
-    """Job-level resume (spec 013 FR-009): clear the job's hold
+    """Job-level resume: clear the job's hold
     request and withdraw its hold signal on the venue. The job
     keeps its state — continuation is the owning chat's new
     submission, per the checkpoint contract. A hold raised
-    host-side (FR-007) leaves no request on the record; a
+    host-side leaves no request on the record; a
     `held_at_checkpoint` job is releasable either way, so the
     withdrawal is queued regardless of which side raised the
     signal."""
@@ -1243,7 +1243,7 @@ def cmd_outbox(args):
             ev = json.loads(raw)
         except ValueError:
             continue
-        # Lane-lock notices (spec 015 FR-009): lock events
+        # Lane-lock notices: lock events
         # carry their notice address on the event itself —
         # there is no single job to look up — and are owed
         # exactly on expiry, on an override release, and on
@@ -1292,7 +1292,7 @@ def cmd_outbox(args):
         elif (ev.get("event") == "state_change"
                 and ev.get("to_status") == "completed"):
             if job.get("state") == "held_at_checkpoint":
-                # Spec 013 FR-008: a checkpoint hold is never
+                # a checkpoint hold is never
                 # reported as a completion (or a failure).
                 msg = ("%s HELD_AT_CHECKPOINT run %s conclusion=%s "
                        "— the job stopped itself cooperatively; "
@@ -1335,7 +1335,7 @@ def cmd_outbox(args):
                    % (head, ev.get("filename"),
                       ev.get("checks") or "?"))
         elif ev.get("event") == "interrupted":
-            # Spec 011 FR-004: the job's host went down mid-flight.
+            # the job's host went down mid-flight.
             msg = ("%s INTERRUPTED run %s — host %s going down at %s "
                    "(trigger=%s)" % (
                        head, ev.get("run_id"), ev.get("host"),
@@ -1367,11 +1367,11 @@ def _record_bytes_valid(data):
 
 def save_job(job):
     """Persist a job record under WRITE-VERIFY-RETRY + ATOMIC SWAP
-    (spec 001 FR-012 + FR-013): the payload is written to a unique
+   : the payload is written to a unique
     temp file and read back byte-for-byte; ONLY an atomic rename
     (os.replace) ever changes the record at its final path, and the
     renamed content is verified there. The final path is NEVER opened
-    for writing: the pre-FR-013 fallback wrote it directly with
+    for writing: the pre-fallback wrote it directly with
     O_TRUNC, so a wave-killed direct write destroyed the standing
     valid record before verification could fail (the losses of
     2026-10-28 01:53-02:23Z and 12:08Z). If no attempt lands, raise
@@ -1428,7 +1428,7 @@ def _fsync_dir(path):
 
 
 def save_job_safe(job, context):
-    """save_job for sweep-internal state updates (spec 001 FR-013):
+    """save_job for sweep-internal state updates:
     a single record's failed save must not kill the whole pass. On
     failure the event is ledgered and logged loudly and False is
     returned; the state on disk remains the older truth and the next
@@ -1466,7 +1466,7 @@ def load_jobs():
             except (OSError, ValueError) as e:
                 # A 0-byte or partial record (the silent-drop write
                 # mode) must not crash every command or pose as a
-                # job: skip it loudly (spec 001 FR-012).
+                # job: skip it loudly.
                 print("WARNING: skipping unreadable job file %s: %s"
                       % (name, e), file=sys.stderr)
     return jobs
@@ -1562,7 +1562,7 @@ def find_active(jobs, key=None, run_id=None):
 def route_refusal(lane, workflow):
     """None if the (lane, workflow) pair routes; else a refusal line.
     Script jobs need an execute workflow on the lane's host; grab
-    jobs need its grab workflow (FR-004: no silent venue fallback)."""
+    jobs need its grab workflow (no silent venue fallback)."""
     want = "grab" if workflow == "grab.yml" else "execute"
     r = route_check(lane, workflow)
     if r is None or r[1] != want:
@@ -1701,7 +1701,7 @@ def cmd_submit(args):
         print("REFUSED duplicate key '%s': active job %s (state=%s, run_id=%s)"
               % (args.key, dup["id"], dup["state"], dup.get("run_id")))
         return 3
-    # Spec 016 (FR-003/FR-004): --lane auto (or a lane-less
+    # --lane auto (or a lane-less
     # submit under lanes.auto_default) records the job
     # lane-less; the sweep resolves its lane at dispatch time.
     # An explicit lane is never touched by auto routing.
@@ -1792,7 +1792,7 @@ def cmd_submit(args):
         "flags": [],
         "maintenance": bool(getattr(args, "maintenance", False)),
         "notify_chat": getattr(args, "notify_chat", None),
-        # Spec 013 FR-003: an explicit --priority pins the job
+        # an explicit --priority pins the job
         # as human-set; anything else is optimizer territory.
         "priority": (int(args.priority)
                      if getattr(args, "priority", None) is not None
@@ -1800,7 +1800,7 @@ def cmd_submit(args):
         "priority_source": ("human"
                             if getattr(args, "priority", None)
                             is not None else "auto"),
-        # Spec 016 (FR-003): declared resource hints and the
+        # declared resource hints and the
         # venue preference ride on every record; on an auto
         # job they are the scorer's declared inputs, on an
         # explicit-lane job they are informational only.
@@ -1842,7 +1842,7 @@ def cmd_submit(args):
     ledger("submitted", job_id=job["id"], key=job["key"],
            program=job["program"], workflow=job["workflow"],
            lane=job["lane"], script_sha256=job["script_sha256"])
-    # FR-012: a submission is only reported queued after the loader
+    # a submission is only reported queued after the loader
     # reads back the exact record that was written.
     landed = find_active(load_jobs(), key=job["key"])
     if (landed is None or landed["id"] != job["id"]
@@ -1931,10 +1931,10 @@ def cmd_cancel(args):
 
 
 def cmd_priority(args):
-    """Live priority change (spec 013 FR-004): a submitted job
+    """Live priority change: a submitted job
     only — ordering cannot apply to work already dispatched or
-    done. Stamps the job human-set (FR-012's pin) and goes
-    through the FR-013 verified write like every mutation."""
+    done. Stamps the job human-set (the optimizer pin) and goes
+    through the verified write like every mutation."""
     job = _find_job(load_jobs(), args.job)
     if job is None:
         print("ERROR: no job with id/key '%s'" % args.job)
@@ -1957,14 +1957,14 @@ def cmd_priority(args):
     return 0
 
 
-# --- checkpoint holds (spec 013 FR-007/FR-008/FR-009) ------------------------
+# --- checkpoint holds ------------------------
 
 def hold_signal_path(job):
     """The venue path of this job's hold-signal file, or None
     when its workflow runs on no signal-capable venue
     (grab.yml). The path is passed to the job at dispatch as
     the `hold_file` workflow input and reaches the job's
-    environment as $SYNCYARD_HOLD_FILE (FR-007).
+    environment as $SYNCYARD_HOLD_FILE.
 
     A holds_dir entry is either one venue directory valid on
     every host, or a per-host mapping resolved through the
@@ -1990,7 +1990,7 @@ def hold_signal_path(job):
 
 def checkpoint_marker_seen(job):
     """True when the job's harvested markers carry the
-    checkpoint marker (FR-008): the marker alone, or followed
+    checkpoint marker: the marker alone, or followed
     by a space, colon or equals — the boundary rule the
     marker regex itself uses."""
     for ln in job.get("markers") or []:
@@ -2039,7 +2039,7 @@ def _signal_script_body(workflow, target_path, hold):
 
 def _submit_signal_job(target, hold):
     """Deliver (or withdraw) a hold signal via an internal
-    maintenance job on the target's own workflow (FR-009):
+    maintenance job on the target's own workflow:
     maintenance, so the delivery flows under any pause, focus
     or host hold, exactly like the gatekeeper's reboot signal.
     Returns (signal_job_id, None) or (None, error)."""
@@ -2098,10 +2098,10 @@ def _submit_signal_job(target, hold):
 
 def _request_checkpoint_hold(job):
     """Record a checkpoint-hold request on a job and queue its
-    venue signal (spec 013 FR-008). Returns (signal_job_id, err):
+    venue signal. Returns (signal_job_id, err):
     err is None when the signal is queued, and both are None
     when the hold was already requested. Shared by `gk hold`
-    and `gk drain` (spec 011 FR-007) so an operator hold and a
+    and `gk drain` so an operator hold and a
     drain raise the identical signal, and the harvest never
     asks which command raised it."""
     if job.get("hold_requested"):
@@ -2115,7 +2115,7 @@ def _request_checkpoint_hold(job):
 
 
 def cmd_hold(args):
-    """Request a cooperative checkpoint hold (spec 013 FR-009):
+    """Request a cooperative checkpoint hold:
     record the request on the job, then deliver the signal
     file to its venue. Only a job that has not yet dispatched
     can act on the signal (it polls from its first step); the
@@ -2154,7 +2154,7 @@ def cmd_hold(args):
           "reaches the venue via %s; a job polling "
           "$SYNCYARD_HOLD_FILE stops at its next checkpoint. "
           "Note: a job already running cannot see a signal "
-          "created after it started polling — see spec 013."
+          "created after it started polling — see ."
           % (job["id"], job.get("key"), sid))
     return 0
 
@@ -2190,7 +2190,7 @@ def dispatch_one(job, jobs):
     job["state"] = "dispatching"
     job["dispatching_at"] = now_iso()
     if not save_job_safe(job, "pre_dispatch"):
-        # Never dispatch what could not be recorded first (FR-013):
+        # Never dispatch what could not be recorded first:
         # the record on disk still reads submitted, so the job is
         # simply skipped this pass and retried by the next sweep.
         job["state"] = "submitted"
@@ -2280,7 +2280,7 @@ def dispatch_one(job, jobs):
 
 
 def _signal_hold_exempt(job):
-    """FR-015 route 2 exception: the gatekeeper's own signal
+    """route 2 exception: the gatekeeper's own signal
     jobs (maintenance jobs keyed gk-reboot-*, gk-hold-* or
     gk-unhold-*) are exempt from a host dispatch hold. The
     hold exists to stop NEW work starting on a host that is
@@ -2295,7 +2295,7 @@ def _signal_hold_exempt(job):
             (REBOOT_KEY_PREFIX, "gk-hold-", "gk-unhold-"))
 
 
-# --- Adaptive lanes: capability, history, auto routing (spec 016) -----------
+# --- Adaptive lanes: capability, history, auto routing -----------
 
 def _run_duration_min(job):
     """A completed job's actual run duration in minutes:
@@ -2311,7 +2311,7 @@ def _run_duration_min(job):
 
 
 def program_history(jobs, program):
-    """The program's recent actuals (FR-006): its ten most
+    """The program's recent actuals: its ten most
     recent completed jobs — median run duration, the dominant
     resource class of the lanes they ran on, and the last lane.
     Computed from the queue records themselves; nothing is
@@ -2341,7 +2341,7 @@ def program_history(jobs, program):
 
 
 def capability_view(host, hosts_state=None, now=None):
-    """(snapshot, stale) for a host (FR-005). The snapshot is
+    """(snapshot, stale) for a host. The snapshot is
     the record stored by `gk probe-host`; a missing snapshot
     reads as (None, True). Staleness is judged against
     lanes.capability_max_age_min; an unparseable probed_at is
@@ -2373,7 +2373,7 @@ def _venue_match(job, lane_name):
 
 
 def resolve_auto_lane(job, ctx):
-    """The auto scorer (FR-006): a deterministic pure function
+    """The auto scorer: a deterministic pure function
     of its recorded inputs. ctx carries the lane table
     (LANES order), per-lane load, the locks map, the held-host
     set, per-host capability views, the program history, and
@@ -2419,9 +2419,9 @@ def resolve_auto_lane(job, ctx):
         if (lock_rec and lock_rec.get("state") == "active"
                 and lock_rec.get("program") != job.get("program")
                 and not job.get("maintenance")):
-            reasons.append("lane locked by %s (spec 015)"
+            reasons.append("lane locked by %s"
                            % lock_rec.get("program"))
-        # Hard resource hints (FR-006): a hard hint is never
+        # Hard resource hints: a hard hint is never
         # guessed at — a GPU need requires an affirmative lane
         # class or affirmative fresh probe evidence.
         if needs.get("gpu"):
@@ -2457,7 +2457,7 @@ def resolve_auto_lane(job, ctx):
             reasons.append("storage need %d MB exceeds host free %d MB"
                            % (needs["storage_mb"],
                               int(usable["storage_free_gb"] * 1024)))
-        # Venue eligibility (FR-006): eligibility plus the
+        # Venue eligibility: eligibility plus the
         # _venue_match scoring bonus — never a translation.
         if venue == "docker":
             if not job.get("image"):
@@ -2530,7 +2530,7 @@ def resolve_auto_lane(job, ctx):
 
 
 def _resolve_auto_jobs(jobs, locks, held_hosts):
-    """The impure shell (FR-004/FR-006): evaluate every
+    """The impure shell: evaluate every
     lane-less submitted job once, persist the outcome through
     the verified-write path, ledger it. Placement writes the
     lane — from then on the job is an ordinary explicit-lane
@@ -2598,17 +2598,17 @@ def _resolve_auto_jobs(jobs, locks, held_hosts):
 def dispatch_pass(jobs, runs_by_id):
     """Returns number of jobs dispatched this sweep."""
     dispatched = 0
-    # Lane locks (spec 015 FR-007): expiry is evaluated at
+    # Lane locks: expiry is evaluated at
     # dispatch time, at the head of the pass — an expired lock
     # behaves exactly like a release from this pass on.
     locks = expire_locks(jobs=jobs)
-    # Host dispatch holds (spec 011 FR-006 + FR-007: down holds
+    # Host dispatch holds (+ down holds
     # and drain holds alike) are computed here, ahead of their
     # use in the loop below, because auto routing must treat a
     # held host's lanes as ineligible too.
     held_hosts = {h for h, r in load_hosts_state().items()
                   if r.get("hold") or r.get("drain_hold")}
-    # Auto routing (spec 016 FR-004/FR-006): lane-less
+    # Auto routing: lane-less
     # submitted jobs are resolved against this landscape —
     # locks and holds already applied — before ordering. A
     # resolved job then faces every gate below exactly as an
@@ -2634,36 +2634,36 @@ def dispatch_pass(jobs, runs_by_id):
         held_lane_counts[j["lane"]] = held_lane_counts.get(j["lane"], 0) + 1
     held_hashes = {(j["workflow"], j.get("script_sha256")) for j in holding
                    if j.get("script_sha256")}
-    # Effective dispatch order (spec 013 FR-003/FR-012): the
+    # Effective dispatch order: the
     # optimizer's unified key, evaluated once against a single
     # instant so the whole pass orders consistently.
     now = now_dt()
     waiting = sorted([j for j in jobs if j["state"] == "submitted"],
                      key=lambda j: dispatch_sort_key(j, now))
-    # Admission under a pause/focus record is one rule (spec 013
-    # FR-002), evaluated before ordering: maintenance flows; a
+    # Admission under a pause/focus record is one rule,
+    # evaluated before ordering: maintenance flows; a
     # job the focus record admits flows; the gatekeeper's own
     # reboot jobs flow via the maintenance exemption, as today.
     # A STOP record admits nothing beyond maintenance, exactly
-    # as today's combined check did. Drain (FR-005) changes no
+    # as today's combined check did. Drain changes no
     # admission — it only adds the settle transition.
     prec = pause_record()
     gate_active = prec is not None or stop_state() is not None
-    # Host dispatch holds (spec 011 FR-006 + FR-007): a host that
+    # Host dispatch holds: a host that
     # has gone down, or is under a deliberate drain hold, takes no
     # new dispatches on any of its lanes — maintenance included,
     # the host is going away — until the hold is cleared
-    # (Phase 1: `gk host-resume`; the FR-010 recovery handshake
+    # (Phase 1: `gk host-resume`; the recovery handshake
     # replaces it in Phase 5). Queued jobs wait; nothing reroutes.
     # (held_hosts itself is computed at the head of the pass —
-    # spec 016: auto routing must exclude the same held set,
+    # auto routing must exclude the same held set,
     # drain holds included.)
-    # FR-015 route 2 exception: the gatekeeper's own signal
+    # route 2 exception: the gatekeeper's own signal
     # jobs are exempt from the host hold (_signal_hold_exempt).
     lanes_live = os.path.isfile(LANES_LIVE_FILE)
     for job in waiting:
         if job.get("lane") is None:
-            continue  # auto job with no fit yet (spec 016): waits
+            continue  # auto job with no fit yet: waits
         maint = bool(job.get("maintenance"))
         if gate_active and not maint:
             if prec is None or focus_match(job, prec) is None:
@@ -2671,19 +2671,19 @@ def dispatch_pass(jobs, runs_by_id):
         if LANE_HOST.get(job["lane"]) in held_hosts \
                 and not _signal_hold_exempt(job):
             continue  # host going down: held (see status board)
-        # Lane priority lock (spec 015 FR-002): while the lane
+        # Lane priority lock: while the lane
         # is ACTIVE-locked by another program, a non-maintenance
         # job waits — not refused, not reordered; its watermarks
         # escalate as the visibility mechanism. Priority is
         # never consulted here: it cannot trump a lock.
-        # Maintenance bypasses (FR-008) and is ledgered when it
+        # Maintenance bypasses and is ledgered when it
         # lands below.
         lock_rec = locks.get(job["lane"])
         lock_foreign_active = bool(
             lock_rec and lock_rec.get("state") == "active"
             and lock_rec.get("program") != job.get("program"))
         if lock_foreign_active and not maint:
-            continue  # lane locked by another program (spec 015)
+            continue  # lane locked by another program
         if not lanes_live and active_count >= MAX_ACTIVE_DISPATCHED \
                 and not maint:
             ledger("dispatch_deferred_cap", job_id=job["id"], key=job["key"],
@@ -2700,7 +2700,7 @@ def dispatch_pass(jobs, runs_by_id):
         if dispatch_one(job, jobs):
             dispatched += 1
             if lock_foreign_active and maint:
-                # Spec 015 FR-008: the operator's class is
+                # the operator's class is
                 # never locked out of his own door, and every
                 # bypass of an ACTIVE lock is on the record.
                 ledger("lock_bypassed", job_id=job["id"],
@@ -2794,7 +2794,7 @@ def fetch_log_once(job):
 
 
 # --- staging store harvest (staging-store build, 2026-11-09) ----------------
-# The fleet staging store on mini-server (STAGING-STORE-SPEC-2026-11-09,
+# The fleet staging store on mini-server (design recorded 2026-11-09,
 # build record STAGING-STORE-BUILD-2026-11-09.md): producing hosts push
 # files over 2 MB by SFTP into per-host subtrees of the store; this
 # machinery pulls them for completed jobs whose logs carried STAGED_FILE
@@ -3688,7 +3688,7 @@ def watch_pass(jobs, runs_by_id):
             if not job.get("log_fetched_at"):
                 fetch_log_once(job)
             if checkpoint_marker_seen(job):
-                # Spec 013 FR-008: the job stopped itself at a
+                # the job stopped itself at a
                 # cooperative checkpoint. A distinct terminal
                 # state — not a completion, not a failure —
                 # whatever the run's conclusion says; the
@@ -3703,7 +3703,7 @@ def watch_pass(jobs, runs_by_id):
                 job["state"] = "completed"
                 job["completed_at"] = (job.get("completed_at")
                                         or now_iso())
-                # Spec 016 FR-005: a completed probe job's
+                # a completed probe job's
                 # harvested log becomes the host's capability
                 # snapshot (its flags persist with this save).
                 _maybe_ingest_probe(job)
@@ -3740,7 +3740,7 @@ def acquire_lock():
 
 
 def maybe_settle_drain(jobs=None):
-    """The drain settle (spec 013 FR-005): when a draining
+    """The drain settle: when a draining
     pause/focus record has nothing left executing outside its
     admitted set, the drain completes — the record stays (the
     pause itself stands) with `drain` cleared and the settle
@@ -3811,12 +3811,12 @@ def cmd_sweep(_args):
         else:
             runs_by_id = {str(r["databaseId"]): r for r in runs}
         jobs = load_jobs()
-        # Host liveness + going-down ingest (spec 011 FR-001/003/006):
+        # Host liveness + going-down ingest:
         # one backchannel contents read, before dispatch so a
         # just-ingested hold blocks this same pass. A liveness
         # failure is ledgered inside and never breaks the sweep.
         sweep_liveness(jobs)
-        # Tray drift judgement (spec 027): one release-manifest
+        # Tray drift judgement: one release-manifest
         # read on this same sweep cadence, judged against the
         # recorded tray beats; fail-soft inside, never breaks
         # the sweep.
@@ -3956,7 +3956,7 @@ def fetch_backchannel_heartbeat():
     backchannel heartbeat, parsed exactly as backchannel_status_line
     always parsed it (ts / host / stopped / self_test ride the
     payload). Shared by the status line and the sweep's liveness
-    pass (spec 011 FR-001) so there is one heartbeat format, read
+    pass so there is one heartbeat format, read
     one way."""
     data, err = gh_json(["api", "repos/%s/contents/%s"
                          % (BC_REPO, BC_HEARTBEAT_PATH)])
@@ -3972,7 +3972,7 @@ def fetch_backchannel_heartbeat():
 
 
 def backchannel_status_line():
-    """One status line for the failsafe backchannel (spec 010 T011):
+    """One status line for the failsafe backchannel:
     heartbeat age from the channel repo, with a stale alarm past
     BC_STALE_S. Fail-soft: any read error reports 'unknown', never
     breaks status. Costs one contents-API call per status run."""
@@ -3992,7 +3992,7 @@ def backchannel_status_line():
     return line
 
 
-# --- Host liveness + going-down records (spec 011 FR-001/003/004/006) ------
+# --- Host liveness + going-down records ------
 #
 # The gatekeeper keeps its own per-host liveness record in
 # hosts.json beside the queue (verified writes, like every other
@@ -4012,7 +4012,7 @@ def backchannel_status_line():
 # A host is DOWN when its heartbeat age exceeds
 # liveness.down_after_s (config), or while a dispatch hold stands.
 # DOWN is a record/display state; dispatch is held only by the
-# hold, which only a going-down ingest sets (FR-006) — a merely
+# hold, which only a going-down ingest sets — a merely
 # stale heartbeat never blocks dispatch in this phase.
 
 GOING_DOWN_TRIGGERS = ("shutdown", "logoff", "update", "unknown",
@@ -4065,7 +4065,7 @@ def heartbeat_hosts():
 
 
 def sweep_liveness(jobs):
-    """The sweep's liveness pass (FR-001 + FR-003 detection): one
+    """The sweep's liveness pass (+ detection): one
     backchannel contents read — the same read class the sweep
     already spends, one extra call per sweep — refreshing the
     per-host last-seen record from the heartbeat, then ingesting
@@ -4103,8 +4103,8 @@ def sweep_liveness(jobs):
 
 
 def _record_guard_beat(guard, hb_ts):
-    """Record the host guard's latest beat (spec 011 Phase 3,
-    T007). The guard beats into a host file; the backchannel
+    """Record the host guard's latest beat (Phase 3,
+    ). The guard beats into a host file; the backchannel
     agent merges it into the heartbeat payload as `guard`
     ({host, ts, active, draining}) and this pass stores it on
     the host's liveness record. Staleness is judged against the
@@ -4146,7 +4146,7 @@ def _record_guard_beat(guard, hb_ts):
 
 
 def _record_tray_beat(tray, hb_ts):
-    """Record the tray's latest beat (spec 025, H1). The tray
+    """Record the tray's latest beat. The tray
     beats into a host file; the backchannel agent merges it
     into the heartbeat payload as `tray` ({host, build, pid,
     session, started_at, ts, tick, lanes}) and this pass
@@ -4195,9 +4195,9 @@ def _record_tray_beat(tray, hb_ts):
                tray_ts=tray.get("ts"))
 
 
-# --- Tray version drift (spec 027, H3) --------------------------------------
+# --- Tray version drift --------------------------------------
 #
-# Spec 025 made a dead tray visible; nothing made an OLD tray
+# A dead tray is visible; nothing made an OLD tray
 # visible — the laptop sat two builds behind with a broken
 # update click path, so it could neither catch up nor be
 # caught. This pass judges every recorded tray beat against
@@ -4215,13 +4215,13 @@ def _record_tray_beat(tray, hb_ts):
 # `behind` — the running build is older than the release;
 # `unknown` — no judgement was possible: no usable beat build,
 # or the release-manifest read failed. An unread manifest is
-# NEVER read as "everyone is current" (FR-002, the failure
-# this spec exists to prevent).
+# NEVER read as "everyone is current" (the failure
+# this guard exists to prevent).
 
 def _version_tuple(text):
     """Parse a dotted version stamp ("0.4.4.0", optional
     leading "v") into a comparable tuple of ints, or None when
-    any part is not a number. The tray's stamps (spec 021) and
+    any part is not a number. The tray's stamps and
     the manifest's version field both use this shape."""
     if not isinstance(text, str):
         return None
@@ -4248,7 +4248,7 @@ def _version_cmp(a, b):
 def fetch_tray_release_version():
     """(version, error) — the current published tray release
     version, read from the release manifest the updater itself
-    consumes (spec 021's tray-update.json asset on the latest
+    consumes ('s tray-update.json asset on the latest
     release of the project repo). Two API calls: the release
     record, then the manifest asset. Any failure returns
     (None, error); the caller judges drift unknown."""
@@ -4295,7 +4295,7 @@ def save_tray_release_cache(cache):
 
 
 def sweep_tray_drift():
-    """The sweep's tray drift pass (spec 027 FR-001/002/005).
+    """The sweep's tray drift pass.
 
     The manifest read rides this sweep: at most one read per
     sweep, only when some host carries a tray beat, and the
@@ -4304,10 +4304,10 @@ def sweep_tray_drift():
     renders from the host record alone. The judge uses only
     this sweep's read: a failed or absent read judges every
     beaten host `unknown` for this sweep, never `current`
-    (FR-002); a stale cache is never judged from.
+   ; a stale cache is never judged from.
 
     Transitions ledger exactly once, after the record save
-    (the spec 025 pattern): `tray_drift` carrying both
+    (the pattern): `tray_drift` carrying both
     versions when a host enters `behind`, `tray_current` when
     it enters `current`. Entering `unknown` is recorded on
     the host record but ledgers nothing — the spec names no
@@ -4363,8 +4363,8 @@ def sweep_tray_drift():
 
 
 def ingest_going_down(record, jobs=None):
-    """Ingest one going-down record (spec 011 FR-003 gatekeeper
-    side + FR-006). The host side writes the record at the START
+    """Ingest one going-down record (gatekeeper
+    side). The host side writes the record at the START
     of a drain and pushes it through the backchannel; the sweep
     detects it as the heartbeat's `going_down` field and calls
     this. It is also directly callable (tests, operator use).
@@ -4387,12 +4387,12 @@ def ingest_going_down(record, jobs=None):
         "host-shutdown" and interrupted_at=<record ts>, plus a
         ledger `interrupted` line — which is what the outbox
         turns into one push per affected notify registration
-        (FR-004). Affected = an active job on one of the host's
+       . Affected = an active job on one of the host's
         lanes whose run id the record names; when the record
         names no runs, every active job on the host's lanes.
       - a per-host dispatch hold: dispatch_pass skips every lane
         of the host until the hold clears. Phase 5's recovery
-        handshake (FR-010) clears it then; in Phase 1 the
+        handshake clears it then; in Phase 1 the
         stand-in is the operator command `gk host-resume <host>`.
     The gatekeeper never cancels and never re-dispatches: an
     annotated run may still complete in GitHub while the host
@@ -4455,7 +4455,7 @@ def ingest_going_down(record, jobs=None):
 
 
 def host_status_lines(state=None):
-    """Per-host liveness for `gk status` (FR-001): UP/DOWN plus
+    """Per-host liveness for `gk status`: UP/DOWN plus
     heartbeat age, rendered from the persisted last-seen record —
     status spends no API on this; the sweep refreshes the record.
     A host never seen renders UNKNOWN, never DOWN: no heartbeat
@@ -4497,11 +4497,11 @@ def host_status_lines(state=None):
                 tray.get("ts"), tray.get("build"),
                 " TRAY STALE (agent alive, tray not reporting)"
                 if rec.get("tray_stale") else "")
-            # Drift (spec 027 FR-003): the judged state rides
+            # Drift: the judged state rides
             # beside the beat. A beat never yet judged renders
             # unknown — the honest word, and never "current"
             # without a successful manifest read behind it
-            # (FR-002).
+            #.
             drift = rec.get("tray_drift") or {}
             dstate = drift.get("state")
             if dstate == "behind":
@@ -4519,8 +4519,8 @@ def host_status_lines(state=None):
 
 def cmd_host_resume(args):
     """Clear a host's dispatch holds — the going-down hold
-    (FR-006) and the drain hold (FR-007), either or both.
-    Phase-1 stand-in for the FR-010 recovery handshake
+    and the drain hold, either or both.
+    Phase-1 stand-in for the recovery handshake
     (Phase 5): an operator clears the holds by hand once the
     host is back and verified."""
     state = load_hosts_state()
@@ -4536,14 +4536,14 @@ def cmd_host_resume(args):
     ledger("host_resumed", host=args.host)
     hlog("HOST_RESUMED %s at %s" % (args.host, now_iso()))
     print("host %s: dispatch hold cleared (Phase-1 stand-in for "
-          "the FR-010 recovery handshake)" % args.host)
+          "the recovery handshake)" % args.host)
     return 0
 
 
-# --- Host capability probes (spec 016 FR-005) -------------------------------
+# --- Host capability probes -------------------------------
 #
 # `gk probe-host --host <host>` records a normalized capability
-# snapshot for a host — the facts auto routing (FR-006) reads.
+# snapshot for a host — the facts auto routing reads.
 # The probe scripts only PRINT their platform's own tool output
 # under section headers; all interpretation lives in the three
 # parsers here, so a report produced anywhere parses the same
@@ -4838,7 +4838,7 @@ _PROBE_PARSERS = {"windows": parse_probe_windows,
 
 
 def parse_probe_report(text):
-    """One interface for all three platforms (FR-005): a probe
+    """One interface for all three platforms: a probe
     report (any route) -> the normalized snapshot, or None
     when the report is not a probe report we can read."""
     platform, sections = _probe_sections(text)
@@ -4948,7 +4948,7 @@ def cmd_probe_host(args):
 
 
 def _maybe_ingest_probe(job):
-    """Watch-pass hook (FR-005): a completed probe job's
+    """Watch-pass hook: a completed probe job's
     harvested log is parsed and filed under its probed host.
     Mutates the job's ingest flags only; the caller's save
     persists them."""
@@ -4969,7 +4969,7 @@ def _maybe_ingest_probe(job):
            job_id=job["id"], platform=stored.get("platform"))
 
 
-# --- Controlled reboot (spec 011 FR-015) ------------------------------------
+# --- Controlled reboot ------------------------------------
 #
 # `gk reboot --host <host>` requests a controlled reboot of a fleet
 # host under the drain discipline. Route determination is reads-only
@@ -5068,7 +5068,7 @@ def cmd_reboot(args):
                requested_by=args.requested_by)
         return 4
     # 2. Refusal: active jobs and no --force. No signal, no
-    # going-down record — the drain (FR-007) or waiting is the
+    # going-down record — the drain or waiting is the
     # polite path.
     jobs = load_jobs()
     active = _host_active_jobs(host, jobs)
@@ -5168,16 +5168,16 @@ def cmd_reboot(args):
     return 0
 
 
-# --- Host drain (spec 011 FR-007) -------------------------------------------
+# --- Host drain -------------------------------------------
 #
 # `gk drain --host <host>` is the deliberate, operator-invoked
 # drain of ONE host: hold the host's dispatch, signal its
-# running checkpoint-capable jobs through the spec 013 hold
+# running checkpoint-capable jobs through the hold
 # contract, wait out the checkpoint window (drain.window_s,
-# per-lane overrides, FR-005), then print the verdict in plain
+# per-lane overrides), then print the verdict in plain
 # language. The command never shuts anything down itself.
 #
-# Reconciliation with spec 013's operator drain (`gk pause
+# Reconciliation with the operator drain (`gk pause
 # --drain` / `gk focus --drain`), stated once, here: the two
 # are different scopes of one idea and neither replaces the
 # other. The 013 drain is pipeline-scoped and passive — it
@@ -5186,7 +5186,7 @@ def cmd_reboot(args):
 # executing; it signals nothing and holds no host. The 011
 # drain is host-scoped and active — it sets a per-host drain
 # hold in the liveness record (dispatch_pass treats it exactly
-# like the FR-006 going-down hold), raises checkpoint holds
+# like the going-down hold), raises checkpoint holds
 # on the host's running jobs, waits, and reports. They
 # compose: admission is the conjunction of both (a job must
 # pass the global gate AND its host's holds), and each clears
@@ -5205,7 +5205,7 @@ DRAIN_TERMINAL_STATES = ("held_at_checkpoint", "completed",
 
 
 def drain_window_for_lane(lane):
-    """The checkpoint window for one lane (FR-005): the
+    """The checkpoint window for one lane: the
     per-lane override when configured, else the host window."""
     return DRAIN_PER_LANE_WINDOW_S.get(lane, DRAIN_WINDOW_S)
 
@@ -5230,7 +5230,7 @@ def _drain_probe(tracked):
     feed the results through the SAME watch_pass the sweep
     uses, so a checkpoint harvest during a drain lands in the
     identical state, with the identical markers and ledger
-    lines, as a sweep harvest (spec 013 FR-008)."""
+    lines, as a sweep harvest."""
     runs = {}
     for j in tracked:
         if j["state"] not in ("dispatched", "watching") \
@@ -5275,7 +5275,7 @@ def cmd_drain(args):
          % (host, len(tracked), started))
     # 1. Signal first: raise the checkpoint hold on every
     # tracked job whose workflow has a hold venue, through the
-    # shared spec 013 helper, so the signal is byte-identical
+    # shared helper, so the signal is byte-identical
     # to an operator `gk hold`. Jobs with no venue (grab) or a
     # signal that could not be queued are accounted by name in
     # the verdict — they cannot checkpoint under this drain.
@@ -5298,7 +5298,7 @@ def cmd_drain(args):
     rec["drain_by"] = args.requested_by
     save_hosts_state(state)
     # 3. Wait out the windows. Each tracked job is classified
-    # at its own lane's deadline (FR-005): checkpointed
+    # at its own lane's deadline: checkpointed
     # (held_at_checkpoint), finished (completed), ended
     # (cancelled), or — still running at its deadline —
     # uncheckpointed. Terminal truth comes from the records,
@@ -5328,7 +5328,7 @@ def cmd_drain(args):
                 outcomes[j["id"]] = "uncheckpointed"
             break
         time.sleep(DRAIN_POLL_S if DRAIN_POLL_S > 0 else 0.05)
-    # 4. The verdict, in plain language (FR-007).
+    # 4. The verdict, in plain language.
     by_id = {j["id"]: j for j in tracked}
     checkpointed = [i for i, o in outcomes.items()
                     if o == "held_at_checkpoint"]
@@ -5370,7 +5370,7 @@ def cmd_drain(args):
               "goes down now this job is interrupted and its "
               "in-flight work is lost (resubmission is the "
               "owning program's call)" % (i, j.get("key"), why))
-    print("  supervised work: none registered — the FR-008 "
+    print("  supervised work: none registered — the "
           "vehicle is Phase 4, so this verdict covers "
           "gatekeeper jobs only")
     if clean:
@@ -5385,7 +5385,7 @@ def cmd_drain(args):
     return 1
 
 def cmd_profile(args):
-    """Spec 016 FR-001: render the profile table. Read-only —
+    """render the profile table. Read-only —
     switching the active profile is an operator config edit
     (lanes.active_profile) that takes effect at the next
     sweep; there is deliberately no runtime verb for it."""
@@ -5428,14 +5428,14 @@ def cmd_profile(args):
     return 0
 
 
-# --- Profile suggest (spec 016 follow-on) ---------------------------
+# --- Profile suggest ---------------------------
 # `gk profile suggest` drafts a lane profile for one host from
-# its recorded capability snapshot (FR-005) and prints the
+# its recorded capability snapshot and prints the
 # reasoning beside every choice. It is a drafting aid only:
 # it never edits the config, never writes hosts.json, and
 # never switches the active profile. The one file it may write
 # is an explicit --out path, refused when the path already
-# exists or is the live config file. FR-001's rule stands:
+# exists or is the live config file. The rule stands:
 # a profile takes effect only when an operator merges it into
 # the config and the next process loads it.
 
@@ -5714,7 +5714,7 @@ def _live_config_path():
 
 
 def cmd_profile_suggest(args):
-    """Spec 016 follow-on: draft a lane profile for one host
+    """Draft a lane profile for one host
     from its capability snapshot, with the reasoning printed
     beside every choice. Read-only against the config and
     hosts.json; the only write anywhere is an explicit --out
@@ -5794,7 +5794,7 @@ def cmd_profile_suggest(args):
 
 
 def capability_status_lines(hosts_state=None):
-    """Spec 016 FR-008: one line per configured host — the
+    """one line per configured host — the
     recorded capability snapshot and its freshness, or the
     honest unknown."""
     if hosts_state is None:
@@ -5847,12 +5847,12 @@ def cmd_status(args):
     print(backchannel_status_line())
     for line in host_status_lines():
         print(line)
-    # Lane locks (spec 015 FR-009): rendered in all modes,
+    # Lane locks: rendered in all modes,
     # from the same file the dispatch pass enforces.
     locks_map = load_locks()
     for line in locks_section_lines(locks_map):
         print(line)
-    # Adaptive lanes (spec 016 FR-008): the active profile and
+    # Adaptive lanes: the active profile and
     # every host's capability standing.
     print("profile: %s (%d lanes resolved%s)"
           % (ACTIVE_PROFILE, len(LANES),
@@ -5887,7 +5887,7 @@ def cmd_status(args):
                   % (j["key"], j.get("run_id"), j.get("run_conclusion"),
                      j.get("verdict_source"),
                      len(j.get("markers", []))))
-    # Spec 013 FR-003/FR-006/FR-012: the waiting set in
+    # the waiting set in
     # effective dispatch order (the same key the sweep uses,
     # evaluated now), with priorities, sources, and each job's
     # standing under the current pause/focus record.
@@ -5910,7 +5910,7 @@ def cmd_status(args):
                     and not j.get("maintenance") \
                     and j.get("program") != lock_rec.get("program"):
                 mark += " [lock-held by %s]" % lock_rec.get("program")
-            # Spec 016 FR-008: an auto job's standing — still
+            # an auto job's standing — still
             # unplaced (with its last unmet reasons) or resolved
             # (with the recorded score and any degradation).
             if j.get("lane") is None:
@@ -5956,18 +5956,18 @@ def cmd_status(args):
     return 0
 
 
-# --- fleet snapshot (spec 014 FR-008, gatekeeper-emitted) -------------------
+# --- fleet snapshot -------------------
 
 def snapshot_held(job, prec, stopped, held_hosts):
     """Whether a waiting job is held, by the sweep's own
     admission rules. Under a stop the sweep itself no-ops, so
     nothing dispatches and every waiting job is held,
-    maintenance included. Under a pause/focus (spec 013
-    FR-002) a job is held when no selector admits it, except
+    maintenance included. Under a pause/focus
+    a job is held when no selector admits it, except
     maintenance jobs, which a pause never holds. A job whose
-    lane's host carries a dispatch hold (spec 011 FR-006)
+    lane's host carries a dispatch hold
     waits too, except the gatekeeper's own signal jobs
-    (FR-015, _signal_hold_exempt). Lane locks, the active
+    (_signal_hold_exempt). Lane locks, the active
     cap, lane serialization and duplicate-script skips are
     pass state, not record state, and are not marks here —
     `gk status` likewise renders lock-held as a separate
@@ -6002,11 +6002,11 @@ def snapshot_lane_state(cap, running, waiting):
 
 
 def build_snapshot():
-    """The spec 014 FR-008 fleet snapshot, derived from this
+    """The fleet snapshot, derived from this
     gatekeeper's own state by its own code paths: the
-    FR-001-normalized pause record (pause_record), the stop
+    normalized pause record (pause_record), the stop
     record (stop_state), the host-state file
-    (load_hosts_state), the FR-012 dispatch order
+    (load_hosts_state), the dispatch order
     (dispatch_sort_key, evaluated once against a single
     instant, exactly as the dispatch pass orders), and the
     sweep's admission rule (snapshot_held). One derivation,
@@ -6017,7 +6017,7 @@ def build_snapshot():
 
     The queue-depth fields (active, lanes, queue_state,
     running_total, waiting_total) carry the tray's
-    four-state queue model (spec 025): the same fields,
+    four-state queue model: the same fields,
     shapes and state rules fleet_status.py's fallback
     derivation emits, so a gatekeeper-sourced snapshot
     and a fallback snapshot are interchangeable to the
@@ -6125,7 +6125,7 @@ def build_snapshot():
 
 
 def cmd_snapshot(_args):
-    """Print the FR-008 fleet snapshot as a single JSON
+    """Print the fleet snapshot as a single JSON
     object on stdout — the fleet-status publisher's primary
     source (publisher v2). Nothing else prints to stdout;
     unreadable job records warn on stderr as everywhere."""
@@ -6144,7 +6144,7 @@ def main(argv=None):
     p.add_argument("--workflow", required=True, choices=WORKFLOWS)
     p.add_argument("--lane", choices=tuple(LANES) + ("auto",),
                    default=None,
-                   help="lane to run on, or 'auto' (spec 016 FR-004): "
+                   help="lane to run on, or 'auto': "
                         "the sweep picks the lane from the job's "
                         "resource hints, program history, queue load "
                         "and host capability. Omit only when "
@@ -6160,22 +6160,22 @@ def main(argv=None):
                    help="comma-separated host:container mount pairs "
                         "for a docker-transport job")
     p.add_argument("--needs-cpu", type=int, default=None,
-                   help="resource hint (spec 016 FR-003): minimum "
+                   help="resource hint: minimum "
                         "CPU cores the job needs")
     p.add_argument("--needs-ram-mb", type=int, default=None,
-                   help="resource hint (spec 016 FR-003): minimum "
+                   help="resource hint: minimum "
                         "RAM in MB the job needs")
     p.add_argument("--needs-storage-mb", type=int, default=None,
-                   help="resource hint (spec 016 FR-003): minimum "
+                   help="resource hint: minimum "
                         "free storage in MB the job needs")
     p.add_argument("--needs-gpu", nargs="?", const=True, default=None,
                    type=int, metavar="VRAM_MB",
-                   help="resource hint (spec 016 FR-003): the job "
+                   help="resource hint: the job "
                         "needs a GPU; optionally with a minimum "
                         "VRAM in MB")
     p.add_argument("--venue", choices=("auto", "native", "wsl", "docker"),
                    default="auto",
-                   help="venue preference (spec 016 FR-003): "
+                   help="venue preference: "
                         "eligibility for auto routing; docker "
                         "requires --image, wsl requires a Windows "
                         "host serving wsl.yml")
@@ -6189,22 +6189,22 @@ def main(argv=None):
                    help="chat id to push started/completed/escalated "
                         "updates for this job to (see `gk outbox`)")
     p.add_argument("--priority", type=int, default=None,
-                   help="human-set dispatch priority (spec 013 "
-                        "FR-003): higher dispatches first; setting "
+                   help="human-set dispatch priority: "
+                        "higher dispatches first; setting "
                         "it pins the job against the optimizer")
     p.set_defaults(fn=cmd_submit)
 
     p = sub.add_parser("pause")
     p.add_argument("--reason", default="")
     p.add_argument("--drain", action="store_true",
-                   help="drain first (spec 013 FR-005): executing "
+                   help="drain first: executing "
                         "jobs finish, nothing new dispatches, then "
                         "the pause settles")
     p.set_defaults(fn=cmd_pause)
 
     p = sub.add_parser("focus",
                        help="pause all but the selected jobs "
-                            "(spec 013 FR-001): only jobs matching "
+                            ": only jobs matching "
                             "a selector dispatch")
     p.add_argument("--except-key", action="append", default=None,
                    help="job key or key prefix to keep flowing "
@@ -6216,20 +6216,19 @@ def main(argv=None):
                         "(repeatable)")
     p.add_argument("--reason", default="")
     p.add_argument("--drain", action="store_true",
-                   help="drain toward the focus set (spec 013 "
-                        "FR-005)")
+                   help="drain toward the focus set")
     p.set_defaults(fn=cmd_focus)
 
     p = sub.add_parser("resume")
     p.add_argument("--job", default=None,
                    help="release one job's checkpoint hold "
-                        "(spec 013 FR-009) instead of clearing "
+                        " instead of clearing "
                         "the pipeline pause")
     p.set_defaults(fn=cmd_resume)
 
     p = sub.add_parser("priority",
                        help="change a waiting job's priority "
-                            "(spec 013 FR-004)")
+                            "")
     p.add_argument("job", help="job id or key (submitted jobs only)")
     p.add_argument("value", type=int,
                    help="new priority (higher dispatches first)")
@@ -6237,13 +6236,13 @@ def main(argv=None):
 
     p = sub.add_parser("hold",
                        help="request a cooperative checkpoint hold "
-                            "on a job (spec 013 FR-009)")
+                            "on a job")
     p.add_argument("job", help="job id or key")
     p.set_defaults(fn=cmd_hold)
 
     p = sub.add_parser("lock",
                        help="acquire, renew, suspend or resume a "
-                            "lane priority lock (spec 015), or "
+                            "lane priority lock, or "
                             "list the locks with --list")
     p.add_argument("--lane", choices=LANES, default=None,
                    help="lane to lock (required unless --list)")
@@ -6259,7 +6258,7 @@ def main(argv=None):
     p.add_argument("--reason", default="",
                    help="reason recorded on the lock")
     p.add_argument("--suspend", action="store_true",
-                   help="suspend enforcement (spec 015 FR-005): "
+                   help="suspend enforcement: "
                         "the lane flows, the claim stands, new "
                         "acquires by others stay refused")
     p.add_argument("--resume", action="store_true",
@@ -6275,7 +6274,7 @@ def main(argv=None):
 
     p = sub.add_parser("unlock",
                        help="release a lane priority lock "
-                            "(spec 015 FR-003): the holder "
+                            ": the holder "
                             "releases, or the operator overrides "
                             "with --force")
     p.add_argument("--lane", required=True, choices=LANES,
@@ -6359,16 +6358,16 @@ def main(argv=None):
 
     p = sub.add_parser("host-resume",
                        help="clear a host's dispatch holds — the "
-                            "going-down hold (spec 011 FR-006) and "
-                            "the drain hold (FR-007); Phase-1 "
-                            "stand-in for the FR-010 recovery "
+                            "going-down hold and "
+                            "the drain hold; Phase-1 "
+                            "stand-in for the recovery "
                             "handshake)")
     p.add_argument("host", help="config host name, e.g. desktop")
     p.set_defaults(fn=cmd_host_resume)
 
     p = sub.add_parser("reboot",
                        help="request a controlled reboot of a host "
-                            "(spec 011 FR-015): refuses while jobs "
+                            ": refuses while jobs "
                             "are active unless --force; writes the "
                             "going-down record before signaling; "
                             "exit 3 = refused, 4 = host unreachable")
@@ -6387,7 +6386,7 @@ def main(argv=None):
     p.set_defaults(fn=cmd_reboot)
 
     p = sub.add_parser("drain",
-                       help="drain one host (spec 011 FR-007): "
+                       help="drain one host: "
                             "hold its dispatch, signal its running "
                             "jobs to checkpoint, wait out the "
                             "window (drain.window_s / per-lane "
@@ -6396,7 +6395,7 @@ def main(argv=None):
                             "1 = INTERRUPTING, 2 = usage error. "
                             "Host-scoped: distinct from the "
                             "pipeline drain of `gk pause --drain` "
-                            "(spec 013), which it composes with")
+                            ", which it composes with")
     p.add_argument("--host", required=True,
                    help="config host name, e.g. desktop")
     p.add_argument("--window", type=float, default=None,
@@ -6413,7 +6412,7 @@ def main(argv=None):
     p.set_defaults(fn=cmd_status)
 
     p = sub.add_parser("snapshot",
-                       help="print the spec 014 FR-008 fleet "
+                       help="print the fleet "
                             "snapshot as one JSON object on "
                             "stdout, derived by the gatekeeper's "
                             "own ordering and admission code "
@@ -6422,12 +6421,12 @@ def main(argv=None):
     p.set_defaults(fn=cmd_snapshot)
 
     p = sub.add_parser("profile",
-                       help="render the lane profiles (spec 016 "
-                            "FR-001); switching the active profile "
+                       help="render the lane profiles; "
+                            "switching the active profile "
                             "is a config edit, not a runtime verb. "
                             "'gk profile suggest' drafts a new "
                             "profile from a host capability "
-                            "snapshot (spec 016 follow-on) and "
+                            "snapshot and "
                             "applies nothing")
     p.add_argument("--list", action="store_true",
                    help="list every profile with its lane count")
@@ -6459,7 +6458,7 @@ def main(argv=None):
 
     p = sub.add_parser("probe-host",
                        help="record a host capability snapshot "
-                            "(spec 016 FR-005) for auto routing: "
+                            " for auto routing: "
                             "dispatch the probe through the door "
                             "where a transport exists, or --ingest "
                             "a probe report produced on the host")

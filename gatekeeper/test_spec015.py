@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scenario battery for spec 015 (lane priority lock).
+"""Scenario battery for (lane priority lock).
 
 Golden style (as test_spec013.py): temp dir, copied gk.py +
 config.py, subprocess drivers, stub dispatch_one / ledger at
@@ -10,7 +10,7 @@ an event *carries* (the holder's notify chat on an expiry or
 an override release).
 
 Fixture choice: LANE_CONCURRENCY is raised to 99 in the
-prelude. Lane serialization is spec 001/013 behavior, pinned
+prelude. Lane serialization is /013 behavior, pinned
 by their own batteries; here it would mask the lock gate
 (two same-lane jobs are the lock's whole subject), so the
 fixture removes it as a variable — the lock scenarios then
@@ -28,7 +28,7 @@ global pause preserving lock state; focus ^ lock conjunction
 in both directions; maintenance bypass + lock_bypassed;
 drain/host-hold leaving lock state byte-identical;
 persistence across a simulated restart; legacy no-file
-behavior; TTL bounds; the FR-013 write-failure invariant;
+behavior; TTL bounds; the write-failure invariant;
 status / --list / outbox visibility.
 
 Run: python3 gatekeeper/test_spec015.py
@@ -77,7 +77,7 @@ def set_now(s):
 
 def reload_gk():
     # A simulated gatekeeper restart: a fresh module instance
-    # over the same state directory (spec 015 FR-010).
+    # over the same state directory.
     s2 = importlib.util.spec_from_file_location(
         "gk_restarted", os.path.join(BASE_DIR, "gk.py"))
     m = importlib.util.module_from_spec(s2)
@@ -562,7 +562,7 @@ check("TTL bounds: 0 and max+1 refused (3, bounds named); "
       and res["bounds_named"] and res["rc_max"] == 0
       and res["rc_min"] == 0, str(res))
 
-# --- FR-013 write failure leaves prior state intact ------------------------------------------
+# --- write failure leaves prior state intact ------------------------------------------
 res = run_driver(r"""
 call(gk.cmd_lock, lock_ns(lane="gpu", program="holder-prog"))
 raw_before = read_locks_raw()

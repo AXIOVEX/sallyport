@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline unit tests for bc.py (spec 009 FR-003).
+"""Offline unit tests for bc.py.
 
 No network: the GitHub contents API layer is replaced by an
 in-memory mock implementing the same get_file / put_file shape.
@@ -204,7 +204,7 @@ def seed_heartbeat(api, age_s):
 class HeartbeatJudgmentTests(unittest.TestCase):
     """cmd_heartbeat's verdicts, driven through the mock API.
 
-    Guards the FR-005 freshness judgment against the clock-skew
+    Guards the freshness judgment against the clock-skew
     failure: the host's WSL clock and the VM clock are different
     clocks, so a heartbeat can arrive stamped in the future.
     """

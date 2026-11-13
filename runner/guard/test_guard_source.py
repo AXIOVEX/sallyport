@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Static battery for the host shutdown guard (spec 011 Phase 3).
+"""Static battery for the host shutdown guard.
 
 This VM cannot compile Windows targets, so — like the tray
-battery (spec 007) — these are source-shape checks on
+battery — these are source-shape checks on
 SyncyardGuard.cs. They pin the guard's four speed duties
 from the owner's 2026-11-02 directive and the design's
 safety shape:
@@ -16,7 +16,7 @@ safety shape:
       veto), in the Phase 1 ingest shape, through a
       verified write;
   (d) the block is released on settle (all jobs ended, or
-      the FR-005 window expired) and the pending action is
+      the window expired) and the pending action is
       re-issued — delay, never prevent.
 
 Run: python3 runner/guard/test_guard_source.py

@@ -1,5 +1,5 @@
 [Unit]
-Description=Run the Syncyard fleet-status publisher every 2 minutes (spec 014 FR-009)
+Description=Run the Syncyard fleet-status publisher every 2 minutes
 
 [Timer]
 OnBootSec=1min

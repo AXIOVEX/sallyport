@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  Install and start the Syncyard tray supervisor (spec 007).
+  Install and start the Syncyard tray supervisor.
 
 .DESCRIPTION
   Downloads SyncyardTray.cs from the Syncyard repo, compiles it with

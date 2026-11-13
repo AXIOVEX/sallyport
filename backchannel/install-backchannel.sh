@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # install-backchannel.sh - install the Syncyard backchannel agent
-# as a WSL systemd user service (spec 009 FR-002).
+# as a WSL systemd user service.
 #
 # Run INSIDE WSL2 (Ubuntu-24.04) as the WSL user on the Windows host.
 # Idempotent: re-running refreshes the agent copy and the unit,
@@ -8,7 +8,7 @@
 #
 # Prints SYNCBC_INSTALL_* markers. Exiting / stopping the agent is
 # done with: systemctl --user stop syncyard-backchannel.service
-# (and the channel STOP file is the remote kill switch, FR-004).
+# (and the channel STOP file is the remote kill switch).
 
 set -eu
 

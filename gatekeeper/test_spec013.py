@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scenario battery for spec 013 (live priority and pause control).
+"""Scenario battery for (live priority and pause control).
 
 Golden style: temp dir, copied gk.py + config.py, subprocess
 drivers, stub dispatch_one / ledger / fetch_log_once at the
@@ -224,7 +224,7 @@ check("submit --priority stamps human; plain submit stays auto",
       res["rcs"] == [0, 0] and res["wp"] == [4, "human"]
       and res["np"] == [0, "auto"], str(res))
 
-# --- The optimizer (FR-012) ----------------------------------------------
+# --- The optimizer ----------------------------------------------
 res = run_driver(r"""
 job("a", "quick", expected=600, created="2026-11-02T03:40:00Z")
 job("b", "normal", expected=1, created="2026-11-02T11:59:00Z")
@@ -300,7 +300,7 @@ check("optimizer: inert under focus — a ceiling-hot held job "
       "still waits; the admitted job flows",
       res["decided"] == ["in"], str(res))
 
-# --- Drain (FR-005) ---------------------------------------------------------
+# --- Drain ---------------------------------------------------------
 res = run_driver(r"""
 write_pause({"ts": "2026-11-02T11:00:00Z", "reason": "d",
              "drain": True})
@@ -352,7 +352,7 @@ check("drain + focus: a non-admitted job executing blocks the "
               "after_outside_done": True},
       str(res))
 
-# --- Checkpoint hold lifecycle (FR-007..FR-009) -----------------------------
+# --- Checkpoint hold lifecycle ----------------------------------------------
 res = run_driver(r"""
 t = job("t1", "quick", key="target-job")
 g = job("g1", "normal", workflow="grab.yml", key="grab-job")
@@ -411,10 +411,10 @@ runs = {"9": {"status": "completed", "conclusion": "failure",
                "createdAt": "2026-11-02T11:30:00Z"}}
 gk.watch_pass(gk.load_jobs(), runs)
 w, v = read_job("w"), read_job("v")
-# The host-raised case (FR-007): job w never carried a
+# The host-raised case: job w never carried a
 # gatekeeper hold request — its signal was raised host-side,
 # so all the harvest ever saw was the marker. Releasing it
-# must still queue the withdrawal (FR-009).
+# must still queue the withdrawal.
 rc_rel, _ = call(gk.cmd_resume, NS(job="w"))
 keys = {j["key"] for j in gk.load_jobs()}
 print(json.dumps({

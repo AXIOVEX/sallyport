@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Golden battery for the spec 010 Phase 1 config wiring (T003/T004).
+"""Golden battery for the Phase 1 config wiring.
 
 Proves the config-driven gatekeeper behaves byte-identically to the
 pre-config constants:
@@ -16,13 +16,13 @@ pre-config constants:
     global cap, duplicate-hash refusal, maintenance bypass), so a
     future behavior change fails loudly here instead of slipping
     through as an A==B pass.
- 6. Host liveness + going-down ingest (spec 011 T001-T003): a
+ 6. Host liveness + going-down ingest: a
     stubbed heartbeat ages a fixture host UP -> DOWN in the status
     rendering; a fixture going-down record pins the ledger lines,
     the per-record annotation, the dispatch hold, the single
     outbox group, duplicate-ingest suppression, and the
     `gk host-resume` stand-in clearing the hold.
- 7. Controlled reboot (spec 011 FR-015, T021): route selection
+ 7. Controlled reboot: route selection
     (fresh backchannel / stale heartbeat + online runner /
     neither), the active-jobs refusal (exit 3, nothing else
     written), the record-before-signal order on the backchannel
@@ -192,7 +192,7 @@ for lanes_live in (True, False):
           a["decided"] == exp["decided"] and a["events"] == exp["events"],
           f"got {a['decided']}/{a['events']} want {exp}")
 
-# 4: routing (FR-003/FR-004) — lane's host serves the workflow or
+# 4: routing — lane's host serves the workflow or
 # the pair is refused; a new host type routes only its own.
 MAC_YAML = """workflows:
   - run.yml
@@ -268,7 +268,7 @@ finally:
     shutil.rmtree(d, ignore_errors=True)
 
 # 5: dispatch argv construction (docker image/mounts ride along;
-# signal-capable venues gain the spec 013 hold_file input; grab
+# signal-capable venues gain the hold_file input; grab
 # and docker jobs gain nothing).
 DISPATCH_DRIVER = r"""
 import base64, importlib.util, json, os
@@ -343,7 +343,7 @@ try:
 finally:
     shutil.rmtree(d, ignore_errors=True)
 
-# 6: host liveness + going-down ingest (spec 011 T001-T003) —
+# 6: host liveness + going-down ingest —
 # heartbeat aging flips UP -> DOWN in the status rendering; a
 # going-down record ledgers host_going_down, annotates the named
 # run's job, sets the dispatch hold, and produces exactly one
@@ -531,7 +531,7 @@ try:
 finally:
     shutil.rmtree(d, ignore_errors=True)
 
-# 7: controlled reboot (spec 011 FR-015) — five cases, each in a
+# 7: controlled reboot — five cases, each in a
 # fresh gatekeeper dir. gh is faked at the gh_json seam (heartbeat
 # contents + runners API); the backchannel client is a stub script
 # (SYNCYARD_BC) that captures its argv and appends SIGNAL to a

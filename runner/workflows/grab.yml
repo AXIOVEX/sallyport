@@ -9,7 +9,7 @@
 # pull_request_target, issues, or any other unprivileged event.
 # See SECURITY.md - the security model depends on it.
 #
-# The file-return transport for every host type (spec 010 FR-003):
+# The file-return transport for every host type:
 # runs on the runner addressed by the `lane` input and returns the
 # addressed host's file as an artifact. For a WSL2 venue the path
 # is the file's UNC path through the Windows host.

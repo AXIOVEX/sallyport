@@ -1,5 +1,5 @@
 #Requires -Version 7.0
-# tray-watchdog.ps1 - the packaged Syncyard tray watchdog (spec 025).
+# tray-watchdog.ps1 - the packaged Syncyard tray watchdog.
 #
 # One-shot: a scheduled task runs this every minute
 # (runner/tray/tray-watchdog-task.xml renders the task). Each
@@ -10,7 +10,7 @@
 #                         exe is an alarm, never a relaunch loop.
 #   stopped-by-user    -> the tray's Exit wrote its marker and
 #                         no tray has started since: stand down.
-#                         Exit means exit (spec 023 FR-007).
+#                         Exit means exit.
 #   tray process alive -> stand down.
 #   past relaunch cap  -> write the owner-needed marker, launch
 #                         nothing. A crash loop becomes an alarm.

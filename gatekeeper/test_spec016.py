@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scenario battery for spec 016 (adaptive lanes).
+"""Scenario battery for (adaptive lanes).
 
 Two layers, mirroring test_config.py + test_spec015.py:
   A. Config-layer pins, run in-process against config.py:
@@ -10,7 +10,7 @@ Two layers, mirroring test_config.py + test_spec015.py:
   B. Gatekeeper scenarios, golden style: temp dir, copied
      gk.py + config.py, subprocess drivers, stub dispatch_one /
      ledger at the module seams, a fixed evaluation instant.
-     LANE_CONCURRENCY is raised to 99 in the prelude (spec 015
+     LANE_CONCURRENCY is raised to 99 in the prelude (
      battery's fixture choice): lane serialization is spec
      001/013 behavior, pinned by their own batteries; here it
      would mask the routing decisions this battery pins.
@@ -81,51 +81,51 @@ def load_text(text):
 
 
 LANES_HDR = "lanes:\n  profiles:\n    fleet-default:\n"
-expect_error("reject bad profile name (FR-002)",
+expect_error("reject bad profile name",
              "lanes:\n  profiles:\n    Bad_Name:\n      quick:\n"
              "        host: desktop\n        queued: [10, 30]\n"
              "        executing:\n          mode: fixed\n"
              "          values: [5, 15]\n")
-expect_error("reject bad lane name (FR-002)",
+expect_error("reject bad lane name",
              "lanes:\n  profiles:\n    fleet-default:\n      GPU_Lane:\n"
              "        host: desktop\n        queued: [10, 30]\n"
              "        executing:\n          mode: fixed\n"
              "          values: [5, 15]\n")
-expect_error("reject unknown lane host in profile (FR-002)",
+expect_error("reject unknown lane host in profile",
              LANES_HDR + "      quick:\n        host: nowhere\n")
-expect_error("reject unknown workflow pin (FR-002)",
+expect_error("reject unknown workflow pin",
              LANES_HDR + "      quick:\n        workflow: teleport.yml\n")
-expect_error("reject zero concurrency (FR-002)",
+expect_error("reject zero concurrency",
              LANES_HDR + "      quick:\n        concurrency: 0\n")
-expect_error("reject non-integer concurrency (FR-002)",
+expect_error("reject non-integer concurrency",
              LANES_HDR + "      quick:\n        concurrency: two\n")
-expect_error("reject unknown resource class (FR-002)",
+expect_error("reject unknown resource class",
              LANES_HDR + "      quick:\n        resource_class: tpu\n")
-expect_error("reject inverted duration band (FR-002)",
+expect_error("reject inverted duration band",
              LANES_HDR + "      quick:\n        duration_band: [10, 5]\n")
-expect_error("reject scalar duration band (FR-002)",
+expect_error("reject scalar duration band",
              LANES_HDR + "      quick:\n        duration_band: wide\n")
-expect_error("reject negative duration band (FR-002)",
+expect_error("reject negative duration band",
              LANES_HDR + "      quick:\n        duration_band: [-1, 5]\n")
-expect_error("reject non-boolean enabled (FR-002)",
+expect_error("reject non-boolean enabled",
              LANES_HDR + "      quick:\n        enabled: yes\n")
-expect_error("reject profile with zero enabled lanes (FR-002)",
+expect_error("reject profile with zero enabled lanes",
              "lanes:\n  profiles:\n    empty-prof:\n      quick:\n"
              "        host: desktop\n        enabled: false\n"
              "        queued: [10, 30]\n        executing:\n"
              "          mode: fixed\n          values: [5, 15]\n")
-expect_error("reject unknown active profile (FR-002)",
+expect_error("reject unknown active profile",
              "lanes:\n  active_profile: nowhere\n")
-expect_error("reject non-boolean auto_default (FR-002)",
+expect_error("reject non-boolean auto_default",
              "lanes:\n  auto_default: yes\n")
-expect_error("reject zero capability max age (FR-002)",
+expect_error("reject zero capability max age",
              "lanes:\n  capability_max_age_min: 0\n")
-expect_error("reject duplicate lane key in profile (FR-002)",
+expect_error("reject duplicate lane key in profile",
              LANES_HDR + "      quick:\n        host: desktop\n"
              "      quick:\n        host: desktop\n")
 
 dflt = cfgmod.load_config(None)
-check("fleet-default equivalence: resolved lanes (FR-001)",
+check("fleet-default equivalence: resolved lanes",
       {n: (l["host"], l["runner_label"], l["concurrency"],
            tuple(l["queued"]), l["executing"]["mode"],
            tuple(l["executing"].get("values")
@@ -140,7 +140,7 @@ check("fleet-default equivalence: resolved lanes (FR-001)",
                    (90, 180), "cpu", [30, None]),
           "gpu": ("desktop", "lane-gpu", 1, (30, 90), "expectation",
                   (120, 240), "gpu", [0, None])})
-check("built-in profile set (FR-001)",
+check("built-in profile set",
       set(dflt["lane_profiles"]) == {"fleet-default",
                                      "single-host-light", "gpu-farm"}
       and dflt["lane_profiles"]["gpu-farm"]["gpu"]["concurrency"] == 2
@@ -330,13 +330,13 @@ print(json.dumps({"rc1": rc1, "rc2": rc2, "out2": out2,
                   "cb1_id": by_key()["cb1"]["id"],
                   "aj1_lane": read_job("aj1").get("lane")}))
 """, config_text=RIG_YAML)
-check("custom profile dispatches end-to-end (FR-002)",
+check("custom profile dispatches end-to-end",
       res["rc1"] == 0 and res["cb1_id"] in res["decided"])
-check("workflow pin refuses other workflows (FR-002)",
+check("workflow pin refuses other workflows",
       res["rc2"] == 3 and "REFUSED" in res["out2"])
 # cb1 waits on build at resolution time, so load pricing (-5)
 # tips the band tie to render — deterministic, and recorded.
-check("custom profile auto routes within its own lanes (FR-002/FR-006)",
+check("custom profile auto routes within its own lanes",
       res["aj1_lane"] == "render")
 
 # --- Hint recording + refusals ----------------------------------
@@ -351,12 +351,12 @@ print(json.dumps({"rcs": [rc1, rc2, rc3, rc4],
                   "h2": by_key()["h2"].get("needs"),
                   "h3": by_key()["h3"].get("needs")}))
 """)
-check("hints recorded on the record (FR-003)",
+check("hints recorded on the record",
       res["rcs"][:3] == [0, 0, 0]
       and res["h1"] == {"cpu_cores": 4, "ram_mb": 2048}
       and res["h2"] == {"gpu": True}
       and res["h3"] == {"gpu": True, "gpu_vram_mb": 8192})
-check("negative hint refused (FR-003)", res["rcs"][3] == 2)
+check("negative hint refused", res["rcs"][3] == 2)
 
 # --- Auto submit, resolution, snapshot completeness -------------
 res = run_driver(r"""
@@ -378,19 +378,19 @@ print(json.dumps({
     "events": evnames(),
     "routed_ev": evfind("auto_routed")}))
 """)
-check("auto submit lands lane-less with lane_request (FR-004)",
+check("auto submit lands lane-less with lane_request",
       res["rc"] == 0 and res["before_lane"] is None
       and res["before_req"] == "auto")
-check("auto resolves to the GPU lane and dispatches (FR-006)",
+check("auto resolves to the GPU lane and dispatches",
       res["after_lane"] == "gpu" and len(res["decided"]) == 1
       and res["chosen"] == "gpu")
-check("auto_routed snapshot is complete (FR-006)",
+check("auto_routed snapshot is complete",
       {"evaluated_at", "needs", "venue", "history", "degraded",
        "capability", "lanes", "chosen", "score"} <= set(res["snap_keys"])
       and res["degraded"] is False
       and res["gpu_eval"]["eligible"] is True
       and res["gpu_eval"]["score"] == res["score"])
-check("auto_routed ledgered with lane + score (FR-006)",
+check("auto_routed ledgered with lane + score",
       len(res["routed_ev"]) == 1
       and res["routed_ev"][0]["lane"] == "gpu")
 
@@ -416,9 +416,9 @@ print(json.dumps({"same_lane": lane1 == lane2,
                   "gpu_score": snap1["lanes"]["gpu"]["score"],
                   "quick_eligible": snap1["lanes"]["quick"]["eligible"]}))
 """)
-check("scoring is deterministic (FR-006)",
+check("scoring is deterministic",
       res["same_lane"] and res["same_snap"] and res["lane"] == "gpu")
-check("load is priced into the score (FR-006)",
+check("load is priced into the score",
       res["gpu_score"] == 100 - 15 + 20 + 10 + 5
       and res["quick_eligible"] is False)
 
@@ -432,7 +432,7 @@ print(json.dumps({"decided": decided, "lane": rec.get("lane"),
                   "unmet": (rec.get("auto_wait") or {}).get("unmet"),
                   "nofit": evfind("auto_no_fit")}))
 """, config_text="lanes:\n  active_profile: single-host-light\n")
-check("gpu need on a GPU-less profile waits with auto_no_fit (FR-006)",
+check("gpu need on a GPU-less profile waits with auto_no_fit",
       res["decided"] == [] and res["lane"] is None
       and res["state"] == "submitted"
       and any("gpu" in r for r in (res["unmet"] or []))
@@ -449,7 +449,7 @@ rec = read_job("nf2")
 print(json.dumps({"decided": decided, "lane": rec.get("lane"),
                   "unmet": (rec.get("auto_wait") or {}).get("unmet")}))
 """)
-check("VRAM need above every evidenced GPU waits (FR-006)",
+check("VRAM need above every evidenced GPU waits",
       res["decided"] == [] and res["lane"] is None
       and any("vram" in r for r in (res["unmet"] or [])))
 
@@ -468,7 +468,7 @@ print(json.dumps({"lane": rec.get("lane"), "decided": decided,
                   "median": (snap.get("history") or {}).get("median_min"),
                   "expected_used": snap.get("expected_min_used")}))
 """)
-check("history median routes a long program to long (FR-006)",
+check("history median routes a long program to long",
       res["lane"] == "long" and "new1" in res["decided"]
       and res["median"] == 200.0 and res["expected_used"] == 200.0)
 
@@ -496,11 +496,11 @@ print(json.dumps({
     "gpu_reasons": (snap1.get("lanes") or {}).get(
         "gpu", {}).get("reasons")}))
 """)
-check("auto never routes a non-holder onto a locked lane (FR-006/015)",
+check("auto never routes a non-holder onto a locked lane",
       res["lock_rc"] == 0 and res["lk1_lane"] == "long"
       and res["gpu_eligible_for_other"] is False
       and any("locked" in r for r in (res["gpu_reasons"] or [])))
-check("the holder's own auto job may use the locked lane (FR-006/015)",
+check("the holder's own auto job may use the locked lane",
       res["lk2_lane"] == "gpu")
 
 # --- Focus conjunction across resolution -------------------------
@@ -517,7 +517,7 @@ print(json.dumps({"decided": decided,
                   "f1_lane": read_job("f1").get("lane"),
                   "f2_lane": read_job("f2").get("lane")}))
 """)
-check("focus admission still binds after resolution (FR-007/013)",
+check("focus admission still binds after resolution",
       "f1" in res["decided"] and "f2" not in res["decided"]
       and res["f1_lane"] == "gpu" and res["f2_lane"] == "gpu")
 
@@ -535,7 +535,7 @@ rec = read_job("hh1")
 print(json.dumps({"decided": decided, "lane": rec.get("lane"),
                   "unmet": (rec.get("auto_wait") or {}).get("unmet")}))
 """)
-check("a held host's lanes are ineligible for auto (FR-006)",
+check("a held host's lanes are ineligible for auto",
       res["decided"] == [] and res["lane"] is None
       and any("held" in r for r in (res["unmet"] or [])))
 
@@ -555,7 +555,7 @@ print(json.dumps({"lane": rec.get("lane"), "decided": decided,
 # quick, normal and gpu all tie on band fit for a 5-minute
 # job (the gpu band is open); the deterministic tie-break
 # (first lane name) picks gpu.
-check("stale snapshot degrades instead of blocking (FR-005/FR-006)",
+check("stale snapshot degrades instead of blocking",
       res["lane"] == "gpu" and "st1" in res["decided"]
       and res["degraded"] is True and "auto_degraded" in res["events"])
 
@@ -571,7 +571,7 @@ decided = decided_order()
 print(json.dumps({"lane": read_job("un1").get("lane"),
                   "decided": decided}))
 """)
-check("unknown capability fields are neutral, never zero (FR-005)",
+check("unknown capability fields are neutral, never zero",
       res["lane"] == "gpu" and "un1" in res["decided"])
 
 # --- Venue eligibility ---------------------------------------------
@@ -587,7 +587,7 @@ print(json.dumps({"v1_lane": r1.get("lane"),
                   "v2_lane": read_job("v2").get("lane"),
                   "decided": decided}))
 """)
-check("docker venue requires an image; with one it routes (FR-006)",
+check("docker venue requires an image; with one it routes",
       res["v1_lane"] is None
       and any("image" in r for r in (res["v1_unmet"] or []))
       and res["v2_lane"] is not None and "v2" in res["decided"])
@@ -625,7 +625,7 @@ rec = read_job("v3")
 print(json.dumps({"decided": decided, "lane": rec.get("lane"),
                   "unmet": (rec.get("auto_wait") or {}).get("unmet")}))
 """, config_text=MAC_YAML)
-check("wsl venue has no candidate on a macOS-only profile (FR-006)",
+check("wsl venue has no candidate on a macOS-only profile",
       res["decided"] == [] and res["lane"] is None
       and any("wsl" in r for r in (res["unmet"] or [])))
 
@@ -645,9 +645,9 @@ print(json.dumps({
     "e2_eval1": (first.get("auto_route") or {}).get("evaluated_at"),
     "e2_eval2": (second.get("auto_route") or {}).get("evaluated_at")}))
 """)
-check("an explicit lane is never re-routed by auto (FR-007)",
+check("an explicit lane is never re-routed by auto",
       res["e1_lane"] == "quick" and res["e1_auto_route"] is None)
-check("a resolved auto job is never re-resolved (FR-007)",
+check("a resolved auto job is never re-resolved",
       res["e2_lane"] == "gpu"
       and res["e2_eval1"] is not None
       and res["e2_eval1"] == res["e2_eval2"])
@@ -740,7 +740,7 @@ def parse_in_driver(report, name):
 
 
 snap = parse_in_driver(WINDOWS_REPORT, "windows")
-check("windows probe parser (FR-005)",
+check("windows probe parser",
       snap["platform"] == "windows"
       and snap["hostname"] == "EXAMPLE-HOST"
       and snap["cpu_cores"] == 24
@@ -753,7 +753,7 @@ check("windows probe parser (FR-005)",
       and snap["venues"] == ["native", "wsl", "docker"])
 
 snap = parse_in_driver(LINUX_REPORT, "linux")
-check("linux probe parser (FR-005)",
+check("linux probe parser",
       snap["platform"] == "linux" and snap["cpu_cores"] == 32
       and snap["cpu_model"].startswith("AMD Ryzen")
       and snap["ram_total_mb"] == 65536000 // 1024
@@ -764,7 +764,7 @@ check("linux probe parser (FR-005)",
       and snap["venues"] == ["native", "docker"])
 
 snap = parse_in_driver(DARWIN_REPORT, "darwin")
-check("darwin probe parser: unified GPU, no wsl venue (FR-005)",
+check("darwin probe parser: unified GPU, no wsl venue",
       snap["platform"] == "darwin" and snap["cpu_cores"] == 10
       and snap["ram_total_mb"] == 34359738368 // 1048576
       and snap["ram_free_mb"] == 100000 * 16384 // 1048576
@@ -775,12 +775,12 @@ check("darwin probe parser: unified GPU, no wsl venue (FR-005)",
       and "wsl" not in snap["venues"])
 
 snap = parse_in_driver(DARWIN_INTEL_REPORT, "darwin-intel")
-check("darwin probe parser: Intel discrete VRAM (FR-005)",
+check("darwin probe parser: Intel discrete VRAM",
       snap["gpus"] == [{"name": "AMD Radeon Pro 5500M",
                         "vram_mb": 4096, "class": "discrete"}])
 
 res = run_driver("print(json.dumps(gk.parse_probe_report('garbage')))\n")
-check("an unparseable report yields no snapshot (FR-005)", res is None)
+check("an unparseable report yields no snapshot", res is None)
 
 # --- Probe routes: ingest, dispatch + watch ingest, refusal -------
 res = run_driver(r"""
@@ -795,7 +795,7 @@ print(json.dumps({"rc": rc, "platform": cap.get("platform"),
                   "cpus": cap.get("cpu_cores"),
                   "events": evnames()}))
 """ % WINDOWS_REPORT)
-check("probe ingest stores the snapshot (FR-005)",
+check("probe ingest stores the snapshot",
       res["rc"] == 0 and res["platform"] == "windows"
       and res["cpus"] == 24 and "capability_probed" in res["events"])
 
@@ -818,7 +818,7 @@ print(json.dumps({"rc": rc, "key": (jobrec or {}).get("key"),
                   "ingested": (jobrec or {}).get("capability_ingested"),
                   "cap_platform": cap.get("platform")}))
 """ % LINUX_REPORT)
-check("probe dispatch rides wsl.yml and watch-ingests (FR-005)",
+check("probe dispatch rides wsl.yml and watch-ingests",
       res["rc"] == 0 and res["workflow"] == "wsl.yml"
       and res["probe_host"] == "desktop-wsl"
       and res["ingested"] is True and res["cap_platform"] == "linux")
@@ -829,7 +829,7 @@ print(json.dumps({"rc": rc, "out": out}))
 """, config_text="hosts:\n  linhost:\n    type: linux\n    workflows:\n"
                  "      run.yml: execute\n"
                  "    identity: [LID_HOST, LID_USER, LID_OS]\n")
-check("no-transport host refused with the ingest route named (FR-005)",
+check("no-transport host refused with the ingest route named",
       res["rc"] == 3 and "--ingest" in res["out"])
 
 # --- Status + profile rendering --------------------------------------
@@ -847,13 +847,13 @@ rc4, out4 = call(gk.cmd_profile, NS(list=False, show=True,
 print(json.dumps({"status": out1, "list": out2, "show": out3,
                   "rc4": rc4}))
 """)
-check("status renders profile + capability (FR-008)",
+check("status renders profile + capability",
       "profile: fleet-default" in res["status"]
       and "platform=windows" in res["status"]
       and "(fresh)" in res["status"])
-check("status shows an unplaced auto job's why (FR-008)",
+check("status shows an unplaced auto job's why",
       "[auto: no fit yet" in res["status"])
-check("profile --list / --show render (FR-001)",
+check("profile --list / --show render",
       "fleet-default (active)" in res["list"]
       and "gpu-long" in res["show"] and "class=gpu" in res["show"]
       and res["rc4"] == 2)
@@ -868,7 +868,7 @@ try:
               for plat, (fname, body) in _gkmod.PROBE_SCRIPTS.items()}
 except SystemExit:
     _drift = {}
-check("probe script files match the shipped constants (FR-005)",
+check("probe script files match the shipped constants",
       len(_drift) == 3 and all(_drift.values()), str(_drift))
 
 print()

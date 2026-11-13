@@ -52,8 +52,8 @@ function Get-RestartHistory {
 }
 
 function Test-ListenerAlive($Dir) {
-    # Listener identity is the exact runner directory (spec 028
-    # FR-007, red team H14): the listener exe's own directory must
+    # Listener identity is the exact runner directory (
+    # red team H14): the listener exe's own directory must
     # EQUAL the runner directory - never a path-prefix match,
     # under which the listener of a longer sibling directory
     # (for example runners\normal2) also counted as the shorter
