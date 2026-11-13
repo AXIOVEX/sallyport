@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Skill currency battery (spec 010 T016 / FR-006).
+"""Skill currency battery.
 
 Checks, for every generated skill edition:
   1. the edition exists at skills/<slug>/SKILL.md;
   2. its front-matter version equals the repo VERSION;
-  3. the FR-009 security invariant appears verbatim;
+  3. the security invariant appears verbatim;
   4. the edition matches a fresh render from the shared source
      (no drift - enforced by build_skills.py --check);
-  5. the edition set and order match the FR-006 Amendment 1
+  5. the edition set and order match the support
      ranking (Meta Muse primary, CLI-only fallback last).
 
 Run: python3 skills/test_skills.py   (exit 0 = all pass)

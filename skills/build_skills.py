@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate every Syncyard agent-skill edition from one shared source.
 
-Spec 010 FR-006 (Amendment 1 ranking): editions are generated from
+Editions are generated from
 `skills/_source/contract.md` so their content cannot drift. Each
 edition is the shared contract plus a small host-specific front
 matter and install note. Run with no arguments to (re)write the
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "skills" / "_source" / "contract.md"
 VERSION_FILE = ROOT / "VERSION"
 
-# Edition order is the FR-006 Amendment 1 support ranking:
+# Edition order is the support ranking:
 # Meta Muse primary, then by agent market share.
 EDITIONS = [
     {
