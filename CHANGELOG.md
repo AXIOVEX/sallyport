@@ -56,8 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the tray and in runner/runner-watchdog.ps1 (no more
   path-prefix matching). Source coverage:
   runner/tray/test_tray_source.py; the
-  falsifier legs are recorded in
-  specs/028-settings-resilience/falsifier-record.md.
+  falsifier legs are recorded with the
+  project's internal design records.
 - Tray version drift detection (H3): each sweep,
   the gatekeeper reads the release manifest the tray updater
   itself consumes (tray-update.json on the latest release,
@@ -248,8 +248,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A missing or stale snapshot is refused (exit 2) with the
   probe refresh named. The command never applies anything:
   it writes only to an explicit --out path, refused when
-  the path exists or is the live config file. Note:
-  specs/016-adaptive-lanes/profile-suggest.md. Battery:
+  the path exists or is the live config file. Battery:
   gatekeeper/test_profile_suggest.py.
 - (2026-11-04): tray self-update. The tray now
   carries a build stamp (assembly version 0.4.0.0, shown as

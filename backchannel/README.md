@@ -1,7 +1,7 @@
 # Syncyard failsafe backchannel — operator doc
 
-Spec: `specs/009-failsafe-backchannel/spec.md`. Read that first for
-the rules; this file is the how-to.
+This file is the how-to; the design rules live with the
+project's internal design records.
 
 ## What this is
 
